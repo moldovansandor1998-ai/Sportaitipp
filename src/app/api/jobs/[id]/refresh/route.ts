@@ -7,7 +7,7 @@ import { failJob, finalizeJob, type JobRow } from "@/server/jobs/runJob";
 
 export const runtime = "nodejs";
 
-// A már beküldött szolgáltatói kérés állapotának lekérdezése; soha nem submitol új feladatot.
+// A már beküldött szolgáltatói kérés állapotának lekérdezése; nem indít új generálást.
 export async function POST(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   const auth = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!);
