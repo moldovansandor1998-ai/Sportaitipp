@@ -17,11 +17,26 @@ export default function GalleryPage() {
   const [q, setQ] = useState("");
   const [typeFilter, setTypeFilter] = useState("all");
   const [albumFilter, setAlbumFilter] = useState("all");
+  const [pendingCount, setPendingCount] = useState(0);
 
   const getSb = () => browserClient();
   const token = useCallback(async () => (await getSb().auth.getSession()).data.session?.access_token ?? "", []);
 
   const load = useCallback(async () => {
+    // Poll every unfinished character edit, including older jobs that were started
+    // before the user navigated away from the Tools page. This never submits a new run.
+    const { data: { user } } = await getSb().auth.getUser();
+    if (!user) return;
+    const { data: pending } = await getSb().from("generation_jobs")
+      .select("id").eq("owner_id", user.id).eq("type", "character_swap").eq("status", "processing")
+      .order("created_at", { ascending: false }).limit(10);
+    setPendingCount(pending?.length ?? 0);
+    if (pending?.length) {
+      const auth = { authorization: `Bearer ${await token()}` };
+      await Promise.allSettled(pending.map((job) => fetch(`/api/jobs/${job.id}/refresh`, {
+        method: "POST", headers: auth,
+      })));
+    }
     const qs = albumFilter !== "all" ? `?albumId=${albumFilter}` : "";
     const res = await fetch(`/api/gallery${qs}`, { headers: { authorization: `Bearer ${await token()}` } });
     if (res.ok) setItems((await res.json()).items);
@@ -105,6 +120,7 @@ export default function GalleryPage() {
         {selected.size > 0 && <button className="ghost" onClick={removeMany}>Törlés ({selected.size})</button>}
       </div>
       <p className="muted">{filtered.length} / {items.length} elem{selected.size > 0 && ` · ${selected.size} kiválasztva`}</p>
+      {pendingCount > 0 && <p className="muted">{pendingCount} kép feldolgozás alatt. Az eredmények itt automatikusan frissülnek.</p>}
       {filtered.length === 0 ? (
         <div className="empty">Nincs a szűrésnek megfelelő elem.</div>
       ) : (
