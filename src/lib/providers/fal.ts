@@ -185,6 +185,22 @@ const MODELS: Partial<Record<JobType, FalModelSpec>> = {
   },
 };
 
+// The trained character weights are applied to the uploaded image itself.
+const TRAINED_CHARACTER_EDIT: FalModelSpec = {
+  endpoint: "fal-ai/flux-lora/image-to-image",
+  estimate: 50,
+  mapInput: (p) => ({
+    prompt: p.prompt,
+    image_url: p.imageUrl,
+    loras: [{ path: p.loraPath, scale: 1 }],
+    strength: 0.78,
+    num_inference_steps: 32,
+    num_images: 1,
+    enable_safety_checker: true,
+  }),
+  mapOutput: (raw) => ({ files: file("image")(raw.images ?? raw.image), meta: { seed: raw.seed } }),
+};
+
 function classify(status: number): { retryable: boolean; category: ProviderErrorCategory } {
   if (status === 401 || status === 403) return { retryable: false, category: "auth" };
   if (status === 400 || status === 422) return { retryable: false, category: "invalid_input" };
@@ -230,7 +246,11 @@ export class FalAdapter implements ProviderAdapter {
   }
 
   async submit(p: SubmitParams): Promise<SubmitResult> {
-    const s = this.spec(p.jobType);
+    const s = p.jobType === "image_edit" && p.payload.useTrainedCharacter === true
+      ? TRAINED_CHARACTER_EDIT : this.spec(p.jobType);
+    if (s === TRAINED_CHARACTER_EDIT && (!str(p.payload.loraPath) || !str(p.payload.imageUrl))) {
+      throw new ProviderError("trained character edit requires a model and source image", false, undefined, "invalid_input");
+    }
     // Hivatalos dokumentált paraméter: fal_webhook (NEM fal_webhook_url)
     const url = new URL(`${QUEUE}/${s.endpoint}`);
     if (p.webhookUrl) url.searchParams.set("fal_webhook", p.webhookUrl);
