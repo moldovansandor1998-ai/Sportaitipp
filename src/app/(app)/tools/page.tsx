@@ -38,7 +38,7 @@ export default function ToolsPage() {
   const [toolChar, setToolChar] = useState("");
   const [ttsText, setTtsText] = useState(""); const [ttsVoice, setTtsVoice] = useState("Jennifer (en)");
   const [simpleAsset, setSimpleAsset] = useState("");           // i2p/upscale/bgremoval/skin/fix
-  const [swapAsset, setSwapAsset] = useState(""); const [swapPhoto, setSwapPhoto] = useState("");
+  const [swapAsset, setSwapAsset] = useState("");
   const [talkVideo, setTalkVideo] = useState(""); const [talkAudio, setTalkAudio] = useState("");
   const [v2vVideo, setV2vVideo] = useState(""); const [v2vPrompt, setV2vPrompt] = useState("");
 
@@ -53,8 +53,9 @@ export default function ToolsPage() {
       const items = ((await res.json()) as { items: GalItem[] }).items.filter((i) => i.url);
       setGallery(items);
     }
-    const { data: chars } = await getSb().from("characters").select("id,name").eq("owner_id", user.id).eq("status", "active");
+    const { data: chars } = await getSb().from("characters").select("id,name").eq("owner_id", user.id).not("active_version_id", "is", null);
     setCharacters((chars ?? []) as unknown as CharacterRow[]);
+    if (chars?.length === 1) setToolChar((current) => current || chars[0].id);
     const c = await fetch("/api/config/provider");
     if (c.ok) { const j = await c.json() as Cfg; setCfg(j); if (j.i2vModels[0]) setVModel(j.i2vModels[0].id); }
     // Oldalváltás után a kész eredményt is megmutatjuk, és a futó feladatot folytatjuk.
@@ -218,25 +219,19 @@ export default function ToolsPage() {
 
       <div className="card" style={{ marginTop: 12 }}>
         <h3 style={{ marginTop: 0 }}>Karaktercsere</h3>
-        <p className="muted">Első kép: a megtartandó póz és háttér. Második kép: Petra arca. Az arccsere az első kép kompozícióját tartja meg; a teljes képcsere újraszerkesztheti a testet is.</p>
-        <label>1. Kép, amelyen az arcot cseréled (póz és háttér)</label>
+        <p className="muted">Válaszd ki a fenti karaktert, majd csak azt a képet töltsd fel, amelynek a pózát és hátterét szeretnéd megtartani. Petra arcát a rendszer a karakter referenciáiból tölti be.</p>
+        <label>Átalakítandó kép (póz és háttér)</label>
         <Picker media="image" selected={swapAsset} onSelect={setSwapAsset} />
         <button className="ghost" disabled={busyKey !== null} style={{ margin: "8px 0 12px" }} onClick={async () => { const id = await upload("image/*"); if (id) setSwapAsset(id); }}>Kép feltöltése, amelyet át szeretnél alakítani</button>
         <div className="muted" style={{ overflowWrap: "anywhere" }}>Kiválasztott alapkép: {swapAsset || "még nincs kiválasztva"}</div>
-        <label>2. Petra arcfotója (csak az archoz)</label>
-        <Picker media="image" selected={swapPhoto} onSelect={setSwapPhoto} />
-        <div style={{ display: "flex", gap: 8 }}>
-          <button className="ghost" disabled={busyKey !== null} onClick={async () => { const id = await upload("image/*"); if (id) setSwapPhoto(id); }}>Petra arcfotójának feltöltése</button>
-          <input placeholder="Petra fotójának azonosítója" value={swapPhoto} onChange={(e) => setSwapPhoto(e.target.value)} style={{ flex: 1 }} />
-        </div>
         <div style={{ display: "flex", gap: 8, marginTop: 8, alignItems: "center" }}>
-          <button disabled={busyKey !== null || !swapAsset || !swapPhoto || swapAsset === swapPhoto}
-            onClick={() => run("swap", "character_swap", { sourceAssetId: swapAsset, swapAssetId: swapPhoto })}>Arccsere</button>
-          <button className="ghost" disabled={busyKey !== null || !swapAsset || !swapPhoto || swapAsset === swapPhoto}
+          <button disabled={busyKey !== null || !swapAsset || !toolChar}
+            onClick={() => run("swap", "character_swap", { sourceAssetId: swapAsset, useCharacterReference: true }, { characterId: toolChar })}>Arccsere</button>
+          <button className="ghost" disabled={busyKey !== null || !swapAsset || !toolChar}
             onClick={() => run("fullSwap", "image_edit", {
-              imageAssetIds: [swapAsset, swapPhoto],
+              imageAssetIds: [swapAsset], useCharacterReference: true,
               prompt: "Edit the first image. Replace its subject with the same adult person shown in the second reference image. Preserve the first image's pose, framing, outfit, lighting and background as closely as possible. Match the second person's facial features, hair, skin tone and natural body proportions. Photorealistic anatomy, natural hands with five fingers per hand, no extra limbs. The second image is an identity reference only; do not copy its setting.",
-            })}>Teljes képcsere</button>
+            }, { characterId: toolChar })}>Teljes képcsere</button>
           <Badge k="swap" /><Price k="swap" /><Badge k="fullSwap" /><Price k="fullSwap" />
         </div>
         <Results k="swap" kind="image" /><Results k="fullSwap" kind="image" />
