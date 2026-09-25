@@ -8,6 +8,7 @@ import { createClient } from "@supabase/supabase-js";
 import { createHash } from "crypto";
 import { serviceClient } from "@/lib/supabase/server";
 import { UPLOAD_LIMITS } from "@/lib/security/validation";
+import { sniffImage } from "@/lib/trainingDataset";
 
 export async function POST(req: NextRequest) {
   const sb = createClient(
@@ -42,8 +43,8 @@ export async function POST(req: NextRequest) {
     await svc.storage.from("references").remove([objectPath]);
     return NextResponse.json({ error: "FILE_TOO_LARGE" }, { status: 413 });
   }
-  const contentType = file.type || "application/octet-stream";
-  if (!(UPLOAD_LIMITS.allowedMime as readonly string[]).includes(contentType)) {
+  const contentType = sniffImage(buf);
+  if (!contentType || !(UPLOAD_LIMITS.allowedMime as readonly string[]).includes(contentType)) {
     await svc.storage.from("references").remove([objectPath]);
     return NextResponse.json({ error: "FILE_TYPE_NOT_ALLOWED" }, { status: 415 });
   }
