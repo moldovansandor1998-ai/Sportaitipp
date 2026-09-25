@@ -32,7 +32,8 @@ async function downloadCapped(url: string, maxBytes: number): Promise<Buffer | n
   return Buffer.concat(chunks);
 }
 
-interface RefRow { assets: { bucket: string; object_path: string; content_type: string } | null; }
+interface RefRow { asset_id: string; }
+interface AssetRow { id: string; bucket: string; object_path: string; content_type: string; }
 
 export async function POST(
   req: NextRequest,
@@ -58,10 +59,17 @@ export async function POST(
   }
 
   // 4) approved referenciák
-  const { data: refs } = await svc.from("character_reference_images")
-    .select("asset_id,assets(bucket,object_path,content_type)")
+  const { data: refs, error: refsError } = await svc.from("character_reference_images")
+    .select("asset_id")
     .eq("character_id", id).eq("qc_status", "approved").order("sort_order").limit(LIMITS.maxFiles);
-  const usable = ((refs ?? []) as unknown as RefRow[]).filter((r) => r.assets);
+  if (refsError) return NextResponse.json({ error: "REFERENCE_LOOKUP_FAILED" }, { status: 500 });
+  const refIds = ((refs ?? []) as RefRow[]).map((r) => r.asset_id);
+  const { data: assets, error: assetsError } = refIds.length
+    ? await svc.from("assets").select("id,bucket,object_path,content_type").in("id", refIds)
+    : { data: [], error: null };
+  if (assetsError) return NextResponse.json({ error: "ASSET_LOOKUP_FAILED" }, { status: 500 });
+  const byId = new Map(((assets ?? []) as AssetRow[]).map((asset) => [asset.id, asset]));
+  const usable = refIds.map((assetId) => byId.get(assetId)).filter((asset): asset is AssetRow => Boolean(asset));
   if (usable.length < LIMITS.minFiles) {
     return NextResponse.json({ error: "NOT_ENOUGH_APPROVED_REFS", need: LIMITS.minFiles, have: usable.length }, { status: 409 });
   }
@@ -71,15 +79,15 @@ export async function POST(
   let totalBytes = 0;
   for (const [i, r] of usable.entries()) {
     if (totalBytes >= LIMITS.maxTotalBytes) break;
-    const { data: signed } = await svc.storage.from(r.assets!.bucket)
-      .createSignedUrl(r.assets!.object_path, 120);
+    const { data: signed } = await svc.storage.from(r.bucket)
+      .createSignedUrl(r.object_path, 120);
     const buf = signed?.signedUrl
       ? await downloadCapped(signed.signedUrl, Math.min(LIMITS.maxFileBytes, LIMITS.maxTotalBytes - totalBytes))
       : null;
     if (!buf) continue;
     totalBytes += buf.length;
     const sniffed = sniffImage(buf);
-    if (!sniffed || r.assets!.content_type !== sniffed) continue;
+    if (!sniffed || r.content_type !== sniffed) continue;
     entries.push({ name: `ref_${String(i + 1).padStart(2, "0")}.${sniffed.split("/")[1].replace("jpeg", "jpg")}`, data: buf });
   }
   if (entries.length < LIMITS.minFiles || totalBytes > LIMITS.maxTotalBytes) {
