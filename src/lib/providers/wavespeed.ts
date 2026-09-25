@@ -2,6 +2,11 @@ import { ProviderAdapter, ProviderError, type Estimate, type JobType, type Norma
 
 const API = "https://api.wavespeed.ai/api/v3";
 const MODEL = "wavespeed-ai/image-face-swap-pro";
+const EDIT_MODELS = {
+  "seedream-v4.5": "bytedance/seedream-v4.5/edit",
+  "nano-banana": "google/nano-banana/edit",
+} as const;
+const CHARACTER_EDIT_PROMPT = "Edit image 1 only. Replace only the visible person's facial identity with the same woman's facial identity shown in the other reference images. Match her eyes, nose, lips, jaw and facial proportions. Keep image 1's exact body, pose, hands, hair, clothing, accessories, background, camera angle, framing, lighting and all other details. Do not create another scene or add people. The final face must clearly resemble the reference woman and blend naturally with image 1.";
 
 export class WaveSpeedAdapter implements ProviderAdapter {
   readonly name = "wavespeed";
@@ -24,6 +29,17 @@ export class WaveSpeedAdapter implements ProviderAdapter {
   async estimate(): Promise<Estimate> { return { credits: 40, secondsExpected: 60 }; }
 
   async submit(p: SubmitParams): Promise<SubmitResult> {
+    const characterImages = p.payload.characterImageUrls;
+    if (Array.isArray(characterImages) && characterImages.length >= 2
+        && characterImages.length <= 4 && characterImages.every((url) => typeof url === "string" && url.startsWith("https://"))) {
+      const model = p.payload.editModel === "nano-banana" ? EDIT_MODELS["nano-banana"] : EDIT_MODELS["seedream-v4.5"];
+      const data = await this.request(`${API}/${model}`, {
+        images: characterImages, prompt: CHARACTER_EDIT_PROMPT,
+        ...(p.payload.editModel === "nano-banana" ? { output_format: "png" } : {}),
+      });
+      if (typeof data.id !== "string") throw new ProviderError("WaveSpeed did not return a task ID", false);
+      return { providerJobId: data.id, providerMeta: { endpoint: model } };
+    }
     const base = p.payload.imageUrl;
     const face = p.payload.swapImageUrl;
     if (typeof base !== "string" || typeof face !== "string")
