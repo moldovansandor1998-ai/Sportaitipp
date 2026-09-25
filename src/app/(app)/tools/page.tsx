@@ -38,7 +38,7 @@ export default function ToolsPage() {
   const [toolChar, setToolChar] = useState("");
   const [ttsText, setTtsText] = useState(""); const [ttsVoice, setTtsVoice] = useState("Jennifer (en)");
   const [simpleAsset, setSimpleAsset] = useState("");           // i2p/upscale/bgremoval/skin/fix
-  const [swapAsset, setSwapAsset] = useState("");
+  const [swapAsset, setSwapAsset] = useState(""); const [swapPreview, setSwapPreview] = useState("");
   const [talkVideo, setTalkVideo] = useState(""); const [talkAudio, setTalkAudio] = useState("");
   const [v2vVideo, setV2vVideo] = useState(""); const [v2vPrompt, setV2vPrompt] = useState("");
 
@@ -112,7 +112,7 @@ export default function ToolsPage() {
       });
   }
 
-  async function upload(accept: string): Promise<string | null> {
+  async function upload(accept: string, onFile?: (file: File) => void): Promise<string | null> {
     const input = document.createElement("input");
     input.type = "file"; input.accept = accept;
     const file = await new Promise<File | null>((r) => { input.onchange = () => r(input.files?.[0] ?? null); input.click(); });
@@ -120,6 +120,7 @@ export default function ToolsPage() {
     const form = new FormData(); form.append("file", file);
     const res = await fetch("/api/assets/import", { method: "POST", headers: { authorization: `Bearer ${await token()}` }, body: form });
     if (!res.ok) { setMsg((m) => ({ ...m, upload: "Import hiba" })); return null; }
+    onFile?.(file);
     return ((await res.json()) as { assetId: string }).assetId;
   }
 
@@ -196,15 +197,16 @@ export default function ToolsPage() {
       <p className="muted">Minden eszköz teljes folyamattal. Kulcs nélkül a job őszintén elutasítódik (NO_PROVIDER_CONFIGURED) – hamis eredmény nincs.</p>
 
       <div className="card" style={{ marginBottom: 12 }}>
-        <label>Karakter (opcionális, karakterhű eszközökhöz)</label>
+        <label>Karakter</label>
         <select value={toolChar} onChange={(e) => setToolChar(e.target.value)} style={{ width: "100%" }}>
           <option value="">Nincs karakter</option>
           {characters.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
         </select>
-        <p className="muted" style={{ marginBottom: 0 }}>Provider mód: {cfg?.mode ?? "betöltés…"}</p>
+        <p className="muted" style={{ marginBottom: 0 }}>Válaszd ki, kinek kell szerepelnie az új képen.</p>
       </div>
 
-      <div className="card">
+      <details className="card">
+        <summary>Image-to-Prompt (egyéb eszköz)</summary>
         <h3 style={{ marginTop: 0 }}>Image-to-Prompt</h3>
         <Picker media="image" selected={simpleAsset} onSelect={setSimpleAsset} />
         <div style={{ display: "flex", gap: 8, marginTop: 8 }}>
@@ -215,27 +217,33 @@ export default function ToolsPage() {
         </div>
         <Results k="i2p" kind="text" />
         {msg.i2p && <p className="muted">{msg.i2p}</p>}
-      </div>
+      </details>
 
       <div className="card" style={{ marginTop: 12 }}>
-        <h3 style={{ marginTop: 0 }}>Karaktercsere</h3>
-        <p className="muted">Válaszd ki a fenti karaktert, majd csak azt a képet töltsd fel, amelynek a pózát és hátterét szeretnéd megtartani. Petra arcát a rendszer a karakter referenciáiból tölti be.</p>
-        <label>Átalakítandó kép (póz és háttér)</label>
-        <Picker media="image" selected={swapAsset} onSelect={setSwapAsset} />
-        <button className="ghost" disabled={busyKey !== null} style={{ margin: "8px 0 12px" }} onClick={async () => { const id = await upload("image/*"); if (id) setSwapAsset(id); }}>Kép feltöltése, amelyet át szeretnél alakítani</button>
-        <div className="muted" style={{ overflowWrap: "anywhere" }}>Kiválasztott alapkép: {swapAsset || "még nincs kiválasztva"}</div>
+        <h3 style={{ marginTop: 0 }}>Karakter ráhelyezése képre</h3>
+        <p className="muted">Tölts fel egy képet. A rendszer az eredeti pózt és hátteret megtartva a kiválasztott karaktert helyezi rá. A karakter referenciáit automatikusan használja.</p>
+        <button className="ghost" disabled={busyKey !== null} style={{ margin: "8px 0 12px" }} onClick={async () => {
+          const id = await upload("image/*", (file) => setSwapPreview(URL.createObjectURL(file)));
+          if (id) setSwapAsset(id);
+        }}>Átalakítandó kép feltöltése</button>
+        {swapAsset && (swapPreview || gallery.find((item) => item.assetId === swapAsset)?.url) && (
+          /* eslint-disable-next-line @next/next/no-img-element -- local preview or signed URL */
+          <img src={swapPreview || gallery.find((item) => item.assetId === swapAsset)?.url || ""} alt="Átalakítandó kép előnézete" style={{ display: "block", maxWidth: "100%", maxHeight: 350, objectFit: "contain", borderRadius: 8 }} />
+        )}
+        <details style={{ marginTop: 12 }}>
+          <summary>Korábbi képet választok a galériából</summary>
+          <Picker media="image" selected={swapAsset} onSelect={(id) => { setSwapAsset(id); setSwapPreview(""); }} />
+        </details>
         <div style={{ display: "flex", gap: 8, marginTop: 8, alignItems: "center" }}>
           <button disabled={busyKey !== null || !swapAsset || !toolChar}
-            onClick={() => run("swap", "character_swap", { sourceAssetId: swapAsset, useCharacterReference: true }, { characterId: toolChar })}>Arccsere</button>
-          <button className="ghost" disabled={busyKey !== null || !swapAsset || !toolChar}
             onClick={() => run("fullSwap", "image_edit", {
               imageAssetIds: [swapAsset], useCharacterReference: true,
-              prompt: "Edit the first image. Replace its subject with the same adult person shown in the second reference image. Preserve the first image's pose, framing, outfit, lighting and background as closely as possible. Match the second person's facial features, hair, skin tone and natural body proportions. Photorealistic anatomy, natural hands with five fingers per hand, no extra limbs. The second image is an identity reference only; do not copy its setting.",
-            }, { characterId: toolChar })}>Teljes képcsere</button>
-          <Badge k="swap" /><Price k="swap" /><Badge k="fullSwap" /><Price k="fullSwap" />
+              prompt: "Use image 1 as the exact base photograph, retaining its camera angle, framing, pose, body position, background and lighting. Replace the depicted adult with the adult character in image 2, faithfully matching the character's face and recognizable features. Keep the finished photograph in the composition of image 1. Natural realistic anatomy; no extra limbs or fingers. Image 2 is for character identity only, never use its portrait background or pose.",
+            }, { characterId: toolChar })}>Kép elkészítése a karakterrel</button>
+          <Badge k="fullSwap" /><Price k="fullSwap" />
         </div>
-        <Results k="swap" kind="image" /><Results k="fullSwap" kind="image" />
-        {(msg.swap || msg.fullSwap) && <p className="muted">{[msg.swap, msg.fullSwap].filter(Boolean).join(" · ")}</p>}
+        <Results k="fullSwap" kind="image" />
+        {msg.fullSwap && <p className="muted">{msg.fullSwap}</p>}
       </div>
 
       <div className="card" style={{ marginTop: 12 }}>
