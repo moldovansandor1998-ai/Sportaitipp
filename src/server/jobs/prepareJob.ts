@@ -228,17 +228,26 @@ export async function prepareValidatedJobInput(input: {
   }
   if (type === "character_swap") {
     const baseUrl = await resolveOneImage(payload);
+    const characterEdit = payload.useCharacterReference === true;
+    const editModel = payload.editModel === "nano-banana" ? "nano-banana" : "seedream-v4.5";
+    delete payload.characterImageUrls;
+    delete payload.editModel;
     const swapAssetId = typeof payload.swapAssetId === "string" ? payload.swapAssetId : null;
+    const characterFaces = characterEdit ? await resolveCharacterFaces() : [];
     const swapUrl = swapAssetId ? (await resolveImages([swapAssetId]))[0]
-      : payload.useCharacterReference === true ? (await resolveCharacterFaces())[0] : null;
+      : characterFaces[0] ?? null;
     const swapExternal = typeof payload.swapImageUrl === "string" ? payload.swapImageUrl : null;
-    let finalSwap = swapUrl ?? null;
+    let finalSwap: string | null = swapUrl ?? null;
     if (!finalSwap && swapExternal) {
       try { assertAllowedUrl(swapExternal); finalSwap = swapExternal; } catch { finalSwap = null; }
     }
     if (!baseUrl || !finalSwap) return { type, payload, error: "IMAGE_INPUT_REQUIRED", status: 400 };
     payload.imageUrl = baseUrl;
     payload.swapImageUrl = finalSwap;
+    if (characterEdit) {
+      payload.characterImageUrls = [baseUrl, ...characterFaces];
+      payload.editModel = editModel;
+    }
     delete payload.sourceAssetId; delete payload.imageAssetIds; delete payload.swapAssetId; delete payload.useCharacterReference;
   }
   if (type === "talking_video" || type === "lip_sync") {
