@@ -30,7 +30,7 @@ export default function GalleryPage() {
     if (!user) return;
     const { data: pending } = await getSb().from("generation_jobs")
       .select("id").eq("owner_id", user.id).eq("type", "character_swap").eq("status", "processing")
-      .order("created_at", { ascending: false }).limit(10);
+      .order("created_at", { ascending: false }).limit(50);
     setPendingCount(pending?.length ?? 0);
     if (pending?.length) {
       const auth = { authorization: `Bearer ${await token()}` };
