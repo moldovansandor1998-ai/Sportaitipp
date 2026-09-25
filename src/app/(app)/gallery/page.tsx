@@ -1,6 +1,6 @@
 "use client";
 // Teljes galéria: keresés, médiatípus-szűrés, albumok, tömeges kiválasztás/törlés, letöltés.
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import Image from "next/image";
 import { browserClient } from "@/lib/supabase/client";
 
@@ -9,10 +9,14 @@ interface Item {
   url: string | null; characterId: string | null; contentType: string; albumId: string | null;
 }
 interface Album { id: string; name: string; }
+interface Character { id: string; name: string; }
 
 export default function GalleryPage() {
   const [items, setItems] = useState<Item[] | null>(null);
   const [albums, setAlbums] = useState<Album[]>([]);
+  const [characters, setCharacters] = useState<Character[]>([]);
+  const [characterFilter, setCharacterFilter] = useState<string | null>(null);
+  const characterFilterRef = useRef<string | null>(null);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [q, setQ] = useState("");
   const [typeFilter, setTypeFilter] = useState("all");
@@ -22,14 +26,34 @@ export default function GalleryPage() {
 
   const getSb = () => browserClient();
   const token = useCallback(async () => (await getSb().auth.getSession()).data.session?.access_token ?? "", []);
+  useEffect(() => {
+    let active = true;
+    void (async () => {
+      const { data: { user } } = await getSb().auth.getUser();
+      if (!user) return;
+      const { data } = await getSb().from("characters").select("id,name")
+        .eq("owner_id", user.id).order("created_at", { ascending: false });
+      if (!active) return;
+      const available = (data ?? []) as Character[];
+      setCharacters(available);
+      const requested = new URLSearchParams(window.location.search).get("characterId");
+      const initial = requested === "unassigned" || available.some((c) => c.id === requested)
+        ? requested! : available[0]?.id ?? "unassigned";
+      characterFilterRef.current = initial;
+      setCharacterFilter(initial);
+    })();
+    return () => { active = false; };
+  }, []);
 
   const load = useCallback(async () => {
+    if (characterFilter === null) return;
     // Poll every unfinished character edit, including older jobs that were started
     // before the user navigated away from the Tools page. This never submits a new run.
     const { data: { user } } = await getSb().auth.getUser();
     if (!user) return;
     const { data: pending } = await getSb().from("generation_jobs")
       .select("id").eq("owner_id", user.id).eq("type", "character_swap").eq("status", "processing")
+      .eq("character_id", characterFilter === "unassigned" ? "00000000-0000-0000-0000-000000000000" : characterFilter)
       .order("created_at", { ascending: false }).limit(50);
     setPendingCount(pending?.length ?? 0);
     if (pending?.length) {
@@ -40,15 +64,20 @@ export default function GalleryPage() {
     }
     const { count: failed } = await getSb().from("generation_jobs")
       .select("id", { count: "exact", head: true }).eq("owner_id", user.id)
+      .eq("character_id", characterFilter === "unassigned" ? "00000000-0000-0000-0000-000000000000" : characterFilter)
       .eq("type", "character_swap").eq("status", "refunded")
       .gte("created_at", new Date(Date.now() - 60 * 60 * 1000).toISOString());
     setFailedEdits(failed ?? 0);
-    const qs = albumFilter !== "all" ? `?albumId=${albumFilter}` : "";
-    const res = await fetch(`/api/gallery${qs}`, { headers: { authorization: `Bearer ${await token()}` } });
-    if (res.ok) setItems((await res.json()).items);
+    const qs = new URLSearchParams({ characterId: characterFilter });
+    if (albumFilter !== "all") qs.set("albumId", albumFilter);
+    const res = await fetch(`/api/gallery?${qs}`, { headers: { authorization: `Bearer ${await token()}` } });
+    if (res.ok) {
+      const body = await res.json();
+      if (characterFilterRef.current === characterFilter) setItems(body.items);
+    }
     const alb = await fetch("/api/albums", { headers: { authorization: `Bearer ${await token()}` } });
     if (alb.ok) setAlbums((await alb.json()).albums);
-  }, [token, albumFilter]);
+  }, [token, albumFilter, characterFilter]);
   useEffect(() => { load(); }, [load]);
   useEffect(() => {
     const refresh = () => { if (document.visibilityState === "visible") void load(); };
@@ -98,7 +127,7 @@ export default function GalleryPage() {
     setSelected((s) => { const n = new Set(s); if (n.has(id)) n.delete(id); else n.add(id); return n; });
   }
 
-  if (items === null) return <div className="skeleton" />;
+  if (characterFilter === null || items === null) return <div className="skeleton" />;
   const filtered = items.filter((it) =>
     (typeFilter === "all" || it.mediaType === typeFilter)
     && (albumFilter === "all" || true)   // album-szűrés a client oldali join után egyszerűsítve
@@ -108,6 +137,16 @@ export default function GalleryPage() {
     <main>
       <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
         <h1 style={{ fontSize: 22, margin: 0 }}>Galériám</h1>
+        <select aria-label="Modell galériája" value={characterFilter} onChange={(e) => {
+          setItems(null);
+          setSelected(new Set());
+          characterFilterRef.current = e.target.value;
+          setCharacterFilter(e.target.value);
+          window.history.replaceState(null, "", `/gallery?characterId=${encodeURIComponent(e.target.value)}`);
+        }}>
+          {characters.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+          <option value="unassigned">Egyéb képek (modell nélkül)</option>
+        </select>
         <input placeholder="keresés (asset típus)…" value={q} onChange={(e) => setQ(e.target.value)} style={{ flex: 1, minWidth: 140 }} />
         <select value={albumFilter} onChange={(e) => setAlbumFilter(e.target.value)}>
           <option value="all">minden album</option>
