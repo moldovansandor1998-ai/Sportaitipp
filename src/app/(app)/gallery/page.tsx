@@ -29,6 +29,17 @@ export default function GalleryPage() {
     if (alb.ok) setAlbums((await alb.json()).albums);
   }, [token, albumFilter]);
   useEffect(() => { load(); }, [load]);
+  useEffect(() => {
+    const refresh = () => { if (document.visibilityState === "visible") void load(); };
+    const timer = window.setInterval(refresh, 20000);
+    document.addEventListener("visibilitychange", refresh);
+    window.addEventListener("focus", refresh);
+    return () => {
+      window.clearInterval(timer);
+      document.removeEventListener("visibilitychange", refresh);
+      window.removeEventListener("focus", refresh);
+    };
+  }, [load]);
 
   async function createAlbum() {
     const name = prompt("Album neve?");
