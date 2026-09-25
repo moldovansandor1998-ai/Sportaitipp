@@ -67,6 +67,17 @@ export default function ToolsPage() {
       setJobs((current) => ({ ...current, fullSwap: latestEdit }));
       if (latestEdit.status === "processing") poll(latestEdit.id, "fullSwap");
       if (latestEdit.status === "completed") await loadJobResults(latestEdit.id, "fullSwap");
+      if (latestEdit.status === "refunded" && latestEdit.error?.message === "URL_HOST_NOT_ALLOWED") {
+        const recovered = await fetch(`/api/jobs/${latestEdit.id}/recover-face-swap`, {
+          method: "POST", headers: { authorization: `Bearer ${await token()}` },
+        });
+        if (recovered.ok) {
+          await loadJobResults(latestEdit.id, "fullSwap");
+          const updatedGallery = await fetch("/api/gallery", { headers: { authorization: `Bearer ${await token()}` } });
+          if (updatedGallery.ok) setGallery(((await updatedGallery.json()) as { items: GalItem[] }).items.filter((i) => i.url));
+          setMsg((current) => ({ ...current, fullSwap: "A korábban elkészült kép helyreállítva a Galériában." }));
+        }
+      }
     }
   }, [token]);
   useEffect(() => { void init(); }, [init]);
