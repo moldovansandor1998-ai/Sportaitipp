@@ -1,7 +1,7 @@
 import { ProviderAdapter, ProviderError, type Estimate, type JobType, type NormalizedOutput, type SubmitParams, type SubmitResult } from "./types";
 
 const API = "https://api.wavespeed.ai/api/v3";
-const MODEL = "wavespeed-ai/image-face-swap";
+const MODEL = "wavespeed-ai/image-face-swap-pro";
 
 export class WaveSpeedAdapter implements ProviderAdapter {
   readonly name = "wavespeed";
@@ -29,7 +29,7 @@ export class WaveSpeedAdapter implements ProviderAdapter {
     if (typeof base !== "string" || typeof face !== "string")
       throw new ProviderError("Face swap requires the base photo and Petra's face", false, undefined, "invalid_input");
     const data = await this.request(`${API}/${MODEL}`, {
-      image: base, face_image: face, target_index: 0, target_gender: "all", output_format: "png",
+      image: base, face_image: face, output_format: "png",
     });
     if (typeof data.id !== "string") throw new ProviderError("WaveSpeed did not return a task ID", false);
     return { providerJobId: data.id, providerMeta: { endpoint: MODEL } };
