@@ -86,14 +86,18 @@ export async function POST(
     return NextResponse.json({ error: "DATASET_BUILD_FAILED" }, { status: 413 });
   }
 
-  // 6) prefix + 7) provider-kiválasztás (a ROUTER dönt, nem hardcode; kliens nem választhat)
-  const prefix = process.env.LORA_DESTINATION_PREFIX;
-  if (!prefix) return NextResponse.json({ error: "LORA_DESTINATION_PREFIX_NOT_CONFIGURED" }, { status: 500 });
+  // 6) provider-kiválasztás (a ROUTER dönt, nem hardcode; kliens nem választhat)
   const router = buildRouter();
-  assertProviderConfigured(router, "character_training");
+  try { assertProviderConfigured(router, "character_training"); }
+  catch { return NextResponse.json({ error: "NO_PROVIDER_CONFIGURED" }, { status: 503 }); }
   const provider = router.candidates("character_training")[0].name;
   if (!ALLOWED_PROVIDERS.has(provider)) {
     return NextResponse.json({ error: "PROVIDER_NOT_ALLOWED", provider }, { status: 500 });
+  }
+  // Replicate saját modellfiókba ment; a fal.ai a súlyfájlt URL-ként adja vissza.
+  const prefix = process.env.LORA_DESTINATION_PREFIX;
+  if (provider === "replicate" && !prefix) {
+    return NextResponse.json({ error: "LORA_DESTINATION_PREFIX_NOT_CONFIGURED" }, { status: 500 });
   }
 
   const slug = ch.name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "") || "character";
@@ -129,15 +133,17 @@ export async function POST(
     claim = claimed as { version_id: string; version_no: number };
 
     // destination + lejárat a verzióra (a foglalt számmal)
-    await svc.from("character_versions").update({
-      destination: `${prefix}/${slug}-v${claim.version_no}`,
+    const destination = provider === "replicate" ? `${prefix}/${slug}-v${claim.version_no}` : null;
+    const { error: versionErr } = await svc.from("character_versions").update({
+      destination,
       dataset_expires_at: datasetExpires,
     }).eq("id", claim.version_id);
+    if (versionErr) throw new Error(`VERSION_UPDATE_FAILED: ${versionErr.message}`);
 
     return NextResponse.json({
       payload: {
         ...dataset,
-        destination: `${prefix}/${slug}-v${claim.version_no}`,
+        ...(destination ? { destination } : {}),
         triggerWord: `char_${slug.replace(/-/g, "_")}`,
         steps: 1000,
         versionId: claim.version_id,
