@@ -3,7 +3,7 @@ import { z } from "zod";
 export const JobTypeSchema = z.enum([
   "reference_qc","character_training","test_image","identity_check",
   "image_generation","image_edit","upscale","background_removal","skin_enhance","fix_face","pinterest_composition","motion_control",
-  "video_from_image","video_to_video","video_character_swap","talking_video","character_swap","motion_control","lip_sync",
+  "video_from_image","video_to_video","video_character_swap","character_motion_video","talking_video","character_swap","motion_control","lip_sync",
   "tts","video_to_prompt","captioning","frame_extract","dataset_generation",
   "carousel_page","viral_scene","ppv_render",
 ]);

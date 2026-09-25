@@ -50,6 +50,7 @@ export default function ToolsPage() {
   const [talkVideo, setTalkVideo] = useState(""); const [talkAudio, setTalkAudio] = useState("");
   const [v2vVideo, setV2vVideo] = useState(""); const [v2vPrompt, setV2vPrompt] = useState("");
   const [videoResolution, setVideoResolution] = useState<"480p" | "720p">("720p");
+  const [motionQuality, setMotionQuality] = useState<"pro" | "standard">("pro");
   const [videoPreview, setVideoPreview] = useState("");
 
   const getSb = () => browserClient();
@@ -63,6 +64,10 @@ export default function ToolsPage() {
       const items = ((await res.json()) as { items: GalItem[] }).items.filter((i) => i.url);
       setGallery(items);
     }
+    const { data: lastVideo } = await getSb().from("assets").select("id")
+      .eq("owner_id", user.id).eq("media_type", "video").eq("source", "upload")
+      .order("created_at", { ascending: false }).limit(1).maybeSingle();
+    if (lastVideo?.id) setV2vVideo((current) => current || lastVideo.id);
     const { data: chars } = await getSb().from("characters").select("id,name").eq("owner_id", user.id).not("active_version_id", "is", null);
     setCharacters((chars ?? []) as unknown as CharacterRow[]);
     if (chars?.length === 1) setToolChar((current) => current || chars[0].id);
@@ -144,14 +149,14 @@ export default function ToolsPage() {
 
   async function uploadVideo() {
     const picker = document.createElement("input");
-    picker.type = "file"; picker.accept = "video/mp4,video/webm";
+    picker.type = "file"; picker.accept = "video/mp4,.mp4";
     const file = await new Promise<File | null>((resolve) => { picker.onchange = () => resolve(picker.files?.[0] ?? null); picker.click(); });
     if (!file) return;
     setBusyKey("videoUpload");
     setMsg((m) => ({ ...m, videoUpload: "Videó feltöltése…" }));
     try {
-      if (!["video/mp4", "video/webm"].includes(file.type) || file.size < 1 || file.size > 48 * 1024 * 1024)
-        throw new Error("MP4 vagy WebM videót válassz, legfeljebb 48 MB méretben.");
+      if (file.type !== "video/mp4" || file.size < 1 || file.size > 48 * 1024 * 1024)
+        throw new Error("MP4 videót válassz, legfeljebb 48 MB méretben.");
       const headers = { authorization: `Bearer ${await token()}`, "content-type": "application/json" };
       const signed = await fetch("/api/assets/video-upload", { method: "POST", headers,
         body: JSON.stringify({ contentType: file.type, size: file.size }) });
@@ -441,22 +446,40 @@ export default function ToolsPage() {
 
       <div className="card" style={{ marginTop: 12 }}>
         <h3 style={{ marginTop: 0 }}>Video-to-Video · Image-to-Video</h3>
-        <h4>Videó átalakítása a kiválasztott modellre</h4>
-        <p className="muted">A videó szereplőjének arca és haja a kiválasztott modellé lesz. A mozgás, test, ruha és háttér az eredeti videóból származik.</p>
-        <button className="ghost" type="button" disabled={busyKey !== null} onClick={() => void uploadVideo()}>Videó feltöltése (MP4 vagy WebM)</button>
+        <h4>Képből videó: a modell átveszi a feltöltött videó mozgását</h4>
+        <p className="muted">A Kling a kiválasztott modell teljes alakos referenciafotójából készít új videót. A feltöltött MP4 a mozgás és a kamera nézőpontjának mintája. 3–30 másodperces videó ajánlott; a hosszabbat a szolgáltató levághatja.</p>
+        <button className="ghost" type="button" disabled={busyKey !== null} onClick={() => void uploadVideo()}>Mozgásvideó feltöltése (MP4, max. 48 MB)</button>
         {msg.videoUpload && <p className="muted">{msg.videoUpload}</p>}
         {videoPreview && <video controls src={videoPreview} style={{ display: "block", maxWidth: "100%", maxHeight: 320, marginTop: 8 }} />}
+        {v2vVideo && <p className="muted">Mozgásvideó kiválasztva. Fent válaszd ki a modellt.</p>}
         <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap", marginTop: 8 }}>
+          <select aria-label="Kling videóminőség" value={motionQuality} onChange={(e) => setMotionQuality(e.target.value as "pro" | "standard")}>
+            <option value="pro">Kling 3.0 Pro – jobb minőség</option><option value="standard">Kling 3.0 Standard</option>
+          </select>
+          <button disabled={busyKey !== null || !toolChar || !v2vVideo} onClick={() => run("modelMotion", "character_motion_video", { videoAssetId: v2vVideo, quality: motionQuality }, { characterId: toolChar })}>
+            Videó készítése a kiválasztott modellel
+          </button>
+          <Badge k="modelMotion" /><Price k="modelMotion" />
+        </div>
+        <Results k="modelMotion" kind="video" />
+        {msg.modelMotion && <p className="muted">{msg.modelMotion}</p>}
+        <details style={{ marginTop: 14 }}>
+          <summary>Csak arc és haj cseréje az eredeti videóban</summary>
+          <p className="muted">Az eredeti test és háttér megtartásához válaszd ezt. A fenti Kling művelet új videót készít a modell fotójából.</p>
+          <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap", marginTop: 8 }}>
           <select aria-label="Videó felbontás" value={videoResolution} onChange={(e) => setVideoResolution(e.target.value as "480p" | "720p")}>
             <option value="720p">720p</option><option value="480p">480p</option>
           </select>
           <button disabled={busyKey !== null || !toolChar || !v2vVideo} onClick={() => run("videoSwap", "video_character_swap", { videoAssetId: v2vVideo, resolution: videoResolution }, { characterId: toolChar })}>
-            Kiválasztott modell a videóban
+            Csak arc és haj áthelyezése
           </button>
           <Badge k="videoSwap" /><Price k="videoSwap" />
         </div>
         <Results k="videoSwap" kind="video" />
         {msg.videoSwap && <p className="muted">{msg.videoSwap}</p>}
+        </details>
+        <details style={{ marginTop: 14 }}>
+          <summary>Egyéb videós eszközök</summary>
         <label>Forrás (videó az i2v-hez: kép fent)</label>
         <Picker media="video" selected={v2vVideo} onSelect={setV2vVideo} />
         <input placeholder="videó asset ID" value={v2vVideo} onChange={(e) => setV2vVideo(e.target.value)} style={{ marginTop: 6 }} />
@@ -465,11 +488,12 @@ export default function ToolsPage() {
           <button disabled={busyKey === "v2v" || !v2vVideo || !v2vPrompt.trim()}
             onClick={() => run("v2v", "video_to_video", { videoAssetId: v2vVideo, prompt: v2vPrompt, duration: vDuration, aspectRatio: vRatio })}>Videó→videó</button>
           <button className="ghost" disabled={busyKey === "motion" || !v2vVideo || !v2vPrompt.trim()}
-            onClick={() => run("motion", "motion_control", { videoAssetId: v2vVideo, prompt: v2vPrompt, duration: vDuration, aspectRatio: vRatio }, { characterId: toolChar || undefined })}>Motion Control</button>
+            onClick={() => run("motion", "motion_control", { videoAssetId: v2vVideo, prompt: v2vPrompt, duration: vDuration, aspectRatio: vRatio }, { characterId: toolChar || undefined })}>Kameramozgás (régi)</button>
           <Badge k="v2v" /><Price k="v2v" />
         </div>
         <Results k="v2v" kind="video" />
         {msg.v2v && <p className="muted">{msg.v2v}</p>}
+        </details>
       </div>
 
       <div className="card" style={{ marginTop: 12 }}>

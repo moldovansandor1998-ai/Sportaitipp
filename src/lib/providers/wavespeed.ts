@@ -10,7 +10,7 @@ const CHARACTER_EDIT_PROMPT = "Image 1 is the source photograph; the subsequent 
 
 export class WaveSpeedAdapter implements ProviderAdapter {
   readonly name = "wavespeed";
-  readonly supports: JobType[] = ["character_swap", "video_character_swap"];
+  readonly supports: JobType[] = ["character_swap", "video_character_swap", "character_motion_video"];
 
   private async request(url: string, body?: Record<string, unknown>): Promise<Record<string, unknown>> {
     const res = await fetch(url, {
@@ -29,10 +29,28 @@ export class WaveSpeedAdapter implements ProviderAdapter {
   async estimate(jobType: JobType, payload: Record<string, unknown>): Promise<Estimate> {
     // The provider caps billing at 120 seconds; never use client-supplied duration to price a job.
     if (jobType === "video_character_swap") return { credits: 120 * (payload.resolution === "480p" ? 8 : 16), secondsExpected: 180 };
+    // Motion Control bills by input duration, capped at 30 s. Reserve the maximum
+    // rather than trusting a browser-provided duration to reduce the user's balance.
+    if (jobType === "character_motion_video") return { credits: payload.quality === "standard" ? 756 : 1008, secondsExpected: 180 };
     return { credits: 40, secondsExpected: 60 };
   }
 
   async submit(p: SubmitParams): Promise<SubmitResult> {
+    if (p.jobType === "character_motion_video") {
+      const video = p.payload.videoUrl, image = p.payload.characterImageUrl;
+      if (typeof video !== "string" || typeof image !== "string")
+        throw new ProviderError("A mozgásvideó és a modell referenciafotója kötelező.", false);
+      const endpoint = p.payload.quality === "standard"
+        ? "kwaivgi/kling-v3.0-std/motion-control"
+        : "kwaivgi/kling-v3.0-pro/motion-control";
+      const data = await this.request(`${API}/${endpoint}`, {
+        video, image, character_orientation: "video", keep_original_sound: true,
+        prompt: "The woman in the reference image is the sole main character. Follow the motion, gestures, timing, camera movement and perspective of the driving video. Maintain the reference woman's recognizable face, hair and natural body proportions consistently across frames. Photorealistic, natural skin texture and lighting. Preserve the original scene where possible.",
+        negative_prompt: "different person, changing face, inconsistent hair, extra limbs, deformed hands, tattoos, plastic skin, flicker",
+      });
+      if (typeof data.id !== "string") throw new ProviderError("WaveSpeed did not return a task ID", false);
+      return { providerJobId: data.id, providerMeta: { endpoint } };
+    }
     if (p.jobType === "video_character_swap") {
       const video = p.payload.videoUrl, face = p.payload.faceImageUrl;
       if (typeof video !== "string" || typeof face !== "string") throw new ProviderError("A videó és a modell arcképe kötelező.", false);
@@ -86,7 +104,7 @@ export class WaveSpeedAdapter implements ProviderAdapter {
     const urls = outputs.map((x) => typeof x === "string" ? x : (x as { url?: unknown })?.url)
       .filter((x): x is string => typeof x === "string" && /^https:\/\//.test(x));
     if (urls.length === 0) throw new ProviderError("WaveSpeed returned no output", false, id);
-    const kind = jobType === "video_character_swap" ? "video" as const : "image" as const;
+    const kind = jobType === "video_character_swap" || jobType === "character_motion_video" ? "video" as const : "image" as const;
     return { files: urls.map((url) => ({ kind, url })), meta: {} };
   }
 

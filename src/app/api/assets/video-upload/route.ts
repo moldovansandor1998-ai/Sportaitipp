@@ -19,7 +19,7 @@ export async function POST(req: NextRequest) {
   const { contentType, size } = await req.json() as { contentType?: string; size?: number };
   if (!TYPES.includes(contentType ?? "") || !Number.isInteger(size) || !size || size > MAX_VIDEO_BYTES)
     return NextResponse.json({ error: "Csak MP4 vagy WebM videó tölthető fel, legfeljebb 48 MB méretben." }, { status: 400 });
-  const objectPath = `${user.id}/tools/video-${randomUUID()}`;
+  const objectPath = `${user.id}/tools/video-${randomUUID()}${contentType === "video/mp4" ? ".mp4" : ".webm"}`;
   const { data, error } = await serviceClient().storage.from("assets").createSignedUploadUrl(objectPath);
   if (error || !data) return NextResponse.json({ error: "Nem sikerült előkészíteni a videófeltöltést." }, { status: 502 });
   return NextResponse.json({ objectPath, token: data.token });
@@ -29,7 +29,8 @@ export async function PUT(req: NextRequest) {
   const user = await owner(req);
   if (!user) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   const { objectPath, sha256 } = await req.json() as { objectPath?: string; sha256?: string };
-  if (!objectPath || !new RegExp(`^${user.id}/tools/video-[0-9a-f-]{36}$`).test(objectPath))
+  // Existing video uploads were stored without a filename extension.
+  if (!objectPath || !new RegExp(`^${user.id}/tools/video-[0-9a-f-]{36}(?:\\.(?:mp4|webm))?$`).test(objectPath))
     return NextResponse.json({ error: "Érvénytelen feltöltés." }, { status: 400 });
   if (!sha256 || !/^[0-9a-f]{64}$/.test(sha256)) return NextResponse.json({ error: "Hiányzó fájl-ellenőrző összeg." }, { status: 400 });
   const svc = serviceClient();

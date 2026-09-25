@@ -28,7 +28,7 @@ const req = (payload: Record<string, unknown>, key: string, ctx: z.RefinementCtx
 export const JOB_TYPES = [
   "reference_qc","character_training","test_image","identity_check",
   "image_generation","image_edit","upscale","background_removal","skin_enhance","fix_face","pinterest_composition",
-  "video_from_image","video_to_video","video_character_swap","talking_video","character_swap","motion_control","lip_sync",
+  "video_from_image","video_to_video","video_character_swap","character_motion_video","talking_video","character_swap","motion_control","lip_sync",
   "tts","video_to_prompt","captioning","frame_extract","dataset_generation",
   "carousel_page","viral_scene","ppv_render",
 ] as const;
@@ -161,6 +161,13 @@ export const CreateJobSchema = z.object({
         ctx.addIssue({ code: z.ZodIssueCode.custom, message: "Válassz modellt és tölts fel egy videót." });
       if (p.resolution !== undefined && !["480p", "720p"].includes(String(p.resolution)))
         ctx.addIssue({ code: z.ZodIssueCode.custom, message: "Érvénytelen videófelbontás." });
+      break;
+    }
+    case "character_motion_video": {
+      if (!val.characterId || typeof p.videoAssetId !== "string" || !z.string().uuid().safeParse(p.videoAssetId).success)
+        ctx.addIssue({ code: z.ZodIssueCode.custom, message: "Válassz modellt és tölts fel egy MP4 mozgásvideót." });
+      if (p.quality !== undefined && !["pro", "standard"].includes(String(p.quality)))
+        ctx.addIssue({ code: z.ZodIssueCode.custom, message: "Érvénytelen videóminőség." });
       break;
     }
     case "motion_control": {

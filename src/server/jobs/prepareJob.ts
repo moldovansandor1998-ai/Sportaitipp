@@ -10,7 +10,7 @@ export type PrepError =
   | "validation" | "AGE_VERIFICATION_REQUIRED" | LoraError
   | "CHARACTER_REQUIRED" | "EASY_INPUT_INVALID" | "TTS_VOICE_INVALID"
   | "I2V_MODEL_NOT_ALLOWED" | "URL_NOT_ALLOWED" | "IMAGE_INPUT_REQUIRED" | "SOURCE_IMAGE_REQUIRED"
-  | "TRAINED_EDIT_UNAVAILABLE";
+  | "TRAINED_EDIT_UNAVAILABLE" | "VIDEO_FORMAT_UNSUPPORTED";
 
 export interface PreparedJob {
   type: string;
@@ -44,7 +44,7 @@ export async function prepareValidatedJobInput(input: {
   if (type === "character_swap" && payload.useCharacterReference === true && !process.env.WAVESPEED_API_KEY) {
     return { type, payload: {}, error: "PROVIDER_MODEL_INVALID", status: 503 };
   }
-  if (type === "video_character_swap" && !process.env.WAVESPEED_API_KEY)
+  if (["video_character_swap", "character_motion_video"].includes(type) && !process.env.WAVESPEED_API_KEY)
     return { type, payload: {}, error: "PROVIDER_MODEL_INVALID", status: 503 };
 
   // A kliens által küldött LoRA-adatok KIZÁRÓDNEK – csak sikeres szerveroldali feloldás után kerülnek vissza
@@ -273,6 +273,42 @@ export async function prepareValidatedJobInput(input: {
     payload.videoUrl = signed.signedUrl;
     payload.faceImageUrl = faces[0];
     payload.resolution = payload.resolution === "480p" ? "480p" : "720p";
+    delete payload.videoAssetId;
+  }
+  if (type === "character_motion_video") {
+    const { data: video } = await svc.from("assets").select("bucket,object_path,content_type")
+      .eq("id", String(payload.videoAssetId)).eq("owner_id", input.userId).eq("media_type", "video").single();
+    if (!video) return { type, payload: {}, error: "SOURCE_IMAGE_REQUIRED", status: 400 };
+    if (video.content_type !== "video/mp4") return { type, payload: {}, error: "VIDEO_FORMAT_UNSUPPORTED", status: 415 };
+    const { data: character } = await svc.from("characters").select("active_version_id")
+      .eq("id", characterId!).eq("owner_id", input.userId).single();
+    if (!character?.active_version_id) return { type, payload: {}, error: "CHARACTER_REQUIRED", status: 409 };
+    const { data: version } = await svc.from("character_versions").select("id")
+      .eq("id", character.active_version_id).eq("character_id", characterId!).eq("status", "approved").single();
+    if (!version) return { type, payload: {}, error: "CHARACTER_REQUIRED", status: 409 };
+    const { data: refs } = await svc.from("character_reference_images")
+      .select("asset_id,kind,is_primary").eq("character_id", characterId!).eq("qc_status", "approved").limit(40);
+    const sorted = (refs ?? []).sort((a, b) =>
+      ({ full_body: 0, half_body: 1, face: 2 }[a.kind as "full_body" | "half_body" | "face"] ?? 3)
+      - ({ full_body: 0, half_body: 1, face: 2 }[b.kind as "full_body" | "half_body" | "face"] ?? 3)
+      || Number(b.is_primary) - Number(a.is_primary));
+    let reference: { bucket: string; object_path: string } | null = null;
+    for (const ref of sorted) {
+      const { data: asset } = await svc.from("assets").select("bucket,object_path")
+        .eq("id", ref.asset_id).eq("owner_id", input.userId).eq("media_type", "image")
+        .in("content_type", ["image/jpeg", "image/png"]).maybeSingle();
+      if (asset) { reference = asset; break; }
+    }
+    if (!reference) return { type, payload: {}, error: "IMAGE_INPUT_REQUIRED", status: 409 };
+    const [{ data: signedVideo }, { data: signedImage }] = await Promise.all([
+      svc.storage.from(video.bucket).createSignedUrl(video.object_path, 7200),
+      svc.storage.from(reference.bucket).createSignedUrl(reference.object_path, 7200),
+    ]);
+    if (!signedVideo?.signedUrl || !signedImage?.signedUrl)
+      return { type, payload: {}, error: "SOURCE_IMAGE_REQUIRED", status: 502 };
+    payload.videoUrl = signedVideo.signedUrl;
+    payload.characterImageUrl = signedImage.signedUrl;
+    payload.quality = payload.quality === "standard" ? "standard" : "pro";
     delete payload.videoAssetId;
   }
   if (type === "talking_video" || type === "lip_sync") {
