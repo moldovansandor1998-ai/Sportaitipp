@@ -63,10 +63,19 @@ export async function prepareValidatedJobInput(input: {
   }
   let finalCharacterId: string | undefined;
   if (needsCharacter && characterId) {
-    const lora = await resolveCharacterLora(input.userId, characterId);
+    const lora = await resolveCharacterLora(input.userId, characterId, type === "test_image");
     if (lora.error) return { type, payload, error: lora.error, status: 409 };
     payload.loraPath = lora.loraPath;
     payload.activeVersionId = lora.versionId;
+    if (lora.provider === "fal" && ["test_image", "image_generation"].includes(type)) {
+      const { data: ch } = await serviceClient().from("characters").select("name")
+        .eq("id", characterId).eq("owner_id", input.userId).single();
+      if (ch?.name) {
+        const slug = ch.name.toLowerCase()
+          .replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "") || "character";
+        payload.triggerWord = `char_${slug.replace(/-/g, "_")}`;
+      }
+    }
     finalCharacterId = characterId;
   }
 
@@ -76,6 +85,11 @@ export async function prepareValidatedJobInput(input: {
     if (!built) return { type, payload, error: "EASY_INPUT_INVALID", status: 400 };
     payload.prompt = built;
   }
+  if (typeof payload.triggerWord === "string" && typeof payload.prompt === "string"
+      && !payload.prompt.includes(payload.triggerWord)) {
+    payload.prompt = `${payload.triggerWord}, ${payload.prompt}`;
+  }
+  delete payload.triggerWord;
 
   // 5) TTS voice validálás
   if (type === "tts" && payload.voice !== undefined
