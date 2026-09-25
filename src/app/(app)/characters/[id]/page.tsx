@@ -124,6 +124,7 @@ export default function CharacterDetailPage({ params }: { params: Promise<{ id: 
     setBusy(true); setError(null);
     const getSb = () => browserClient();
     const { data: { session } } = await getSb().auth.getSession();
+    let skipped = 0;
     try {
       for (const file of Array.from(files)) {
         // 1) Aláírt URL (szerver)
@@ -155,13 +156,29 @@ export default function CharacterDetailPage({ params }: { params: Promise<{ id: 
         });
         if (!fin.ok) {
           const b = await fin.json();
-          throw new Error(b.error === "DUPLICATE_IMAGE" ? `Duplikált kép: ${file.name}` : b.error ?? "Finalize hiba");
+          if (b.error === "DUPLICATE_IMAGE") { skipped++; continue; }
+          throw new Error(b.error ?? "Finalize hiba");
         }
       }
       await load();
+      if (skipped) setError(`${skipped} már feltöltött képet kihagytam; a többit hozzáadtam.`);
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : "Ismeretlen hiba");
     } finally { setBusy(false); }
+  }
+
+  async function removeReference(ref: RefRow) {
+    if (!window.confirm("Eltávolítod ezt a referenciafotót a listából? A már betanított modell ettől nem változik meg.")) return;
+    setBusy(true); setError(null);
+    try {
+      const { data: { session } } = await browserClient().auth.getSession();
+      const response = await fetch(`/api/references/${ref.id}`, {
+        method: "DELETE", headers: { authorization: `Bearer ${session?.access_token}` },
+      });
+      if (!response.ok) throw new Error("Nem sikerült eltávolítani a képet.");
+      await load();
+    } catch (e) { setError(e instanceof Error ? e.message : "Törlési hiba"); }
+    finally { setBusy(false); }
   }
 
   async function startJob(type: string, payload: Record<string, unknown>) {
@@ -259,7 +276,7 @@ export default function CharacterDetailPage({ params }: { params: Promise<{ id: 
                 + {kind === "face" ? "Arc" : kind === "half_body" ? "Félalak" : "Teljes alak"}
               </button>
               <input id={`up-${kind}`} type="file" accept="image/jpeg,image/png,image/webp" multiple hidden
-                onChange={(e) => uploadFiles(e.target.files, kind)} />
+                onChange={(e) => { void uploadFiles(e.target.files, kind); e.target.value = ""; }} />
             </label>
           ))}
         </div>
@@ -267,10 +284,13 @@ export default function CharacterDetailPage({ params }: { params: Promise<{ id: 
           {refs.map((r) => (
             <li key={r.id} className="muted">
               {previews[r.asset_id] && <Image unoptimized width={70} height={70} src={previews[r.asset_id]} alt={`${r.kind} referencia`} style={{ objectFit: "cover", borderRadius: 8, verticalAlign: "middle", marginRight: 8 }} />}
-              {r.kind} · {r.qc_status}{r.is_primary && " · elsődleges"}
+              {r.kind} · {r.qc_status}{r.is_primary && " · elsődleges"}{" "}
+              <button className="ghost" disabled={busy} onClick={() => removeReference(r)}
+                style={{ marginLeft: 8, padding: "6px 10px" }}>Eltávolítás</button>
             </li>
           ))}
         </ul>
+        {active && <p className="muted">Az újonnan feltöltött vagy törölt referenciák csak újratanítás után módosítják a jelenlegi modellt.</p>}
       </div>
 
       <div className="card" style={{ marginTop: 16 }}>
