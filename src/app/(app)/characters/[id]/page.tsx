@@ -1,12 +1,14 @@
 "use client";
 import { use, useCallback, useEffect, useState } from "react";
 import { browserClient } from "@/lib/supabase/client";
+import Image from "next/image";
 
 interface CharacterRow { id: string; name: string; status: string; }
-interface RefRow { id: string; kind: string; qc_status: string; is_primary: boolean; sort_order: number; }
+interface RefRow { id: string; asset_id: string; kind: string; qc_status: string; is_primary: boolean; sort_order: number; }
 interface VersionRow {
   id: string; version_no: number; status: string; provider: string | null; identity_score: number | null;
   provider_model_ref: string | null;
+  test_image_asset_id: string | null;
 }
 interface JobMini { id: string; type: string; status: string; cost_estimate: number; }
 
@@ -19,6 +21,7 @@ export default function CharacterDetailPage({ params }: { params: Promise<{ id: 
   const [credits, setCredits] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [previews, setPreviews] = useState<Record<string, string>>({});
   const [providers, setProviders] = useState<{
     referenceQc: boolean; training: boolean; testImage: boolean;
     identityCheck: boolean; generation: boolean;
@@ -45,6 +48,23 @@ export default function CharacterDetailPage({ params }: { params: Promise<{ id: 
     setJobs(j ?? []);
   }, [id]);
   useEffect(() => { load(); }, [load]);
+
+  useEffect(() => {
+    const ids = [...refs.map((r) => r.asset_id), ...versions.map((v) => v.test_image_asset_id).filter((x): x is string => Boolean(x))];
+    if (ids.length === 0) return;
+    let active = true;
+    (async () => {
+      const { data: { session } } = await browserClient().auth.getSession();
+      if (!session) return;
+      const urls = await Promise.all(ids.map(async (assetId) => {
+        const result = await fetch(`/api/assets/${assetId}/url`, { headers: { authorization: `Bearer ${session.access_token}` } });
+        const body = result.ok ? await result.json() : null;
+        return [assetId, typeof body?.url === "string" ? body.url : ""] as const;
+      }));
+      if (active) setPreviews(Object.fromEntries(urls));
+    })().catch(() => {});
+    return () => { active = false; };
+  }, [refs, versions]);
 
   useEffect(() => {
     (async () => {
@@ -119,6 +139,26 @@ export default function CharacterDetailPage({ params }: { params: Promise<{ id: 
     await load();
   }
 
+  async function manualReview(stage: "references" | "test_image", versionId?: string) {
+    const message = stage === "references"
+      ? "Átnézted a képeket, és megerősíted, hogy mind ugyanazt az általad használható karaktert mutatják? A szerver ezután a fájlokat is ellenőrzi."
+      : "Átnézted a tesztképet, és elfogadod a karakter hasonlóságát? Ez kézi jóváhagyás, nem automatikus arcazonosság-mérés.";
+    if (!window.confirm(message)) return;
+    setBusy(true); setError(null);
+    try {
+      const { data: { session } } = await browserClient().auth.getSession();
+      const res = await fetch(`/api/characters/${id}/manual-review`, {
+        method: "POST",
+        headers: { authorization: `Bearer ${session?.access_token}`, "content-type": "application/json" },
+        body: JSON.stringify({ stage, versionId, confirmed: true }),
+      });
+      const result = await res.json();
+      if (!res.ok) throw new Error(result.error ?? "Az ellenőrzés nem sikerült");
+      await load();
+    } catch (e) { setError(e instanceof Error ? e.message : "Ellenőrzési hiba"); }
+    finally { setBusy(false); }
+  }
+
   // Tesztkép: a legújabb verzió LoRA-refjével (provider_model_ref)
   async function startTestImage() {
     const latest = versions[0];
@@ -181,6 +221,7 @@ export default function CharacterDetailPage({ params }: { params: Promise<{ id: 
         <ul style={{ marginTop: 12, paddingLeft: 18 }}>
           {refs.map((r) => (
             <li key={r.id} className="muted">
+              {previews[r.asset_id] && <Image unoptimized width={70} height={70} src={previews[r.asset_id]} alt={`${r.kind} referencia`} style={{ objectFit: "cover", borderRadius: 8, verticalAlign: "middle", marginRight: 8 }} />}
               {r.kind} · {r.qc_status}{r.is_primary && " · elsődleges"}
             </li>
           ))}
@@ -189,10 +230,12 @@ export default function CharacterDetailPage({ params }: { params: Promise<{ id: 
 
       <div className="card" style={{ marginTop: 16 }}>
         <h3 style={{ marginTop: 0 }}>Karakter létrehozása</h3>
-        {!providers?.referenceQc && <p className="error">Az automatikus referencia-ellenőrzés jelenleg nem elérhető. Az üzemeltetőnek QC-szolgáltatót kell bekötnie; a feltöltött képek megmaradnak.</p>}
+        <p className="muted">A referenciafájlok épségét a szerver ellenőrzi. A szereplő azonosságát és a tesztkép hasonlóságát jelenleg te hagyod jóvá a képek megtekintése után.</p>
         <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
           <button className="ghost" disabled={busy || refs.length === 0 || !providers?.referenceQc}
             onClick={() => startJob("reference_qc", { refIds: refs.map((r) => r.id) })}>1. Referencia-QC</button>
+          <button className="ghost" disabled={busy || refs.length < 3 || character.status !== "collecting_refs"}
+            onClick={() => manualReview("references")}>1. Referenciák kézi jóváhagyása</button>
           <button className="ghost" disabled={busy || approvedRefs.length < 3 || !providers?.training}
             onClick={startTraining}>2. Tréning (LoRA)</button>
           <button className="ghost" disabled={busy || versions.length === 0 || !providers?.testImage}
@@ -200,6 +243,8 @@ export default function CharacterDetailPage({ params }: { params: Promise<{ id: 
           <button className="ghost" disabled={busy || !latestRealVersion || !providers?.identityCheck}
             title={latestRealVersion ? "" : "Mock tréning után nem elérhető – éles providerrel (fal/Replicate) tanított verzió kell"}
             onClick={() => startJob("identity_check", {})}>4. Azonosság-ellenőrzés</button>
+          <button className="ghost" disabled={busy || character.status !== "test_pending" || !latestRealVersion?.test_image_asset_id || !previews[latestRealVersion.test_image_asset_id]}
+            onClick={() => manualReview("test_image", latestRealVersion?.id)}>4. Tesztkép kézi jóváhagyása</button>
           <button disabled={busy || !active || !providers?.generation}
             onClick={() => startJob("image_generation", { prompt: "portrait, studio light" })}>5. Képgenerálás</button>
         </div>
@@ -214,6 +259,7 @@ export default function CharacterDetailPage({ params }: { params: Promise<{ id: 
               <span style={{ flex: 1 }}>v{v.version_no} · {v.provider ?? "–"}</span>
               <span className="badge">{v.status}</span>
               <span className="muted">{v.identity_score != null ? `identity: ${v.identity_score}` : "identity: –"}</span>
+              {v.test_image_asset_id && previews[v.test_image_asset_id] && <Image unoptimized width={90} height={90} src={previews[v.test_image_asset_id]} alt="Generált tesztkép" style={{ objectFit: "cover", borderRadius: 8 }} />}
             </div>
           ))}
         </div>
