@@ -211,7 +211,7 @@ export default function ToolsPage() {
 
       <div className="card" style={{ marginTop: 12 }}>
         <h3 style={{ marginTop: 0 }}>Karakter ráhelyezése képre</h3>
-        <p className="muted">Válaszd ki a betanított karaktert, és tölts fel egy átalakítandó képet. A rendszer a karakter betanított modelljével új képet készít az eredeti póz és háttér alapján. A végeredmény eltérhet az eredetitől.</p>
+        <p className="muted">Válaszd ki a betanított karaktert, és tölts fel egy átalakítandó képet. A rendszer a karakter betanított modelljével az eredeti fotóból indul ki. Ez a képátalakítás nem pontos arccsere: a póz, a háttér és az arc is eltérhet, ezért az eredményt készítés előtt nem tudjuk garantálni.</p>
         <button className="ghost" disabled={busyKey !== null} style={{ margin: "8px 0 12px" }} onClick={async () => {
           const id = await upload("image/*", (file) => setSwapPreview(URL.createObjectURL(file)));
           if (id) { setSwapAsset(id); setResults((current) => ({ ...current, fullSwap: [] })); setJobs((current) => { const next = { ...current }; delete next.fullSwap; return next; }); }
@@ -224,7 +224,7 @@ export default function ToolsPage() {
           <button disabled={busyKey !== null || !swapAsset || !toolChar}
             onClick={() => run("fullSwap", "image_edit", {
               imageAssetIds: [swapAsset], useTrainedCharacter: true,
-              prompt: "Photorealistic photograph of the trained adult character in the same pose, camera angle, composition, clothing and setting as the source photograph. Preserve the background, perspective and natural lighting. Realistic anatomy, natural hands and limbs, consistent facial identity.",
+              prompt: "A realistic photograph of the trained adult character, with her recognizable face, retaining the exact framing, pose, camera angle, clothing and background of the input photograph. Minimal changes outside the person's face and hair. Preserve the original perspective, lighting and realistic anatomy.",
             }, { characterId: toolChar })}>Kép elkészítése a karakterrel</button>
           <Badge k="fullSwap" /><Price k="fullSwap" />
         </div>
