@@ -22,6 +22,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   }
   const { data: prior } = await svc.from("gallery_items").select("asset_id").eq("job_id", id).eq("owner_id", user.id).limit(1).maybeSingle();
   if (prior) return NextResponse.json({ recovered: true, assetId: prior.asset_id });
+  let outputHost: string | undefined;
   try {
     const adapter = buildRouter().getAdapter("wavespeed");
     if (!adapter || await adapter.getStatus(job.provider_job_id, job.provider_meta) !== "done")
@@ -29,6 +30,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     const output = await adapter.getResult(job.provider_job_id, job.provider_meta, "character_swap");
     const url = output.files.find((f) => f.kind === "image")?.url;
     if (!url) return NextResponse.json({ error: "IMAGE_MISSING" }, { status: 502 });
+    outputHost = new URL(url).hostname;
     const safe = assertAllowedUrl(url);
     const response = await fetch(safe, { redirect: "error", signal: AbortSignal.timeout(30000) });
     if (!response.ok || Number(response.headers.get("content-length") ?? 0) > 12 * 1024 * 1024)
@@ -54,7 +56,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     if (jobError) throw jobError;
     return NextResponse.json({ recovered: true, assetId: asset.id });
   } catch (e) {
-    console.error(JSON.stringify({ scope: "recover.face_swap", jobId: id, error: String(e) }));
+    console.error(JSON.stringify({ scope: "recover.face_swap", jobId: id, outputHost, error: String(e) }));
     return NextResponse.json({ error: "RECOVERY_FAILED" }, { status: 502 });
   }
 }
