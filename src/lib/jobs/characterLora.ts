@@ -31,22 +31,26 @@ export function validateLoraRef(provider: string | null, ref: string, isProducti
 }
 
 /** Aktív karakter érvényes, elkészült, ADAPTERKOMPATIBILIS LoRA-refjének feloldása. */
-export async function resolveCharacterLora(userId: string, characterId: string): Promise<LoraResult> {
+export async function resolveCharacterLora(userId: string, characterId: string, forTestImage = false): Promise<LoraResult> {
   const sb = serviceClient();
   const { data: character } = await sb.from("characters")
     .select("id,owner_id,status,active_version_id").eq("id", characterId).single();
   const ch = character as { id: string; owner_id: string; status: string; active_version_id: string | null } | null;
   if (!ch || ch.owner_id !== userId) return { error: "CHARACTER_NOT_OWNED" };
-  if (ch.status !== "active") return { error: "CHARACTER_NOT_ACTIVE" };
+  if (ch.status !== (forTestImage ? "test_pending" : "active")) return { error: "CHARACTER_NOT_ACTIVE" };
 
-  const { data: version } = await sb.from("character_versions")
+  let query = sb.from("character_versions")
     .select("id,provider,provider_model_ref,status")
-    .eq("id", ch.active_version_id ?? "00000000-0000-0000-0000-000000000000").single();
+    .eq("character_id", characterId);
+  query = forTestImage
+    ? query.eq("status", "test_pending").order("version_no", { ascending: false }).limit(1)
+    : query.eq("id", ch.active_version_id ?? "00000000-0000-0000-0000-000000000000");
+  const { data: version } = await query.maybeSingle();
   const v = version as { id: string; provider: string | null; provider_model_ref: string | null; status: string } | null;
   if (!v) return { error: "NO_ACTIVE_LORA" };
   const ref = v.provider_model_ref;
   if (!ref) return { error: "NO_ACTIVE_LORA" };
-  if (v.status !== "approved") return { error: "LORA_NOT_READY" };
+  if (v.status !== (forTestImage ? "test_pending" : "approved")) return { error: "LORA_NOT_READY" };
   const check = validateLoraRef(v.provider, ref, process.env.NODE_ENV === "production");
   if (!check.ok) return { error: "PROVIDER_MODEL_INVALID" };
   return { loraPath: ref, versionId: v.id, provider: v.provider ?? undefined };
