@@ -66,7 +66,9 @@ export default function ToolsPage() {
     const latestEdit = latestEdits?.[0] as JobRow | undefined;
     if (latestEdit) {
       setJobs((current) => ({ ...current, fullSwap: latestEdit }));
-      if (latestEdit.status === "processing") poll(latestEdit.id, "fullSwap");
+      for (const edit of (latestEdits ?? []) as JobRow[]) {
+        if (edit.status === "processing") poll(edit.id, edit.id === latestEdit.id ? "fullSwap" : `fullSwap:${edit.id}`);
+      }
       if (latestEdit.status === "completed") await loadJobResults(latestEdit.id, "fullSwap");
       let restored = 0;
       for (const edit of (latestEdits ?? []) as JobRow[]) {
