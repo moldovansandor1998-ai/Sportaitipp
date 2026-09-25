@@ -39,6 +39,10 @@ export default function ToolsPage() {
   const [ttsText, setTtsText] = useState(""); const [ttsVoice, setTtsVoice] = useState("Jennifer (en)");
   const [simpleAsset, setSimpleAsset] = useState("");           // i2p/upscale/bgremoval/skin/fix
   const [swapAsset, setSwapAsset] = useState(""); const [swapPreview, setSwapPreview] = useState("");
+  const [pinterestQuery, setPinterestQuery] = useState("");
+  const [pinterestPins, setPinterestPins] = useState<Array<{ id: string; imageUrl: string; pinUrl: string }>>([]);
+  const [pinterestMessage, setPinterestMessage] = useState("");
+  const [swapPinUrl, setSwapPinUrl] = useState("");
   const [characterEditModel, setCharacterEditModel] = useState<"seedream-v4.5" | "nano-banana">("seedream-v4.5");
   const [talkVideo, setTalkVideo] = useState(""); const [talkAudio, setTalkAudio] = useState("");
   const [v2vVideo, setV2vVideo] = useState(""); const [v2vPrompt, setV2vPrompt] = useState("");
@@ -131,6 +135,26 @@ export default function ToolsPage() {
     if (!res.ok) { setMsg((m) => ({ ...m, upload: "Import hiba" })); return null; }
     onFile?.(file);
     return ((await res.json()) as { assetId: string }).assetId;
+  }
+
+  async function searchPinterest() {
+    if (pinterestQuery.trim().length < 2) return;
+    setPinterestMessage("Keresés…");
+    setPinterestPins([]);
+    try {
+      const res = await fetch(`/api/pinterest/search?q=${encodeURIComponent(pinterestQuery.trim())}`, {
+        headers: { authorization: `Bearer ${await token()}` },
+      });
+      const data = await res.json() as { error?: string; pins?: Array<{ id: string; imageUrl: string; pinUrl: string }> };
+      if (!res.ok) {
+        setPinterestMessage(data.error === "PINTEREST_ACCESS_REQUIRED" || data.error === "PINTEREST_SEARCH_ACCESS_REQUIRED"
+          ? "A Pinterest kereséshez jóváhagyott Pinterest API hozzáférés szükséges."
+          : "A Pinterest keresés most nem érhető el.");
+        return;
+      }
+      setPinterestPins(data.pins ?? []);
+      setPinterestMessage(data.pins?.length ? "Válassz egy képet az átalakításhoz." : "Nincs találat.");
+    } catch { setPinterestMessage("A Pinterest keresés most nem érhető el."); }
   }
 
   function run(key: string, type: string, payload: Record<string, unknown>, extra?: { characterId?: string }) {
@@ -230,7 +254,7 @@ export default function ToolsPage() {
 
       <div className="card" style={{ marginTop: 12 }}>
         <h3 style={{ marginTop: 0 }}>Petra arca a feltöltött képen</h3>
-        <p className="muted">A rendszer az eredeti képet és Petra jóváhagyott arcképeit együtt küldi a képszerkesztőnek. A szerkesztés célja Petra arca, miközben a póz és a háttér megmarad.</p>
+        <p className="muted">A kiválasztott karakter arca és haja automatikusan kerül a képre. A rendszer a pózt és a hátteret megtartja; a látható telefont szürke iPhone 14 Pro Maxra állítja, és nem hagy tetoválást vagy vízjelet a kész képen.</p>
         <label>Szerkesztő modell <select value={characterEditModel} onChange={(e) => setCharacterEditModel(e.target.value as "seedream-v4.5" | "nano-banana")}>
           <option value="seedream-v4.5">Seedream 4.5 Edit</option>
           <option value="nano-banana">Nano Banana Edit</option>
@@ -238,16 +262,29 @@ export default function ToolsPage() {
         {cfg && !cfg.faceSwapConfigured && <p className="muted">A WaveSpeed API-kulcs még nincs beállítva; az arccsere ezután válik elérhetővé.</p>}
         <button className="ghost" disabled={busyKey !== null} style={{ margin: "8px 0 12px" }} onClick={async () => {
           const id = await upload("image/*", (file) => setSwapPreview(URL.createObjectURL(file)));
-          if (id) { setSwapAsset(id); setResults((current) => ({ ...current, fullSwap: [] })); setJobs((current) => { const next = { ...current }; delete next.fullSwap; return next; }); }
+          if (id) { setSwapAsset(id); setSwapPinUrl(""); setResults((current) => ({ ...current, fullSwap: [] })); setJobs((current) => { const next = { ...current }; delete next.fullSwap; return next; }); }
         }}>Átalakítandó kép feltöltése</button>
-        {swapAsset && (swapPreview || gallery.find((item) => item.assetId === swapAsset)?.url) && (
+        <div style={{ display: "flex", gap: 8, marginBottom: 10, flexWrap: "wrap" }}>
+          <input aria-label="Pinterest keresés" placeholder="Keresés Pinterest képek között…" value={pinterestQuery}
+            onChange={(e) => setPinterestQuery(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") void searchPinterest(); }} style={{ flex: 1, minWidth: 180 }} />
+          <button className="ghost" disabled={pinterestQuery.trim().length < 2} onClick={() => void searchPinterest()}>Pinterest keresés</button>
+        </div>
+        {pinterestMessage && <p className="muted" role="status">{pinterestMessage}</p>}
+        {pinterestPins.length > 0 && <div className="grid" style={{ gridTemplateColumns: "repeat(auto-fill, minmax(125px, 1fr))" }}>
+          {pinterestPins.map((pin) => <div key={pin.id}>
+            {/* eslint-disable-next-line @next/next/no-img-element -- Pinterest CDN preview */}
+            <img src={pin.imageUrl} alt="Pinterest találat" style={{ width: "100%", height: 150, objectFit: "cover", borderRadius: 8 }} />
+            <button className="ghost" disabled={busyKey !== null} onClick={() => { setSwapPinUrl(pin.imageUrl); setSwapAsset(""); setSwapPreview(pin.imageUrl); }}>Ezzel készítem</button>
+            <a href={pin.pinUrl} target="_blank" rel="noreferrer" style={{ display: "block" }}>Megnyitás a Pinteresten</a>
+          </div>)}</div>}
+        {(swapAsset || swapPinUrl) && (swapPreview || gallery.find((item) => item.assetId === swapAsset)?.url) && (
           /* eslint-disable-next-line @next/next/no-img-element -- local preview or signed URL */
           <img src={swapPreview || gallery.find((item) => item.assetId === swapAsset)?.url || ""} alt="Átalakítandó kép előnézete" style={{ display: "block", maxWidth: "100%", maxHeight: 350, objectFit: "contain", borderRadius: 8 }} />
         )}
         <div style={{ display: "flex", gap: 8, marginTop: 8, alignItems: "center" }}>
-          <button disabled={busyKey !== null || !swapAsset || !toolChar || !cfg?.faceSwapConfigured}
+          <button disabled={busyKey !== null || (!swapAsset && !swapPinUrl) || !toolChar || !cfg?.faceSwapConfigured}
             onClick={() => run("fullSwap", "character_swap", {
-              sourceAssetId: swapAsset, useCharacterReference: true, editModel: characterEditModel,
+              ...(swapPinUrl ? { imageUrl: swapPinUrl } : { sourceAssetId: swapAsset }), useCharacterReference: true, editModel: characterEditModel,
             }, { characterId: toolChar })}>Petra arcának behelyezése</button>
           <Badge k="fullSwap" /><Price k="fullSwap" />
         </div>
