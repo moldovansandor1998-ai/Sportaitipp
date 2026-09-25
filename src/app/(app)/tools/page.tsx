@@ -58,6 +58,16 @@ export default function ToolsPage() {
     if (chars?.length === 1) setToolChar((current) => current || chars[0].id);
     const c = await fetch("/api/config/provider");
     if (c.ok) { const j = await c.json() as Cfg; setCfg(j); if (j.i2vModels[0]) setVModel(j.i2vModels[0].id); }
+    // A karakteres képszerkesztés állapota oldalváltás után is visszatölthető.
+    const { data: latestEdits } = await getSb().from("generation_jobs")
+      .select("id,status,error").eq("owner_id", user.id).eq("type", "image_edit")
+      .not("character_id", "is", null).order("created_at", { ascending: false }).limit(1);
+    const latestEdit = latestEdits?.[0] as JobRow | undefined;
+    if (latestEdit) {
+      setJobs((current) => ({ ...current, fullSwap: latestEdit }));
+      if (latestEdit.status === "processing") poll(latestEdit.id, "fullSwap");
+      if (latestEdit.status === "completed") await loadJobResults(latestEdit.id, "fullSwap");
+    }
   }, [token]);
   useEffect(() => { void init(); }, [init]);
   useEffect(() => {
@@ -204,7 +214,7 @@ export default function ToolsPage() {
         <p className="muted">Tölts fel egy képet. A rendszer az eredeti pózt és hátteret megtartva a kiválasztott karaktert helyezi rá. A karakter referenciáit automatikusan használja.</p>
         <button className="ghost" disabled={busyKey !== null} style={{ margin: "8px 0 12px" }} onClick={async () => {
           const id = await upload("image/*", (file) => setSwapPreview(URL.createObjectURL(file)));
-          if (id) setSwapAsset(id);
+          if (id) { setSwapAsset(id); setResults((current) => ({ ...current, fullSwap: [] })); setJobs((current) => { const next = { ...current }; delete next.fullSwap; return next; }); }
         }}>Átalakítandó kép feltöltése</button>
         {swapAsset && (swapPreview || gallery.find((item) => item.assetId === swapAsset)?.url) && (
           /* eslint-disable-next-line @next/next/no-img-element -- local preview or signed URL */
