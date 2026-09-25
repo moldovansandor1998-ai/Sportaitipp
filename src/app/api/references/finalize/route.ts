@@ -51,12 +51,18 @@ export async function POST(req: NextRequest) {
 
   const sha256 = createHash("sha256").update(buf).digest("hex");
 
-  // Duplikátum-ellenőrzés ugyanarra a karakterre (azonos hash)
+  // Csak a karakterhez jelenleg csatolt képet tekintjük duplikátumnak.
+  // Egy másik karakter korábbi képe vagy már eltávolított referencia nem blokkolhat.
   const { data: dup } = await svc.from("assets")
     .select("id").eq("owner_id", user.id).eq("sha256", sha256)
-    .eq("bucket", "references").limit(1);
+    .eq("bucket", "references");
   if (dup?.length) {
-    return NextResponse.json({ error: "DUPLICATE_IMAGE" }, { status: 409 });
+    const { data: attached } = await svc.from("character_reference_images")
+      .select("id").eq("character_id", characterId).in("asset_id", dup.map((asset) => asset.id)).limit(1);
+    if (attached?.length) {
+      await svc.storage.from("references").remove([objectPath]);
+      return NextResponse.json({ error: "DUPLICATE_IMAGE" }, { status: 409 });
+    }
   }
 
   const { data: asset, error: assetErr } = await svc.from("assets").insert({
