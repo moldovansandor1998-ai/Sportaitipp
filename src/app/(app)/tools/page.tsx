@@ -59,17 +59,17 @@ export default function ToolsPage() {
     setCharacters((chars ?? []) as unknown as CharacterRow[]);
     const c = await fetch("/api/config/provider");
     if (c.ok) { const j = await c.json() as Cfg; setCfg(j); if (j.i2vModels[0]) setVModel(j.i2vModels[0].id); }
-    // A korábban elindított Swap feladatot is folytatjuk oldalváltás után.
-    const { data: pending } = await getSb().from("generation_jobs")
+    // Oldalváltás után a kész eredményt is megmutatjuk, és a futó feladatot folytatjuk.
+    const { data: recent } = await getSb().from("generation_jobs")
       .select("id,status,error").eq("owner_id", user.id).eq("type", "character_swap")
-      .eq("status", "processing").order("created_at", { ascending: false }).limit(10);
-    if (pending?.length) {
+      .order("created_at", { ascending: false }).limit(10);
+    if (recent?.length) {
       const authorization = `Bearer ${await token()}`;
-      await Promise.allSettled(pending.map((job) => fetch(`/api/jobs/${job.id}/refresh`, {
+      await Promise.allSettled(recent.filter((job) => job.status === "processing").map((job) => fetch(`/api/jobs/${job.id}/refresh`, {
         method: "POST", headers: { authorization },
       })));
       const { data: latest } = await getSb().from("generation_jobs")
-        .select("id,status,error").eq("id", pending[0].id).single();
+        .select("id,status,error").eq("id", recent[0].id).single();
       if (latest) {
         const job = latest as JobRow;
         setJobs((m) => ({ ...m, swap: job }));
@@ -219,7 +219,8 @@ export default function ToolsPage() {
       </div>
 
       <div className="card" style={{ marginTop: 12 }}>
-        <h3 style={{ marginTop: 0 }}>Character Swap</h3>
+        <h3 style={{ marginTop: 0 }}>Karaktercsere</h3>
+        <p className="muted">Az arccsere csak az arcot cseréli. A teljes képcsere a két kép alapján újraszerkeszti a személyt, ezért a testet és a környezetet is módosíthatja.</p>
         <label>Alapkép</label>
         <Picker media="image" selected={swapAsset} onSelect={setSwapAsset} />
         <p className="muted" style={{ margin: "8px 0 12px" }}>Az alapkép kék kerettel van kijelölve. Másik képhez kattints a bélyegképére.</p>
@@ -229,12 +230,17 @@ export default function ToolsPage() {
           <input placeholder="cserefotó asset ID" value={swapPhoto} onChange={(e) => setSwapPhoto(e.target.value)} style={{ flex: 1 }} />
         </div>
         <div style={{ display: "flex", gap: 8, marginTop: 8, alignItems: "center" }}>
-          <button disabled={busyKey !== null || !swapAsset || !swapPhoto}
-            onClick={() => run("swap", "character_swap", { sourceAssetId: swapAsset, swapAssetId: swapPhoto })}>Csere</button>
-          <Badge k="swap" /><Price k="swap" />
+          <button disabled={busyKey !== null || !swapAsset || !swapPhoto || swapAsset === swapPhoto}
+            onClick={() => run("swap", "character_swap", { sourceAssetId: swapAsset, swapAssetId: swapPhoto })}>Arccsere</button>
+          <button className="ghost" disabled={busyKey !== null || !swapAsset || !swapPhoto || swapAsset === swapPhoto}
+            onClick={() => run("fullSwap", "image_edit", {
+              imageAssetIds: [swapAsset, swapPhoto],
+              prompt: "Edit the first image. Replace its subject with the same adult person shown in the second reference image. Preserve the first image's pose, framing, outfit, lighting and background as closely as possible. Match the second person's facial features, hair, skin tone and natural body proportions. Photorealistic anatomy, natural hands with five fingers per hand, no extra limbs. The second image is an identity reference only; do not copy its setting.",
+            })}>Teljes képcsere</button>
+          <Badge k="swap" /><Price k="swap" /><Badge k="fullSwap" /><Price k="fullSwap" />
         </div>
-        <Results k="swap" kind="image" />
-        {msg.swap && <p className="muted">{msg.swap}</p>}
+        <Results k="swap" kind="image" /><Results k="fullSwap" kind="image" />
+        {(msg.swap || msg.fullSwap) && <p className="muted">{[msg.swap, msg.fullSwap].filter(Boolean).join(" · ")}</p>}
       </div>
 
       <div className="card" style={{ marginTop: 12 }}>
