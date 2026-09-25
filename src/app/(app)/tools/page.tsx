@@ -59,10 +59,19 @@ export default function ToolsPage() {
     setCharacters((chars ?? []) as unknown as CharacterRow[]);
     const c = await fetch("/api/config/provider");
     if (c.ok) { const j = await c.json() as Cfg; setCfg(j); if (j.i2vModels[0]) setVModel(j.i2vModels[0].id); }
+    // A korábban elindított Swap feladatot is folytatjuk oldalváltás után.
+    const { data: pending } = await getSb().from("generation_jobs")
+      .select("id,status,error").eq("owner_id", user.id).eq("type", "character_swap")
+      .eq("status", "processing").order("created_at", { ascending: false }).limit(1);
+    if (pending?.[0]) {
+      const job = pending[0] as JobRow;
+      setJobs((m) => ({ ...m, swap: job }));
+      poll(job.id, "swap");
+    }
   }, [token]);
   useEffect(() => { void init(); }, [init]);
   useEffect(() => {
-    pollerRef.current ??= new JobPoller({ intervalMs: 2500, maxAttempts: 240, maxConsecutiveErrors: 3, isTerminal: (s) => TERMINAL_STATUSES.includes(s) });
+    pollerRef.current ??= new JobPoller({ intervalMs: 8000, maxAttempts: 240, maxConsecutiveErrors: 3, isTerminal: (s) => TERMINAL_STATUSES.includes(s) });
     return () => pollerRef.current?.stopAll();
   }, []);
 
@@ -78,6 +87,10 @@ export default function ToolsPage() {
     pollerRef.current?.stop(jobId);
     pollerRef.current?.start(jobId,
       async () => {
+        // A webhook késhet; a már benyújtott provider-feladatot szerveren lekérdezzük.
+        await fetch(`/api/jobs/${jobId}/refresh`, {
+          method: "POST", headers: { authorization: `Bearer ${await token()}` },
+        });
         const { data } = await getSb().from("generation_jobs").select("status,error,result").eq("id", jobId).single();
         const j = data as { status: string; error: { message?: string } | null; result: { meta?: { caption?: string } } | null } | null;
         return { status: j?.status ?? "unknown", error: j?.error?.message ?? null };
@@ -85,7 +98,7 @@ export default function ToolsPage() {
       async (_id, status, error) => {
         const errorMessage = typeof error === "string" && error.length > 0 ? error : null;
         setJobs((m) => ({ ...m, [key]: { id: jobId, status, error: errorMessage ? { message: errorMessage } : null } }));
-        if (status === "completed") await loadJobResults(jobId, key);
+        if (status === "completed") { await loadJobResults(jobId, key); void init(); }
       });
   }
 
