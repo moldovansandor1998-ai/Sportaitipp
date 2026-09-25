@@ -39,6 +39,7 @@ export default function ToolsPage() {
   const [ttsText, setTtsText] = useState(""); const [ttsVoice, setTtsVoice] = useState("Jennifer (en)");
   const [simpleAsset, setSimpleAsset] = useState("");           // i2p/upscale/bgremoval/skin/fix
   const [swapAsset, setSwapAsset] = useState(""); const [swapPreview, setSwapPreview] = useState("");
+  const [characterEditModel, setCharacterEditModel] = useState<"seedream-v4.5" | "nano-banana">("seedream-v4.5");
   const [talkVideo, setTalkVideo] = useState(""); const [talkAudio, setTalkAudio] = useState("");
   const [v2vVideo, setV2vVideo] = useState(""); const [v2vPrompt, setV2vPrompt] = useState("");
 
@@ -227,7 +228,11 @@ export default function ToolsPage() {
 
       <div className="card" style={{ marginTop: 12 }}>
         <h3 style={{ marginTop: 0 }}>Petra arca a feltöltött képen</h3>
-        <p className="muted">Az eredeti képen a test, a póz, a ruha és a háttér marad. A rendszer a kiválasztott karakter jóváhagyott arcfotóját automatikusan használja az arccseréhez.</p>
+        <p className="muted">A rendszer az eredeti képet és Petra jóváhagyott arcképeit együtt küldi a képszerkesztőnek. A szerkesztés célja Petra arca, miközben a póz és a háttér megmarad.</p>
+        <label>Szerkesztő modell <select value={characterEditModel} onChange={(e) => setCharacterEditModel(e.target.value as "seedream-v4.5" | "nano-banana")}>
+          <option value="seedream-v4.5">Seedream 4.5 Edit</option>
+          <option value="nano-banana">Nano Banana Edit</option>
+        </select></label>
         {cfg && !cfg.faceSwapConfigured && <p className="muted">A WaveSpeed API-kulcs még nincs beállítva; az arccsere ezután válik elérhetővé.</p>}
         <button className="ghost" disabled={busyKey !== null} style={{ margin: "8px 0 12px" }} onClick={async () => {
           const id = await upload("image/*", (file) => setSwapPreview(URL.createObjectURL(file)));
@@ -240,7 +245,7 @@ export default function ToolsPage() {
         <div style={{ display: "flex", gap: 8, marginTop: 8, alignItems: "center" }}>
           <button disabled={busyKey !== null || !swapAsset || !toolChar || !cfg?.faceSwapConfigured}
             onClick={() => run("fullSwap", "character_swap", {
-              sourceAssetId: swapAsset, useCharacterReference: true,
+              sourceAssetId: swapAsset, useCharacterReference: true, editModel: characterEditModel,
             }, { characterId: toolChar })}>Petra arcának behelyezése</button>
           <Badge k="fullSwap" /><Price k="fullSwap" />
         </div>
