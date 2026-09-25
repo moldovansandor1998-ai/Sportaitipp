@@ -20,6 +20,7 @@ ALLOWED_HOSTS.add("v2.fal.media");
 ALLOWED_HOSTS.add("v3.fal.media");
 ALLOWED_HOSTS.add("v3b.fal.media");          // fal.ai FLUX LoRA képkimenet
 ALLOWED_HOSTS.add("replicate.delivery");
+ALLOWED_HOSTS.add("cdn.wavespeed.ai");      // WaveSpeed arccsere-kimenetek
 
 export function assertAllowedUrl(raw: string): URL {
   const url = new URL(raw);
