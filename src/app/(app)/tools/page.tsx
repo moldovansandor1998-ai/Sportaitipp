@@ -268,7 +268,12 @@ export default function ToolsPage() {
           <input aria-label="Pinterest keresés" placeholder="Keresés Pinterest képek között…" value={pinterestQuery}
             onChange={(e) => setPinterestQuery(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") void searchPinterest(); }} style={{ flex: 1, minWidth: 180 }} />
           <button className="ghost" disabled={pinterestQuery.trim().length < 2} onClick={() => void searchPinterest()}>Pinterest keresés</button>
+          <a href={`https://www.pinterest.com/search/pins/?q=${encodeURIComponent(pinterestQuery.trim())}`}
+            target="_blank" rel="noopener noreferrer" className="ghost" style={{ padding: "10px 14px", textDecoration: "none" }}>
+            Megnyitás Pinteresten
+          </a>
         </div>
+        <p className="muted">Ha a Pinterest kereséshez még nincs API-hozzáférés, nyisd meg a Pinterestet, mentsd le a kiválasztott képet, majd töltsd fel itt az „Átalakítandó kép feltöltése” gombbal.</p>
         {pinterestMessage && <p className="muted" role="status">{pinterestMessage}</p>}
         {pinterestPins.length > 0 && <div className="grid" style={{ gridTemplateColumns: "repeat(auto-fill, minmax(125px, 1fr))" }}>
           {pinterestPins.map((pin) => <div key={pin.id}>
