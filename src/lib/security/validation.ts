@@ -45,7 +45,7 @@ export const CreateJobSchema = z.object({
   const p = val.payload as Record<string, unknown>;
   switch (val.type) {
     case "character_training": {
-      req(p, "destination", ctx, "character_training");
+      // fal.ai returns a weights URL; only Replicate needs a destination model.
       if (typeof p.versionId !== "string" || p.versionId.length === 0) {
         ctx.addIssue({ code: z.ZodIssueCode.custom, message: "character_training: 'versionId' kötelező (prep által claimelt verzió)" });
       }
