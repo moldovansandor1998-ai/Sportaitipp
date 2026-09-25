@@ -108,6 +108,9 @@ export class ReplicateAdapter implements ProviderAdapter {
   async submit(p: SubmitParams): Promise<SubmitResult> {
     const s = this.spec(p.jobType);
     if (s.kind === "training") {
+      if (typeof p.payload.destination !== "string" || !/^[a-zA-Z0-9_-]+\/[a-zA-Z0-9_.-]+$/.test(p.payload.destination)) {
+        throw new ProviderError("replicate: destination required", false, undefined, "invalid_input");
+      }
       // Hivatalos training flow: POST /v1/models/{model}/trainings
       const data = await this.call(`/models/${s.model}/trainings`, {
         method: "POST",
