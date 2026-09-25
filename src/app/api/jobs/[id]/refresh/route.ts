@@ -35,10 +35,10 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     return NextResponse.json({ status: updated?.status ?? row.status, error: updated?.error ?? null });
   } catch (e) {
     console.error(JSON.stringify({ scope: "jobs.refresh", jobId: id, error: String(e) }));
-    // A fal 400/422 végleges kéréselutasítás. Ne hagyjuk a feladatot örökre
-    // processing állapotban, és a lefoglalt kreditet adjuk vissza.
-    if (e instanceof ProviderError && /^fal (400|422)(?:\b|:)/.test(e.message)) {
-      await failJob(row, "A képszerkesztő szolgáltató elutasította ezt a képet (400/422).");
+    // A végleges szolgáltatói hiba nem oldódik meg újabb lekérdezéssel.
+    // Zárjuk le a feladatot, és adjuk vissza a lefoglalt kreditet.
+    if (e instanceof ProviderError && !e.retryable) {
+      await failJob(row, `A képszerkesztő szolgáltató elutasította a feladatot: ${e.message}`);
       return NextResponse.json({ status: "refunded", error: "PROVIDER_REJECTED_IMAGE" });
     }
     return NextResponse.json({ error: "PROVIDER_STATUS_UNAVAILABLE" }, { status: 502 });
