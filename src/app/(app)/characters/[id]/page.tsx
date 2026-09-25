@@ -153,7 +153,7 @@ export default function CharacterDetailPage({ params }: { params: Promise<{ id: 
         body: JSON.stringify({ stage, versionId, confirmed: true }),
       });
       const result = await res.json();
-      if (!res.ok) throw new Error(result.error ?? "Az ellenőrzés nem sikerült");
+      if (!res.ok) throw new Error(result.detail ? `${result.error}: ${result.detail}` : result.error ?? "Az ellenőrzés nem sikerült");
       await load();
     } catch (e) { setError(e instanceof Error ? e.message : "Ellenőrzési hiba"); }
     finally { setBusy(false); }
