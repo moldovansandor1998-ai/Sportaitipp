@@ -19,6 +19,15 @@ export default function CharacterDetailPage({ params }: { params: Promise<{ id: 
   const [credits, setCredits] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [providers, setProviders] = useState<{
+    referenceQc: boolean; training: boolean; testImage: boolean;
+    identityCheck: boolean; generation: boolean;
+  } | null>(null);
+
+  useEffect(() => {
+    fetch("/api/providers/status").then((response) => response.ok ? response.json() : null)
+      .then(setProviders).catch(() => setProviders(null));
+  }, []);
 
   const load = useCallback(async () => {
     const getSb = () => browserClient();
@@ -179,19 +188,19 @@ export default function CharacterDetailPage({ params }: { params: Promise<{ id: 
       </div>
 
       <div className="card" style={{ marginTop: 16 }}>
-        <h3 style={{ marginTop: 0 }}>Folyamat (Mock motor – teszt)</h3>
-        <p className="muted">Minden lépés valódi job, kreditfoglalással. Éles provider még nincs konfigurálva.</p>
+        <h3 style={{ marginTop: 0 }}>Karakter létrehozása</h3>
+        {!providers?.referenceQc && <p className="error">Az automatikus referencia-ellenőrzés jelenleg nem elérhető. Az üzemeltetőnek QC-szolgáltatót kell bekötnie; a feltöltött képek megmaradnak.</p>}
         <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-          <button className="ghost" disabled={busy || refs.length === 0}
+          <button className="ghost" disabled={busy || refs.length === 0 || !providers?.referenceQc}
             onClick={() => startJob("reference_qc", { refIds: refs.map((r) => r.id) })}>1. Referencia-QC</button>
-          <button className="ghost" disabled={busy || approvedRefs.length < 3}
+          <button className="ghost" disabled={busy || approvedRefs.length < 3 || !providers?.training}
             onClick={startTraining}>2. Tréning (LoRA)</button>
-          <button className="ghost" disabled={busy || versions.length === 0}
+          <button className="ghost" disabled={busy || versions.length === 0 || !providers?.testImage}
             onClick={startTestImage}>3. Tesztkép</button>
-          <button className="ghost" disabled={busy || !latestRealVersion}
+          <button className="ghost" disabled={busy || !latestRealVersion || !providers?.identityCheck}
             title={latestRealVersion ? "" : "Mock tréning után nem elérhető – éles providerrel (fal/Replicate) tanított verzió kell"}
             onClick={() => startJob("identity_check", {})}>4. Azonosság-ellenőrzés</button>
-          <button disabled={busy || !active}
+          <button disabled={busy || !active || !providers?.generation}
             onClick={() => startJob("image_generation", { prompt: "portrait, studio light" })}>5. Képgenerálás</button>
         </div>
         {error && <p className="error" style={{ marginTop: 12 }}>{error}</p>}
