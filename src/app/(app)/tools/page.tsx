@@ -211,7 +211,7 @@ export default function ToolsPage() {
 
       <div className="card" style={{ marginTop: 12 }}>
         <h3 style={{ marginTop: 0 }}>Karakter ráhelyezése képre</h3>
-        <p className="muted">Válaszd ki a betanított karaktert, és tölts fel egy átalakítandó képet. A rendszer a karakter betanított modelljével az eredeti fotóból indul ki. Ez a képátalakítás nem pontos arccsere: a póz, a háttér és az arc is eltérhet, ezért az eredményt készítés előtt nem tudjuk garantálni.</p>
+        <p className="muted">A karaktercsere ideiglenesen szünetel: a motor az eredeti fotó helyett másik kompozíciót és egy hibás, fekete képet készített. Amíg nincs ellenőrzött megoldás, nem indítható új, kreditet levonó karaktercsere.</p>
         <button className="ghost" disabled={busyKey !== null} style={{ margin: "8px 0 12px" }} onClick={async () => {
           const id = await upload("image/*", (file) => setSwapPreview(URL.createObjectURL(file)));
           if (id) { setSwapAsset(id); setResults((current) => ({ ...current, fullSwap: [] })); setJobs((current) => { const next = { ...current }; delete next.fullSwap; return next; }); }
@@ -221,11 +221,11 @@ export default function ToolsPage() {
           <img src={swapPreview || gallery.find((item) => item.assetId === swapAsset)?.url || ""} alt="Átalakítandó kép előnézete" style={{ display: "block", maxWidth: "100%", maxHeight: 350, objectFit: "contain", borderRadius: 8 }} />
         )}
         <div style={{ display: "flex", gap: 8, marginTop: 8, alignItems: "center" }}>
-          <button disabled={busyKey !== null || !swapAsset || !toolChar}
+          <button disabled
             onClick={() => run("fullSwap", "image_edit", {
               imageAssetIds: [swapAsset], useTrainedCharacter: true,
               prompt: "A realistic photograph of the trained adult character, with her recognizable face, retaining the exact framing, pose, camera angle, clothing and background of the input photograph. Minimal changes outside the person's face and hair. Preserve the original perspective, lighting and realistic anatomy.",
-            }, { characterId: toolChar })}>Kép elkészítése a karakterrel</button>
+            }, { characterId: toolChar })}>Karaktercsere szünetel</button>
           <Badge k="fullSwap" /><Price k="fullSwap" />
         </div>
         <Results k="fullSwap" kind="image" />
