@@ -52,20 +52,21 @@ export async function POST(req: NextRequest) {
           idempotencyKey: `bulk:${item.id}`, costEstimate: estimate.credits,
         });
       }
-      const { error: saveError } = await sb.from("bulk_generation_items")
-        .update({ status: "started", job_id: jobId }).eq("id", item.id);
-      if (saveError) throw saveError;
+      const { data: linked, error: saveError } = await sb.rpc("link_bulk_generation_job", { p_item: item.id, p_job: jobId });
+      if (saveError || !linked) throw new Error(`BULK_LINK_FAILED: ${saveError?.message ?? "not linked"}`);
       scheduleKick(jobId);
       bulkStarted++;
     } catch (error) {
       // Ha a job már létrejött, a következő cron az idempotenciakulcs alapján folytatja.
-      console.error(JSON.stringify({ scope: "cron.bulk", itemId: item.id, error: String(error) }));
+      const detail = error instanceof Error ? error.message : JSON.stringify(error);
+      console.error(JSON.stringify({ scope: "cron.bulk", itemId: item.id, error: detail }));
       const { data: existing } = await sb.from("generation_jobs").select("id")
         .eq("idempotency_key", `bulk:${item.id}`).maybeSingle();
       if (existing?.id) {
-        await sb.from("bulk_generation_items").update({ status: "started", job_id: existing.id }).eq("id", item.id);
+        const { error: linkError } = await sb.rpc("link_bulk_generation_job", { p_item: item.id, p_job: existing.id });
+        if (linkError) console.error(JSON.stringify({ scope: "cron.bulk.relink", itemId: item.id, error: linkError.message }));
       } else {
-        await sb.from("bulk_generation_items").update({ status: "failed", error: String(error).slice(0, 300) }).eq("id", item.id);
+        await sb.from("bulk_generation_items").update({ status: "failed", error: detail.slice(0, 300) }).eq("id", item.id);
       }
     }
   }
