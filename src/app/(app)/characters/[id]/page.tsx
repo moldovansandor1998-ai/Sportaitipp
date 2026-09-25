@@ -49,6 +49,29 @@ export default function CharacterDetailPage({ params }: { params: Promise<{ id: 
   }, [id]);
   useEffect(() => { load(); }, [load]);
 
+  const runningJobIds = jobs.filter((job) => job.status === "processing").map((job) => job.id).join(",");
+  // A provider webhookja késhet: a már futó feladatot külön lekérdezzük.
+  useEffect(() => {
+    if (!runningJobIds) return;
+    let refreshing = false;
+    const refresh = async () => {
+      if (refreshing) return;
+      refreshing = true;
+      try {
+        const { data: { session } } = await browserClient().auth.getSession();
+        if (!session) return;
+        await Promise.all(runningJobIds.split(",").map((jobId) => fetch(`/api/jobs/${jobId}/refresh`, {
+          method: "POST", headers: { authorization: `Bearer ${session.access_token}` },
+        })));
+        await load();
+      } catch { /* a következő ellenőrzés újrapróbálja */ }
+      finally { refreshing = false; }
+    };
+    void refresh();
+    const timer = setInterval(() => { void refresh(); }, 20000);
+    return () => clearInterval(timer);
+  }, [runningJobIds, load]);
+
   useEffect(() => {
     const ids = [...refs.map((r) => r.asset_id), ...versions.map((v) => v.test_image_asset_id).filter((x): x is string => Boolean(x))];
     if (ids.length === 0) return;
