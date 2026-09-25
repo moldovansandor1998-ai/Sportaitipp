@@ -166,8 +166,9 @@ export async function prepareValidatedJobInput(input: {
       ? await svc.from("character_versions").select("id").eq("id", character.active_version_id).eq("status", "approved").maybeSingle()
       : { data: null };
     const { data: refs } = await svc.from("character_reference_images")
-      .select("asset_id,qc_status").eq("character_id", characterId).eq("kind", "face")
+      .select("asset_id,qc_status,is_primary").eq("character_id", characterId).eq("kind", "face")
       .in("qc_status", version ? ["approved", "pending"] : ["approved"])
+      .order("is_primary", { ascending: false }).order("uploaded_at", { ascending: true })
       .limit(20);
     const selected = (refs ?? []).filter((r) => r.qc_status === "approved").slice(0, 2);
     if (selected.length < 2) selected.push(...(refs ?? []).filter((r) => r.qc_status === "pending").slice(0, 2 - selected.length));
