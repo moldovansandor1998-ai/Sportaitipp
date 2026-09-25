@@ -73,7 +73,8 @@ export default function CharacterDetailPage({ params }: { params: Promise<{ id: 
     return () => clearInterval(timer);
   }, [runningJobIds, load]);
 
-  const recoverableJobIds = jobs.filter((job) => job.type === "test_image" && job.status === "refunded"
+  const needsTestImageRecovery = versions.some((version) => version.status === "test_pending" && !version.test_image_asset_id);
+  const recoverableJobIds = jobs.filter((job) => needsTestImageRecovery && job.type === "test_image" && job.status === "refunded"
     && job.error?.message === "URL_HOST_NOT_ALLOWED").map((job) => job.id).join(",");
   useEffect(() => {
     for (const jobId of recoverableJobIds.split(",").filter(Boolean)) {
