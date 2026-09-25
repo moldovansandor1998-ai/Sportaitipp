@@ -62,6 +62,14 @@ export async function prepareValidatedJobInput(input: {
     return { type, payload, error: "CHARACTER_REQUIRED", status: 400 };
   }
   let finalCharacterId: string | undefined;
+  if (characterId) {
+    const { data: ownedCharacter, error: ownershipError } = await svc.from("characters")
+      .select("id").eq("id", characterId).eq("owner_id", input.userId).single();
+    if (ownershipError || !ownedCharacter) {
+      return { type, payload, error: "CHARACTER_NOT_OWNED", status: 403 };
+    }
+    finalCharacterId = characterId;
+  }
   if (needsCharacter && characterId) {
     const lora = await resolveCharacterLora(input.userId, characterId, type === "test_image");
     if (lora.error) return { type, payload, error: lora.error, status: 409 };
@@ -76,7 +84,6 @@ export async function prepareValidatedJobInput(input: {
         payload.triggerWord = `char_${slug.replace(/-/g, "_")}`;
       }
     }
-    finalCharacterId = characterId;
   }
 
   // 4) Easy prompt szerveroldali felépítése
