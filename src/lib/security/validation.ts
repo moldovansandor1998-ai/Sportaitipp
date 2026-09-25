@@ -129,6 +129,9 @@ export const CreateJobSchema = z.object({
       }
       break;
     case "character_swap": {
+      if (p.editModel !== undefined && p.editModel !== "seedream-v4.5" && p.editModel !== "nano-banana") {
+        ctx.addIssue({ code: z.ZodIssueCode.custom, message: "character_swap: ismeretlen szerkesztő modell" });
+      }
       if (!validImageInput(p)) {
         ctx.addIssue({ code: z.ZodIssueCode.custom, message: "character_swap: alapkép kötelező (sourceAssetId vagy imageUrl)" });
       }
