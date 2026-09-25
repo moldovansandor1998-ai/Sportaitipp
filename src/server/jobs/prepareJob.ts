@@ -57,7 +57,8 @@ export async function prepareValidatedJobInput(input: {
   }
 
   // 3) karakterkötelezettség + LoRA-injektálás (kliens loraPath SOSEM számít)
-  const needsCharacter = ["image_generation", "image_edit", "test_image", "video_from_image"].includes(type);
+  const needsCharacter = ["image_generation", "image_edit", "test_image", "video_from_image"].includes(type)
+    && !(type === "image_edit" && payload.useCharacterReference === true);
   if (type === "image_generation" && !characterId) {
     return { type, payload, error: "CHARACTER_REQUIRED", status: 400 };
   }
@@ -137,6 +138,23 @@ export async function prepareValidatedJobInput(input: {
     }
     return urls;
   };
+  const resolveCharacterFace = async (): Promise<string | null> => {
+    if (!characterId) return null;
+    const { data: character } = await svc.from("characters")
+      .select("id,active_version_id").eq("id", characterId).eq("owner_id", input.userId).single();
+    if (!character) return null;
+    // Retraining resets reference review; the previously approved version is still available.
+    const { data: version } = character.active_version_id
+      ? await svc.from("character_versions").select("id").eq("id", character.active_version_id).eq("status", "approved").maybeSingle()
+      : { data: null };
+    const { data: refs } = await svc.from("character_reference_images")
+      .select("asset_id,qc_status").eq("character_id", characterId).eq("kind", "face")
+      .in("qc_status", version ? ["approved", "pending"] : ["approved"])
+      .limit(20);
+    const ref = refs?.find((r) => r.qc_status === "approved") ?? refs?.[0];
+    if (!ref) return null;
+    return (await resolveImages([ref.asset_id]))[0] ?? null;
+  };
   if (type === "image_edit") {
     const urls = await resolveImages(payload.imageAssetIds);
     const external = typeof payload.externalImageUrl === "string" ? payload.externalImageUrl : null;
@@ -144,7 +162,10 @@ export async function prepareValidatedJobInput(input: {
       try { assertAllowedUrl(external); } catch { return { type, payload, error: "URL_NOT_ALLOWED", status: 400 }; }
     }
     if (urls.length === 0 && !external) return { type, payload, error: "IMAGE_INPUT_REQUIRED", status: 400 };
-    payload.imageUrls = external ? [...urls, external] : urls;
+    const reference = payload.useCharacterReference === true ? await resolveCharacterFace() : null;
+    if (payload.useCharacterReference === true && !reference) return { type, payload, error: "IMAGE_INPUT_REQUIRED", status: 409 };
+    payload.imageUrls = [...urls, ...(external ? [external] : []), ...(reference ? [reference] : [])];
+    delete payload.useCharacterReference;
     delete payload.imageAssetIds; delete payload.externalImageUrl;
   }
   // általános képfeloldó (sourceAssetId/imageAssetIds/imageUrl) – a fenti típusokhoz
@@ -181,7 +202,8 @@ export async function prepareValidatedJobInput(input: {
   if (type === "character_swap") {
     const baseUrl = await resolveOneImage(payload);
     const swapAssetId = typeof payload.swapAssetId === "string" ? payload.swapAssetId : null;
-    const swapUrl = swapAssetId ? (await resolveImages([swapAssetId]))[0] : null;
+    const swapUrl = swapAssetId ? (await resolveImages([swapAssetId]))[0]
+      : payload.useCharacterReference === true ? await resolveCharacterFace() : null;
     const swapExternal = typeof payload.swapImageUrl === "string" ? payload.swapImageUrl : null;
     let finalSwap = swapUrl ?? null;
     if (!finalSwap && swapExternal) {
@@ -190,7 +212,7 @@ export async function prepareValidatedJobInput(input: {
     if (!baseUrl || !finalSwap) return { type, payload, error: "IMAGE_INPUT_REQUIRED", status: 400 };
     payload.imageUrl = baseUrl;
     payload.swapImageUrl = finalSwap;
-    delete payload.sourceAssetId; delete payload.imageAssetIds; delete payload.swapAssetId;
+    delete payload.sourceAssetId; delete payload.imageAssetIds; delete payload.swapAssetId; delete payload.useCharacterReference;
   }
   if (type === "talking_video" || type === "lip_sync") {
     const vAsset = typeof payload.videoAssetId === "string" ? payload.videoAssetId : null;
