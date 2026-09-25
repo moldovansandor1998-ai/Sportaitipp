@@ -18,6 +18,7 @@ ALLOWED_HOSTS.add("storage.googleapis.com"); // Replicate artefaktok
 ALLOWED_HOSTS.add("fal.media");              // fal.ai eredmények
 ALLOWED_HOSTS.add("v2.fal.media");
 ALLOWED_HOSTS.add("v3.fal.media");
+ALLOWED_HOSTS.add("v3b.fal.media");          // fal.ai FLUX LoRA képkimenet
 ALLOWED_HOSTS.add("replicate.delivery");
 
 export function assertAllowedUrl(raw: string): URL {
