@@ -58,26 +58,6 @@ export default function ToolsPage() {
     if (chars?.length === 1) setToolChar((current) => current || chars[0].id);
     const c = await fetch("/api/config/provider");
     if (c.ok) { const j = await c.json() as Cfg; setCfg(j); if (j.i2vModels[0]) setVModel(j.i2vModels[0].id); }
-    // Oldalváltás után a kész eredményt is megmutatjuk, és a futó feladatot folytatjuk.
-    const { data: recent } = await getSb().from("generation_jobs")
-      .select("id,status,error").eq("owner_id", user.id).eq("type", "character_swap")
-      .order("created_at", { ascending: false }).limit(10);
-    if (recent?.length) {
-      const authorization = `Bearer ${await token()}`;
-      await Promise.allSettled(recent.filter((job) => job.status === "processing").map((job) => fetch(`/api/jobs/${job.id}/refresh`, {
-        method: "POST", headers: { authorization },
-      })));
-      const { data: latest } = await getSb().from("generation_jobs")
-        .select("id,status,error").eq("id", recent[0].id).single();
-      if (latest) {
-        const job = latest as JobRow;
-        setJobs((m) => ({ ...m, swap: job }));
-        if (job.status === "processing") poll(job.id, "swap");
-        if (job.status === "completed") await loadJobResults(job.id, "swap");
-      }
-      const updatedGallery = await fetch("/api/gallery", { headers: { authorization } });
-      if (updatedGallery.ok) setGallery(((await updatedGallery.json()) as { items: GalItem[] }).items.filter((item) => item.url));
-    }
   }, [token]);
   useEffect(() => { void init(); }, [init]);
   useEffect(() => {
@@ -230,15 +210,11 @@ export default function ToolsPage() {
           /* eslint-disable-next-line @next/next/no-img-element -- local preview or signed URL */
           <img src={swapPreview || gallery.find((item) => item.assetId === swapAsset)?.url || ""} alt="Átalakítandó kép előnézete" style={{ display: "block", maxWidth: "100%", maxHeight: 350, objectFit: "contain", borderRadius: 8 }} />
         )}
-        <details style={{ marginTop: 12 }}>
-          <summary>Korábbi képet választok a galériából</summary>
-          <Picker media="image" selected={swapAsset} onSelect={(id) => { setSwapAsset(id); setSwapPreview(""); }} />
-        </details>
         <div style={{ display: "flex", gap: 8, marginTop: 8, alignItems: "center" }}>
           <button disabled={busyKey !== null || !swapAsset || !toolChar}
             onClick={() => run("fullSwap", "image_edit", {
               imageAssetIds: [swapAsset], useCharacterReference: true,
-              prompt: "Use image 1 as the exact base photograph, retaining its camera angle, framing, pose, body position, background and lighting. Replace the depicted adult with the adult character in image 2, faithfully matching the character's face and recognizable features. Keep the finished photograph in the composition of image 1. Natural realistic anatomy; no extra limbs or fingers. Image 2 is for character identity only, never use its portrait background or pose.",
+              prompt: "Use image 1 as the exact base photograph, retaining its camera angle, framing, pose, body position, background and lighting. Replace the depicted adult with the same adult character shown in reference images 2 and 3; faithfully match the character's consistent face and recognizable features. Keep the finished photograph in the composition of image 1. Natural realistic anatomy; no extra limbs or fingers. Reference images are for character identity only, never copy their portrait background or pose.",
             }, { characterId: toolChar })}>Kép elkészítése a karakterrel</button>
           <Badge k="fullSwap" /><Price k="fullSwap" />
         </div>
