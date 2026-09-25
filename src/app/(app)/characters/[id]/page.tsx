@@ -232,17 +232,17 @@ export default function CharacterDetailPage({ params }: { params: Promise<{ id: 
         <h3 style={{ marginTop: 0 }}>Karakter létrehozása</h3>
         <p className="muted">A referenciafájlok épségét a szerver ellenőrzi. A szereplő azonosságát és a tesztkép hasonlóságát jelenleg te hagyod jóvá a képek megtekintése után.</p>
         <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-          <button className="ghost" disabled={busy || refs.length === 0 || !providers?.referenceQc}
-            onClick={() => startJob("reference_qc", { refIds: refs.map((r) => r.id) })}>1. Referencia-QC</button>
+          {providers?.referenceQc && <button className="ghost" disabled={busy || refs.length === 0}
+            onClick={() => startJob("reference_qc", { refIds: refs.map((r) => r.id) })}>1. Automatikus referencia-QC</button>}
           <button className="ghost" disabled={busy || refs.length < 3 || character.status !== "collecting_refs"}
             onClick={() => manualReview("references")}>1. Referenciák kézi jóváhagyása</button>
           <button className="ghost" disabled={busy || approvedRefs.length < 3 || !providers?.training}
             onClick={startTraining}>2. Tréning (LoRA)</button>
           <button className="ghost" disabled={busy || versions.length === 0 || !providers?.testImage}
             onClick={startTestImage}>3. Tesztkép</button>
-          <button className="ghost" disabled={busy || !latestRealVersion || !providers?.identityCheck}
+          {providers?.identityCheck && <button className="ghost" disabled={busy || !latestRealVersion}
             title={latestRealVersion ? "" : "Mock tréning után nem elérhető – éles providerrel (fal/Replicate) tanított verzió kell"}
-            onClick={() => startJob("identity_check", {})}>4. Azonosság-ellenőrzés</button>
+            onClick={() => startJob("identity_check", {})}>4. Automatikus azonosság-ellenőrzés</button>}
           <button className="ghost" disabled={busy || character.status !== "test_pending" || !latestRealVersion?.test_image_asset_id || !previews[latestRealVersion.test_image_asset_id]}
             onClick={() => manualReview("test_image", latestRealVersion?.id)}>4. Tesztkép kézi jóváhagyása</button>
           <button disabled={busy || !active || !providers?.generation}
