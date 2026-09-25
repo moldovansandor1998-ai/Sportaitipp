@@ -62,11 +62,22 @@ export default function ToolsPage() {
     // A korábban elindított Swap feladatot is folytatjuk oldalváltás után.
     const { data: pending } = await getSb().from("generation_jobs")
       .select("id,status,error").eq("owner_id", user.id).eq("type", "character_swap")
-      .eq("status", "processing").order("created_at", { ascending: false }).limit(1);
-    if (pending?.[0]) {
-      const job = pending[0] as JobRow;
-      setJobs((m) => ({ ...m, swap: job }));
-      poll(job.id, "swap");
+      .eq("status", "processing").order("created_at", { ascending: false }).limit(10);
+    if (pending?.length) {
+      const authorization = `Bearer ${await token()}`;
+      await Promise.allSettled(pending.map((job) => fetch(`/api/jobs/${job.id}/refresh`, {
+        method: "POST", headers: { authorization },
+      })));
+      const { data: latest } = await getSb().from("generation_jobs")
+        .select("id,status,error").eq("id", pending[0].id).single();
+      if (latest) {
+        const job = latest as JobRow;
+        setJobs((m) => ({ ...m, swap: job }));
+        if (job.status === "processing") poll(job.id, "swap");
+        if (job.status === "completed") await loadJobResults(job.id, "swap");
+      }
+      const updatedGallery = await fetch("/api/gallery", { headers: { authorization } });
+      if (updatedGallery.ok) setGallery(((await updatedGallery.json()) as { items: GalItem[] }).items.filter((item) => item.url));
     }
   }, [token]);
   useEffect(() => { void init(); }, [init]);
