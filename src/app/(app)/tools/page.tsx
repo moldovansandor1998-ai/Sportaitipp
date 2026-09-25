@@ -61,22 +61,27 @@ export default function ToolsPage() {
     // A karakteres képszerkesztés állapota oldalváltás után is visszatölthető.
     const { data: latestEdits } = await getSb().from("generation_jobs")
       .select("id,status,error").eq("owner_id", user.id).eq("type", "character_swap")
-      .not("character_id", "is", null).order("created_at", { ascending: false }).limit(1);
+      .not("character_id", "is", null).order("created_at", { ascending: false }).limit(10);
     const latestEdit = latestEdits?.[0] as JobRow | undefined;
     if (latestEdit) {
       setJobs((current) => ({ ...current, fullSwap: latestEdit }));
       if (latestEdit.status === "processing") poll(latestEdit.id, "fullSwap");
       if (latestEdit.status === "completed") await loadJobResults(latestEdit.id, "fullSwap");
-      if (latestEdit.status === "refunded" && latestEdit.error?.message === "URL_HOST_NOT_ALLOWED") {
-        const recovered = await fetch(`/api/jobs/${latestEdit.id}/recover-face-swap`, {
+      let restored = 0;
+      for (const edit of (latestEdits ?? []) as JobRow[]) {
+        if (edit.status !== "refunded" || edit.error?.message !== "URL_HOST_NOT_ALLOWED") continue;
+        const recovered = await fetch(`/api/jobs/${edit.id}/recover-face-swap`, {
           method: "POST", headers: { authorization: `Bearer ${await token()}` },
         });
         if (recovered.ok) {
-          await loadJobResults(latestEdit.id, "fullSwap");
-          const updatedGallery = await fetch("/api/gallery", { headers: { authorization: `Bearer ${await token()}` } });
-          if (updatedGallery.ok) setGallery(((await updatedGallery.json()) as { items: GalItem[] }).items.filter((i) => i.url));
-          setMsg((current) => ({ ...current, fullSwap: "A korábban elkészült kép helyreállítva a Galériában." }));
+          restored++;
+          if (edit.id === latestEdit.id) await loadJobResults(edit.id, "fullSwap");
         }
+      }
+      if (restored > 0) {
+        const updatedGallery = await fetch("/api/gallery", { headers: { authorization: `Bearer ${await token()}` } });
+        if (updatedGallery.ok) setGallery(((await updatedGallery.json()) as { items: GalItem[] }).items.filter((i) => i.url));
+        setMsg((current) => ({ ...current, fullSwap: `${restored} korábbi kép helyreállítva a Galériában.` }));
       }
     }
   }, [token]);
