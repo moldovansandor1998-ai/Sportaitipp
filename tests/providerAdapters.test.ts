@@ -51,6 +51,18 @@ describe("fal.ai adapter (hivatalos Queue API)", () => {
     expect(out.meta.seed).toBe(42);
   });
 
+  it("training result: a LoRA súlyfájl URL-jét menthető szöveggé alakítja", async () => {
+    stubFetch(() => ({ status: 200, body: {
+      diffusers_lora_file: { url: "https://fal.media/weights.safetensors" },
+      config_file: { url: "https://fal.media/config.json" },
+    } }));
+    const out = await new FalAdapter().getResult("req_train", {
+      endpoint: "fal-ai/flux-lora-fast-training",
+    }, "character_training");
+    expect(out.meta.weightsUrl).toBe("https://fal.media/weights.safetensors");
+    expect(out.meta.configFileUrl).toBe("https://fal.media/config.json");
+  });
+
   it("failure: 429 retryable rate_limit, 401 non-retryable auth", async () => {
     stubFetch(() => ({ status: 429, body: {} }));
     await expect(new FalAdapter().submit(params)).rejects.toMatchObject({ retryable: true, category: "rate_limit" });
