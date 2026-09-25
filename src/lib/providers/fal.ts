@@ -156,13 +156,6 @@ const MODELS: Partial<Record<JobType, FalModelSpec>> = {
     mapInput: (p) => ({ prompt: p.prompt, video_url: p.videoUrl, duration: p.duration ?? "5", aspect_ratio: p.aspectRatio ?? "16:9" }),
     mapOutput: (raw) => ({ files: file("video")(raw.video), meta: {} }),
   },
-  character_swap: {
-    // Arccsere: alapkép + cserefotó (a karakter referenciája)
-    endpoint: "fal-ai/face-swap",
-    estimate: 40,
-    mapInput: (p) => ({ base_image_url: p.imageUrl, swap_image_url: p.swapImageUrl }),
-    mapOutput: (raw) => ({ files: file("image")(raw.image ?? raw.images), meta: {} }),
-  },
   talking_video: {
     // Kép helyett VIDEÓ + hang → beszélő videó (sync-lips)
     endpoint: "fal-ai/sync-lips",
