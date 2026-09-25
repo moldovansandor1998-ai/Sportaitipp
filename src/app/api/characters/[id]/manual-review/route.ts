@@ -44,7 +44,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   let total = 0;
   for (const ref of refs) {
     const { data: asset } = await svc.from("assets")
-      .select("bucket,object_path,content_type,bytes,sha256")
+      .select("id,bucket,object_path,content_type,bytes,sha256")
       .eq("id", ref.asset_id).eq("owner_id", user.id).single();
     if (!asset || asset.bucket !== "references" || asset.bytes > TRAINING_LIMITS.maxFileBytes) {
       return NextResponse.json({ error: "INVALID_REFERENCE_ASSET" }, { status: 422 });
@@ -57,6 +57,11 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     if (downloadError || !blob) return NextResponse.json({ error: "REFERENCE_DOWNLOAD_FAILED" }, { status: 502 });
     const check = inspectReferenceFile(Buffer.from(await blob.arrayBuffer()), asset, seen);
     if (!check.ok) return NextResponse.json({ error: check.error, referenceId: ref.id }, { status: 422 });
+    if (check.contentType !== asset.content_type) {
+      const { error: correctionError } = await svc.from("assets")
+        .update({ content_type: check.contentType }).eq("id", asset.id).eq("owner_id", user.id);
+      if (correctionError) return NextResponse.json({ error: "IMAGE_METADATA_UPDATE_FAILED" }, { status: 500 });
+    }
   }
   const { data, error } = await svc.rpc("approve_character_references_manual", {
     p_character: id, p_owner: user.id, p_ref_ids: refs.map((r) => r.id),
