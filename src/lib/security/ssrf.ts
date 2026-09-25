@@ -22,6 +22,7 @@ ALLOWED_HOSTS.add("v3b.fal.media");          // fal.ai FLUX LoRA képkimenet
 ALLOWED_HOSTS.add("replicate.delivery");
 ALLOWED_HOSTS.add("cdn.wavespeed.ai");      // WaveSpeed arccsere-kimenetek
 ALLOWED_HOSTS.add("d2h7xmz5gqybh9.cloudfront.net"); // WaveSpeed tényleges képkimenet
+ALLOWED_HOSTS.add("i.pinimg.com"); // Pinterest hivatalos Pin-kép CDN, csak HTTPS
 
 export function assertAllowedUrl(raw: string): URL {
   const url = new URL(raw);
