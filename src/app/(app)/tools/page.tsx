@@ -59,6 +59,14 @@ export default function ToolsPage() {
   const init = useCallback(async () => {
     const { data: { user } } = await getSb().auth.getUser();
     if (!user) return;
+    const batchResponse = await fetch("/api/jobs/batch", { headers: { authorization: `Bearer ${await token()}` } });
+    if (batchResponse.ok) {
+      const batch = await batchResponse.json() as { items: Array<{ filename: string; status: string; job_id: string | null; jobStatus: string | null; error: string | null }> };
+      setBulkStatus(batch.items.map((item) => ({
+        name: item.filename, jobId: item.job_id ?? undefined,
+        state: item.jobStatus ?? (item.status === "pending" || item.status === "claimed" ? "sorban" : item.error ?? item.status),
+      })));
+    }
     const res = await fetch("/api/gallery", { headers: { authorization: `Bearer ${await token()}` } });
     if (res.ok) {
       const items = ((await res.json()) as { items: GalItem[] }).items.filter((i) => i.url);
@@ -107,6 +115,21 @@ export default function ToolsPage() {
     pollerRef.current ??= new JobPoller({ intervalMs: 8000, maxAttempts: 240, maxConsecutiveErrors: 3, isTerminal: (s) => TERMINAL_STATUSES.includes(s) });
     return () => pollerRef.current?.stopAll();
   }, []);
+  useEffect(() => {
+    const refresh = async () => {
+      const accessToken = await token();
+      if (!accessToken) return;
+      const response = await fetch("/api/jobs/batch", { headers: { authorization: `Bearer ${accessToken}` } });
+      if (!response.ok) return;
+      const batch = await response.json() as { items: Array<{ filename: string; status: string; job_id: string | null; jobStatus: string | null; error: string | null }> };
+      if (batch.items.length) setBulkStatus(batch.items.map((item) => ({
+        name: item.filename, jobId: item.job_id ?? undefined,
+        state: item.jobStatus ?? (item.status === "pending" || item.status === "claimed" ? "sorban" : item.error ?? item.status),
+      })));
+    };
+    const timer = window.setInterval(() => { if (!bulkBusyRef.current) void refresh(); }, 15000);
+    return () => window.clearInterval(timer);
+  }, [token]);
 
   async function loadJobResults(jobId: string, key: string) {
     const res = await fetch(`/api/jobs/${jobId}`, { headers: { authorization: `Bearer ${await token()}` } });
@@ -188,6 +211,7 @@ export default function ToolsPage() {
     try {
       const accessToken = await token();
       if (!accessToken) throw new Error("Jelentkezz be újra a feltöltéshez.");
+      const uploadedFiles: Array<{ assetId: string; name: string }> = [];
       for (let i = 0; i < bulkFiles.length; i++) {
         const file = bulkFiles[i];
         update(i, { state: "feltöltés" });
@@ -196,20 +220,22 @@ export default function ToolsPage() {
           const uploaded = await fetch("/api/assets/import", { method: "POST", headers: { authorization: `Bearer ${accessToken}` }, body: form });
           const imported = await uploaded.json() as { assetId?: string; error?: string };
           if (!uploaded.ok || !imported.assetId) throw new Error(imported.error ?? "Feltöltési hiba");
-          update(i, { state: "indítás" });
-          const body = { type: "character_swap", characterId: toolChar,
-            payload: { sourceAssetId: imported.assetId, useCharacterReference: true, editModel: characterEditModel } };
-          const estimated = await fetch("/api/jobs/estimate", { method: "POST", headers: { authorization: `Bearer ${accessToken}`, "content-type": "application/json" }, body: JSON.stringify(body) });
-          if (!estimated.ok) throw new Error("A képszerkesztés nem indítható.");
-          const result = await startJobWithTracker({ tracker: createAttemptTracker(), fetchImpl: fetch, token: accessToken, body });
-          if ("skipped" in result || !result.ok || !result.jobId) throw new Error("skipped" in result ? "Nem indult el" : result.error ?? "Indítási hiba");
-          update(i, { state: "feldolgozás", jobId: result.jobId });
-          poll(result.jobId, `bulkSwap:${result.jobId}`);
+          uploadedFiles.push({ assetId: imported.assetId, name: file.name });
+          update(i, { state: "feltöltve" });
         } catch (error) {
           update(i, { state: `hiba: ${error instanceof Error ? error.message : "ismeretlen hiba"}` });
         }
       }
-      setBulkFiles([]);
+      if (uploadedFiles.length) {
+        const response = await fetch("/api/jobs/batch", {
+          method: "POST", headers: { authorization: `Bearer ${accessToken}`, "content-type": "application/json" },
+          body: JSON.stringify({ characterId: toolChar, editModel: characterEditModel, files: uploadedFiles }),
+        });
+        if (!response.ok) throw new Error("A képek feltöltődtek, de a háttérfeldolgozás indítása nem sikerült. Ne töltsd fel újra; jelezd a hibát.");
+        setBulkStatus((current) => current.map((row) => row.state === "feltöltve" ? { ...row, state: "sorban" } : row));
+        setMsg((current) => ({ ...current, bulkSwap: `${uploadedFiles.length} kép sorba állítva. Most már elhagyhatod vagy frissítheted az oldalt.` }));
+        setBulkFiles([]);
+      }
     } catch (error) {
       setMsg((current) => ({ ...current, bulkSwap: error instanceof Error ? error.message : "Hiba történt" }));
     } finally {
@@ -359,6 +385,7 @@ export default function ToolsPage() {
             setMsg((current) => ({ ...current, bulkSwap: "" }));
           }} />
         <p id="character-source-hint" className="muted">A telefon fotóválasztójában több képet is jelölj ki, majd nyomd meg a Kész gombot.</p>
+        <p className="muted">A feltöltés befejezéséig maradj az oldalon. Amikor megjelenik a „sorba állítva” üzenet, a képek és videók az oldal bezárása után is feldolgozódnak.</p>
         {bulkFiles.length > 0 && <div role="status" style={{ margin: "8px 0 16px" }}>
           <p>{bulkFiles.length} kép kiválasztva</p>
           <button disabled={busyKey !== null || !toolChar || !cfg?.faceSwapConfigured}
