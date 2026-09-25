@@ -1,6 +1,7 @@
 import { MockProvider } from "./mock";
 import { FalAdapter } from "./fal";
 import { ReplicateAdapter } from "./replicate";
+import { WaveSpeedAdapter } from "./wavespeed";
 import { ProviderRouter } from "./router";
 import { JobType, ProviderAdapter, ProviderError } from "./types";
 
@@ -12,6 +13,7 @@ export function buildRouter(extra: ProviderAdapter[] = []): ProviderRouter {
   const real: ProviderAdapter[] = [];
   if (process.env.FAL_KEY) real.push(new FalAdapter());
   if (process.env.REPLICATE_API_TOKEN) real.push(new ReplicateAdapter());
+  if (process.env.WAVESPEED_API_KEY) real.push(new WaveSpeedAdapter());
 
   // PRODUCTION-ben a mock SEMMILYEN kapcsolóval nem engedélyezhető.
   const isProd = process.env.NODE_ENV === "production";
@@ -27,6 +29,7 @@ export function buildRouter(extra: ProviderAdapter[] = []): ProviderRouter {
 
   const primaryFor = (jobType: JobType): string => {
     if (real.length > 0) {
+      if (jobType === "character_swap" && real.some((a) => a.name === "wavespeed")) return "wavespeed";
       const fal = real.find((a) => a.name === "fal");
       if (fal && fal.supports.includes(jobType)) return "fal";
       const rep = real.find((a) => a.name === "replicate");
