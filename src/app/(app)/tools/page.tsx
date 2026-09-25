@@ -39,6 +39,9 @@ export default function ToolsPage() {
   const [ttsText, setTtsText] = useState(""); const [ttsVoice, setTtsVoice] = useState("Jennifer (en)");
   const [simpleAsset, setSimpleAsset] = useState("");           // i2p/upscale/bgremoval/skin/fix
   const [swapAsset, setSwapAsset] = useState(""); const [swapPreview, setSwapPreview] = useState("");
+  const [bulkFiles, setBulkFiles] = useState<File[]>([]);
+  const [bulkStatus, setBulkStatus] = useState<Array<{ name: string; state: string; jobId?: string }>>([]);
+  const bulkBusyRef = useRef(false);
   const [pinterestQuery, setPinterestQuery] = useState("");
   const [pinterestPins, setPinterestPins] = useState<Array<{ id: string; imageUrl: string; pinUrl: string }>>([]);
   const [pinterestMessage, setPinterestMessage] = useState("");
@@ -66,7 +69,7 @@ export default function ToolsPage() {
     // A karakteres képszerkesztés állapota oldalváltás után is visszatölthető.
     const { data: latestEdits } = await getSb().from("generation_jobs")
       .select("id,status,error").eq("owner_id", user.id).eq("type", "character_swap")
-      .not("character_id", "is", null).order("created_at", { ascending: false }).limit(10);
+      .not("character_id", "is", null).order("created_at", { ascending: false }).limit(50);
     const latestEdit = latestEdits?.[0] as JobRow | undefined;
     if (latestEdit) {
       setJobs((current) => ({ ...current, fullSwap: latestEdit }));
@@ -135,6 +138,46 @@ export default function ToolsPage() {
     if (!res.ok) { setMsg((m) => ({ ...m, upload: "Import hiba" })); return null; }
     onFile?.(file);
     return ((await res.json()) as { assetId: string }).assetId;
+  }
+
+  async function startBulkEdits() {
+    if (bulkBusyRef.current || !bulkFiles.length || !toolChar || !cfg?.faceSwapConfigured) return;
+    bulkBusyRef.current = true;
+    setBusyKey("bulkSwap");
+    setBulkStatus(bulkFiles.map((file) => ({ name: file.name, state: "várakozik" })));
+    const update = (index: number, change: Partial<{ name: string; state: string; jobId: string }>) =>
+      setBulkStatus((current) => current.map((row, i) => i === index ? { ...row, ...change } : row));
+    try {
+      const accessToken = await token();
+      if (!accessToken) throw new Error("Jelentkezz be újra a feltöltéshez.");
+      for (let i = 0; i < bulkFiles.length; i++) {
+        const file = bulkFiles[i];
+        update(i, { state: "feltöltés" });
+        try {
+          const form = new FormData(); form.append("file", file);
+          const uploaded = await fetch("/api/assets/import", { method: "POST", headers: { authorization: `Bearer ${accessToken}` }, body: form });
+          const imported = await uploaded.json() as { assetId?: string; error?: string };
+          if (!uploaded.ok || !imported.assetId) throw new Error(imported.error ?? "Feltöltési hiba");
+          update(i, { state: "indítás" });
+          const body = { type: "character_swap", characterId: toolChar,
+            payload: { sourceAssetId: imported.assetId, useCharacterReference: true, editModel: characterEditModel } };
+          const estimated = await fetch("/api/jobs/estimate", { method: "POST", headers: { authorization: `Bearer ${accessToken}`, "content-type": "application/json" }, body: JSON.stringify(body) });
+          if (!estimated.ok) throw new Error("A képszerkesztés nem indítható.");
+          const result = await startJobWithTracker({ tracker: createAttemptTracker(), fetchImpl: fetch, token: accessToken, body });
+          if ("skipped" in result || !result.ok || !result.jobId) throw new Error("skipped" in result ? "Nem indult el" : result.error ?? "Indítási hiba");
+          update(i, { state: "feldolgozás", jobId: result.jobId });
+          poll(result.jobId, `bulkSwap:${result.jobId}`);
+        } catch (error) {
+          update(i, { state: `hiba: ${error instanceof Error ? error.message : "ismeretlen hiba"}` });
+        }
+      }
+      setBulkFiles([]);
+    } catch (error) {
+      setMsg((current) => ({ ...current, bulkSwap: error instanceof Error ? error.message : "Hiba történt" }));
+    } finally {
+      bulkBusyRef.current = false;
+      setBusyKey(null);
+    }
   }
 
   async function searchPinterest() {
@@ -295,6 +338,31 @@ export default function ToolsPage() {
         </div>
         <Results k="fullSwap" kind="image" />
         {msg.fullSwap && <p className="muted">{msg.fullSwap}</p>}
+        <div style={{ borderTop: "1px solid var(--border)", marginTop: 20, paddingTop: 16 }}>
+          <h4 style={{ margin: "0 0 8px" }}>Tömeges képfeltöltés</h4>
+          <p className="muted">Válassz ki egyszerre legfeljebb 20 képet. Mindegyikhez a fenti karaktert és szerkesztő modellt használjuk.</p>
+          <input type="file" accept="image/png,image/jpeg,image/webp" multiple disabled={busyKey !== null}
+            onChange={(event) => {
+              const selected = Array.from(event.target.files ?? []);
+              if (selected.length > 20) {
+                setMsg((current) => ({ ...current, bulkSwap: "Egyszerre legfeljebb 20 képet választhatsz." }));
+                event.target.value = "";
+                return;
+              }
+              setBulkFiles(selected);
+              setBulkStatus([]);
+              setMsg((current) => ({ ...current, bulkSwap: "" }));
+            }} />
+          {bulkFiles.length > 0 && <p className="muted">{bulkFiles.length} kép kiválasztva</p>}
+          <button style={{ marginTop: 10 }} disabled={busyKey !== null || bulkFiles.length === 0 || !toolChar || !cfg?.faceSwapConfigured}
+            onClick={() => void startBulkEdits()}>Mind a {bulkFiles.length || 0} kép elkészítése</button>
+          {msg.bulkSwap && <p role="status" className="muted">{msg.bulkSwap}</p>}
+          {bulkStatus.length > 0 && <div role="status" style={{ marginTop: 12 }}>
+            {bulkStatus.map((item, index) => <p key={`${index}-${item.name}`} style={{ margin: "4px 0" }}>
+              {index + 1}. {item.name}: {item.jobId ? (jobs[`bulkSwap:${item.jobId}`]?.status ?? item.state) : item.state}
+            </p>)}
+          </div>}
+        </div>
       </div>
 
       <div className="card" style={{ marginTop: 12 }}>
