@@ -211,7 +211,7 @@ export default function ToolsPage() {
 
       <div className="card" style={{ marginTop: 12 }}>
         <h3 style={{ marginTop: 0 }}>Karakter ráhelyezése képre</h3>
-        <p className="muted">Tölts fel egy képet. A rendszer az eredeti pózt és hátteret megtartva a kiválasztott karaktert helyezi rá. A karakter referenciáit automatikusan használja.</p>
+        <p className="muted">Válaszd ki a betanított karaktert, és tölts fel egy átalakítandó képet. A rendszer a karakter betanított modelljével új képet készít az eredeti póz és háttér alapján. A végeredmény eltérhet az eredetitől.</p>
         <button className="ghost" disabled={busyKey !== null} style={{ margin: "8px 0 12px" }} onClick={async () => {
           const id = await upload("image/*", (file) => setSwapPreview(URL.createObjectURL(file)));
           if (id) { setSwapAsset(id); setResults((current) => ({ ...current, fullSwap: [] })); setJobs((current) => { const next = { ...current }; delete next.fullSwap; return next; }); }
@@ -223,8 +223,8 @@ export default function ToolsPage() {
         <div style={{ display: "flex", gap: 8, marginTop: 8, alignItems: "center" }}>
           <button disabled={busyKey !== null || !swapAsset || !toolChar}
             onClick={() => run("fullSwap", "image_edit", {
-              imageAssetIds: [swapAsset], useCharacterReference: true,
-              prompt: "Use image 1 as the exact base photograph, retaining its camera angle, framing, pose, body position, background and lighting. Replace the depicted adult with the same adult character shown in reference images 2 and 3; faithfully match the character's consistent face and recognizable features. Keep the finished photograph in the composition of image 1. Natural realistic anatomy; no extra limbs or fingers. Reference images are for character identity only, never copy their portrait background or pose.",
+              imageAssetIds: [swapAsset], useTrainedCharacter: true,
+              prompt: "Photorealistic photograph of the trained adult character in the same pose, camera angle, composition, clothing and setting as the source photograph. Preserve the background, perspective and natural lighting. Realistic anatomy, natural hands and limbs, consistent facial identity.",
             }, { characterId: toolChar })}>Kép elkészítése a karakterrel</button>
           <Badge k="fullSwap" /><Price k="fullSwap" />
         </div>
