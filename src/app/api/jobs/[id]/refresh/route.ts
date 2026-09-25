@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { serviceClient } from "@/lib/supabase/server";
 import { buildRouter } from "@/lib/providers";
+import { ProviderError } from "@/lib/providers/types";
 import { failJob, finalizeJob, type JobRow } from "@/server/jobs/runJob";
 
 export const runtime = "nodejs";
@@ -34,6 +35,12 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     return NextResponse.json({ status: updated?.status ?? row.status, error: updated?.error ?? null });
   } catch (e) {
     console.error(JSON.stringify({ scope: "jobs.refresh", jobId: id, error: String(e) }));
+    // A fal 400/422 végleges kéréselutasítás. Ne hagyjuk a feladatot örökre
+    // processing állapotban, és a lefoglalt kreditet adjuk vissza.
+    if (e instanceof ProviderError && /^fal (400|422)(?:\b|:)/.test(e.message)) {
+      await failJob(row, "A képszerkesztő szolgáltató elutasította ezt a képet (400/422).");
+      return NextResponse.json({ status: "refunded", error: "PROVIDER_REJECTED_IMAGE" });
+    }
     return NextResponse.json({ error: "PROVIDER_STATUS_UNAVAILABLE" }, { status: 502 });
   }
 }
