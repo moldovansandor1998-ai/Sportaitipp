@@ -1,0 +1,112 @@
+name: CI
+on:
+  push:
+    branches: [main, staging]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22.22.0
+          cache: npm
+      - run: npm install --global npm@11.9.0
+      - name: Install (lockfile-ból)
+        run: npm ci
+      - name: TypeScript
+        run: npm run typecheck
+      - name: Lint
+        run: npm run lint
+      - name: Unit tesztek
+        run: npm test
+      - name: Production build
+        run: npm run build
+      - name: Dependency audit
+        run: npm audit --omit=dev
+      - name: Lockfile naprakészség (nem-destruktív)
+        run: |
+          cp package-lock.json /tmp/lock.bak
+          npm install --package-lock-only --no-audit
+          git diff --exit-code package-lock.json || { cp /tmp/lock.bak package-lock.json; echo "package-lock.json elavult"; exit 1; }
+
+  db:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22.22.0
+          cache: npm
+      - run: npm install --global npm@11.9.0
+      - uses: supabase/setup-cli@v1
+        with:
+          version: 2.15.8   # rögzített, reprodukálható
+      - name: Függőségek (integrációs tesztekhez)
+        run: npm ci
+      - name: Helyi Supabase indítása
+        run: supabase start
+      - name: Migrációk üres adatbázison
+        run: supabase db reset
+      - name: Valódi psql-kapcsolat + integrációs env
+        run: |
+          set -a
+          eval "$(supabase status -o env)"
+          set +a
+          {
+            echo "DB_URL=$DB_URL"
+            echo "SUPABASE_URL=$API_URL"
+            echo "SUPABASE_SERVICE_ROLE_KEY=$SERVICE_ROLE_KEY"
+            echo "NEXT_PUBLIC_SUPABASE_URL=$API_URL"
+            echo "NEXT_PUBLIC_SUPABASE_ANON_KEY=$ANON_KEY"
+          } >> "$GITHUB_ENV"
+      - name: Kétfelhasználós RLS- és privilégium-teszt
+        run: psql "$DB_URL" -v ON_ERROR_STOP=1 -f tests/db/rls.sql
+      - name: RPC / függvényjog / kredit-atomiság teszt
+        run: psql "$DB_URL" -v ON_ERROR_STOP=1 -f tests/db/rpc.sql
+      - name: Teljes DB/integrációs tesztcsomag
+        env:
+          INTEGRATION: "1"
+          SUPABASE_URL: ${{ env.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ env.SUPABASE_SERVICE_ROLE_KEY }}
+          NEXT_PUBLIC_SUPABASE_URL: ${{ env.NEXT_PUBLIC_SUPABASE_URL }}
+          NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ env.NEXT_PUBLIC_SUPABASE_ANON_KEY }}
+        run: |
+          npx vitest run tests/integration tests/adminReconcile.test.ts \
+            --reporter=json \
+            --outputFile=/tmp/integration-report.json
+      - name: Integrációs riport-ellenőrzés (4 fájl, 0 failed, 0 skipped)
+        run: |
+          node -e " \
+            const fs = require('fs'); \
+            if (!fs.existsSync('/tmp/integration-report.json')) { console.error('HIANYZIK a JSON riport'); process.exit(1); } \
+            let r; try { r = JSON.parse(fs.readFileSync('/tmp/integration-report.json', 'utf8')); } catch (e) { console.error('HIBAS JSON riport'); process.exit(1); } \
+            if (r.numFailedTests !== 0) { console.error('FAILED: ' + r.numFailedTests); process.exit(1); } \
+            const skipped = r.numTotalTests - r.numPassedTests - r.numFailedTests; \
+            if (skipped !== 0) { console.error('SKIP: ' + skipped); process.exit(1); } \
+            const files = r.testResults.map(t => t.name); \
+            for (const f of ['mockFlow.test.ts', 'submissionUncertain.test.ts', 'trainingPrep.test.ts', 'adminReconcile.test.ts']) { \
+              if (!files.some(x => x.includes(f))) { console.error('HIANYZIK fajl: ' + f); process.exit(1); } \
+            } \
+            console.log('INTEGRATION REPORT OK: ' + r.numTotalTests + ' teszt, 0 failed, 0 skipped, 4 fajl'); \
+          "
+
+  smoke:
+    if: github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22.22.0
+          cache: npm
+      - run: npm install --global npm@11.9.0
+      - run: npm ci
+      - name: LIVE smoke (valódi kép fal.ai-val)
+        env:
+          LIVE: "1"
+          FAL_KEY: ${{ secrets.FAL_KEY }}
+        run: npx vitest run tests/live
