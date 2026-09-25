@@ -19,6 +19,16 @@ export async function GET(req: NextRequest) {
 
   const svc = serviceClient();
   const albumId = req.nextUrl.searchParams.get("albumId");
+  const characterId = req.nextUrl.searchParams.get("characterId");
+  if (characterId && characterId !== "unassigned") {
+    if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(characterId)) {
+      return NextResponse.json({ error: "INVALID_CHARACTER_ID" }, { status: 400 });
+    }
+    const { data: character, error: characterError } = await svc.from("characters")
+      .select("id").eq("id", characterId).eq("owner_id", user.id).maybeSingle();
+    if (characterError) return NextResponse.json({ error: "CHARACTER_LOOKUP_FAILED" }, { status: 500 });
+    if (!character) return NextResponse.json({ error: "CHARACTER_NOT_FOUND" }, { status: 404 });
+  }
   if (albumId && albumId !== "all" && !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(albumId)) {
     return NextResponse.json({ error: "INVALID_ALBUM_ID" }, { status: 400 });
   }
@@ -38,6 +48,8 @@ export async function GET(req: NextRequest) {
     .eq("owner_id", user.id).is("deleted_at", null)
     .order("created_at", { ascending: false }).limit(100);
   if (albumId && albumId !== "all") query = query.eq("album_id", albumId);
+  if (characterId === "unassigned") query = query.is("character_id", null);
+  else if (characterId) query = query.eq("character_id", characterId);
   const { data: rows, error: rowsError } = await query;
   if (rowsError) return NextResponse.json({ error: "GALLERY_LOOKUP_FAILED" }, { status: 500 });
   const items = (rows ?? []) as unknown as GalleryRow[];
