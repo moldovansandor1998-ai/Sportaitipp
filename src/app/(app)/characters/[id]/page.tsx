@@ -290,7 +290,15 @@ export default function CharacterDetailPage({ params }: { params: Promise<{ id: 
           <button className="ghost" disabled={busy || character.status !== "test_pending" || !latestRealVersion?.test_image_asset_id || !previews[latestRealVersion.test_image_asset_id]}
             onClick={() => manualReview("test_image", latestRealVersion?.id)}>4. Tesztkép kézi jóváhagyása</button>
           <button disabled={busy || !active || !providers?.generation}
-            onClick={() => startJob("image_generation", { prompt: "portrait, studio light" })}>5. Képgenerálás</button>
+            onClick={() => startJob("image_generation", {
+              prompt: "Candid realistic photograph of this adult woman from the waist up, natural body proportions and anatomy, relaxed posture, everyday clothing, authentic skin texture with subtle imperfections, natural window light, unretouched documentary photography, 50mm lens",
+              imageSize: "portrait_4_3",
+            })}>5. Élethű félalak</button>
+          <button className="ghost" disabled={busy || !active || !providers?.generation}
+            onClick={() => startJob("image_generation", {
+              prompt: "Candid full body photograph of this adult woman standing naturally, entire person visible from head to shoes, realistic human anatomy and proportions, relaxed pose, everyday clothing, authentic skin texture, natural daylight, unretouched documentary photography, 50mm lens",
+              imageSize: "portrait_4_3",
+            })}>Élethű teljes alak</button>
         </div>
         {error && <p className="error" style={{ marginTop: 12 }}>{error}</p>}
       </div>
