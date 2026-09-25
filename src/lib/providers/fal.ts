@@ -193,7 +193,8 @@ const TRAINED_CHARACTER_EDIT: FalModelSpec = {
     prompt: p.prompt,
     image_url: p.imageUrl,
     loras: [{ path: p.loraPath, scale: 1 }],
-    strength: 0.78,
+    // At high strengths FLUX redraws the scene instead of retaining the input pose.
+    strength: 0.48,
     num_inference_steps: 32,
     num_images: 1,
     enable_safety_checker: true,
