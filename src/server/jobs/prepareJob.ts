@@ -44,6 +44,8 @@ export async function prepareValidatedJobInput(input: {
   if (type === "character_swap" && payload.useCharacterReference === true && !process.env.WAVESPEED_API_KEY) {
     return { type, payload: {}, error: "PROVIDER_MODEL_INVALID", status: 503 };
   }
+  if (type === "video_character_swap" && !process.env.WAVESPEED_API_KEY)
+    return { type, payload: {}, error: "PROVIDER_MODEL_INVALID", status: 503 };
 
   // A kliens által küldött LoRA-adatok KIZÁRÓDNEK – csak sikeres szerveroldali feloldás után kerülnek vissza
   delete payload.loraPath;
@@ -150,7 +152,7 @@ export async function prepareValidatedJobInput(input: {
         .select("bucket,object_path").eq("id", id).eq("owner_id", input.userId).single();
       if (!asset) return [];
       const { data: signed } = await svc.storage.from((asset as { bucket: string }).bucket)
-        .createSignedUrl((asset as { object_path: string }).object_path, 600);
+        .createSignedUrl((asset as { object_path: string }).object_path, 7200);
       if (!signed?.signedUrl) return [];
       urls.push(signed.signedUrl);
     }
@@ -260,6 +262,18 @@ export async function prepareValidatedJobInput(input: {
       payload.editModel = editModel;
     }
     delete payload.sourceAssetId; delete payload.imageAssetIds; delete payload.swapAssetId; delete payload.useCharacterReference;
+  }
+  if (type === "video_character_swap") {
+    const { data: asset } = await svc.from("assets").select("bucket,object_path,media_type")
+      .eq("id", String(payload.videoAssetId)).eq("owner_id", input.userId).eq("media_type", "video").single();
+    if (!asset) return { type, payload: {}, error: "SOURCE_IMAGE_REQUIRED", status: 400 };
+    const { data: signed } = await svc.storage.from(asset.bucket).createSignedUrl(asset.object_path, 7200);
+    const faces = await resolveCharacterFaces();
+    if (!signed?.signedUrl || !faces.length) return { type, payload: {}, error: "IMAGE_INPUT_REQUIRED", status: 409 };
+    payload.videoUrl = signed.signedUrl;
+    payload.faceImageUrl = faces[0];
+    payload.resolution = payload.resolution === "480p" ? "480p" : "720p";
+    delete payload.videoAssetId;
   }
   if (type === "talking_video" || type === "lip_sync") {
     const vAsset = typeof payload.videoAssetId === "string" ? payload.videoAssetId : null;

@@ -10,7 +10,7 @@ const CHARACTER_EDIT_PROMPT = "Image 1 is the source photograph; the subsequent 
 
 export class WaveSpeedAdapter implements ProviderAdapter {
   readonly name = "wavespeed";
-  readonly supports: JobType[] = ["character_swap"];
+  readonly supports: JobType[] = ["character_swap", "video_character_swap"];
 
   private async request(url: string, body?: Record<string, unknown>): Promise<Record<string, unknown>> {
     const res = await fetch(url, {
@@ -26,9 +26,23 @@ export class WaveSpeedAdapter implements ProviderAdapter {
     return raw.data ?? raw as Record<string, unknown>;
   }
 
-  async estimate(): Promise<Estimate> { return { credits: 40, secondsExpected: 60 }; }
+  async estimate(jobType: JobType, payload: Record<string, unknown>): Promise<Estimate> {
+    // The provider caps billing at 120 seconds; never use client-supplied duration to price a job.
+    if (jobType === "video_character_swap") return { credits: 120 * (payload.resolution === "480p" ? 8 : 16), secondsExpected: 180 };
+    return { credits: 40, secondsExpected: 60 };
+  }
 
   async submit(p: SubmitParams): Promise<SubmitResult> {
+    if (p.jobType === "video_character_swap") {
+      const video = p.payload.videoUrl, face = p.payload.faceImageUrl;
+      if (typeof video !== "string" || typeof face !== "string") throw new ProviderError("A videó és a modell arcképe kötelező.", false);
+      const endpoint = "wavespeed-ai/video-head-swap";
+      const data = await this.request(`${API}/${endpoint}`, {
+        video, face_image: face, resolution: p.payload.resolution === "480p" ? "480p" : "720p",
+      });
+      if (typeof data.id !== "string") throw new ProviderError("WaveSpeed did not return a task ID", false);
+      return { providerJobId: data.id, providerMeta: { endpoint } };
+    }
     const characterImages = p.payload.characterImageUrls;
     if (Array.isArray(characterImages) && characterImages.length >= 2
         && characterImages.length <= 4 && characterImages.every((url) => typeof url === "string" && url.startsWith("https://"))) {
@@ -65,14 +79,15 @@ export class WaveSpeedAdapter implements ProviderAdapter {
     return "running";
   }
 
-  async getResult(id: string): Promise<NormalizedOutput> {
+  async getResult(id: string, _meta?: Record<string, unknown>, jobType?: JobType): Promise<NormalizedOutput> {
     const data = await this.result(id);
     if (data.status !== "completed") throw new ProviderError("WaveSpeed result is not ready", true, id);
     const outputs = Array.isArray(data.outputs) ? data.outputs : [];
     const urls = outputs.map((x) => typeof x === "string" ? x : (x as { url?: unknown })?.url)
       .filter((x): x is string => typeof x === "string" && /^https:\/\//.test(x));
-    if (urls.length === 0) throw new ProviderError("WaveSpeed returned no image", false, id);
-    return { files: urls.map((url) => ({ kind: "image" as const, url })), meta: {} };
+    if (urls.length === 0) throw new ProviderError("WaveSpeed returned no output", false, id);
+    const kind = jobType === "video_character_swap" ? "video" as const : "image" as const;
+    return { files: urls.map((url) => ({ kind, url })), meta: {} };
   }
 
   async cancel(): Promise<void> { /* No cancellation API required for this integration. */ }

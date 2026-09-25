@@ -49,6 +49,8 @@ export default function ToolsPage() {
   const [characterEditModel, setCharacterEditModel] = useState<"seedream-v4.5" | "nano-banana">("seedream-v4.5");
   const [talkVideo, setTalkVideo] = useState(""); const [talkAudio, setTalkAudio] = useState("");
   const [v2vVideo, setV2vVideo] = useState(""); const [v2vPrompt, setV2vPrompt] = useState("");
+  const [videoResolution, setVideoResolution] = useState<"480p" | "720p">("720p");
+  const [videoPreview, setVideoPreview] = useState("");
 
   const getSb = () => browserClient();
   const token = useCallback(async () => (await getSb().auth.getSession()).data.session?.access_token ?? "", []);
@@ -138,6 +140,37 @@ export default function ToolsPage() {
     if (!res.ok) { setMsg((m) => ({ ...m, upload: "Import hiba" })); return null; }
     onFile?.(file);
     return ((await res.json()) as { assetId: string }).assetId;
+  }
+
+  async function uploadVideo() {
+    const picker = document.createElement("input");
+    picker.type = "file"; picker.accept = "video/mp4,video/webm";
+    const file = await new Promise<File | null>((resolve) => { picker.onchange = () => resolve(picker.files?.[0] ?? null); picker.click(); });
+    if (!file) return;
+    setBusyKey("videoUpload");
+    setMsg((m) => ({ ...m, videoUpload: "Videó feltöltése…" }));
+    try {
+      if (!["video/mp4", "video/webm"].includes(file.type) || file.size < 1 || file.size > 48 * 1024 * 1024)
+        throw new Error("MP4 vagy WebM videót válassz, legfeljebb 48 MB méretben.");
+      const headers = { authorization: `Bearer ${await token()}`, "content-type": "application/json" };
+      const signed = await fetch("/api/assets/video-upload", { method: "POST", headers,
+        body: JSON.stringify({ contentType: file.type, size: file.size }) });
+      const sign = await signed.json() as { objectPath?: string; token?: string; error?: string };
+      if (!signed.ok || !sign.objectPath || !sign.token) throw new Error(sign.error ?? "Feltöltési hiba");
+      const uploaded = await getSb().storage.from("assets").uploadToSignedUrl(sign.objectPath, sign.token, file, { contentType: file.type });
+      if (uploaded.error) throw new Error(uploaded.error.message);
+      const digest = await crypto.subtle.digest("SHA-256", await file.arrayBuffer());
+      const sha256 = Array.from(new Uint8Array(digest), (n) => n.toString(16).padStart(2, "0")).join("");
+      const finalized = await fetch("/api/assets/video-upload", { method: "PUT", headers,
+        body: JSON.stringify({ objectPath: sign.objectPath, sha256 }) });
+      const result = await finalized.json() as { assetId?: string; error?: string };
+      if (!finalized.ok || !result.assetId) throw new Error(result.error ?? "Nem sikerült menteni a videót.");
+      setV2vVideo(result.assetId);
+      setVideoPreview(URL.createObjectURL(file));
+      setMsg((m) => ({ ...m, videoUpload: "Videó feltöltve. Válassz modellt, majd indítsd az átalakítást." }));
+    } catch (error) {
+      setMsg((m) => ({ ...m, videoUpload: error instanceof Error ? error.message : "Feltöltési hiba" }));
+    } finally { setBusyKey(null); }
   }
 
   async function startBulkEdits() {
@@ -408,6 +441,22 @@ export default function ToolsPage() {
 
       <div className="card" style={{ marginTop: 12 }}>
         <h3 style={{ marginTop: 0 }}>Video-to-Video · Image-to-Video</h3>
+        <h4>Videó átalakítása a kiválasztott modellre</h4>
+        <p className="muted">A videó szereplőjének arca és haja a kiválasztott modellé lesz. A mozgás, test, ruha és háttér az eredeti videóból származik.</p>
+        <button className="ghost" type="button" disabled={busyKey !== null} onClick={() => void uploadVideo()}>Videó feltöltése (MP4 vagy WebM)</button>
+        {msg.videoUpload && <p className="muted">{msg.videoUpload}</p>}
+        {videoPreview && <video controls src={videoPreview} style={{ display: "block", maxWidth: "100%", maxHeight: 320, marginTop: 8 }} />}
+        <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap", marginTop: 8 }}>
+          <select aria-label="Videó felbontás" value={videoResolution} onChange={(e) => setVideoResolution(e.target.value as "480p" | "720p")}>
+            <option value="720p">720p</option><option value="480p">480p</option>
+          </select>
+          <button disabled={busyKey !== null || !toolChar || !v2vVideo} onClick={() => run("videoSwap", "video_character_swap", { videoAssetId: v2vVideo, resolution: videoResolution }, { characterId: toolChar })}>
+            Kiválasztott modell a videóban
+          </button>
+          <Badge k="videoSwap" /><Price k="videoSwap" />
+        </div>
+        <Results k="videoSwap" kind="video" />
+        {msg.videoSwap && <p className="muted">{msg.videoSwap}</p>}
         <label>Forrás (videó az i2v-hez: kép fent)</label>
         <Picker media="video" selected={v2vVideo} onSelect={setV2vVideo} />
         <input placeholder="videó asset ID" value={v2vVideo} onChange={(e) => setV2vVideo(e.target.value)} style={{ marginTop: 6 }} />

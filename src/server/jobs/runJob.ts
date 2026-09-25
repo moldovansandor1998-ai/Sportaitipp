@@ -35,7 +35,7 @@ export async function runClaimedJob(job: JobRow, routerOverride?: ReturnType<typ
     await mustUpdate("generation_jobs", { status: "processing" }, job.id);
     if (job.provider === "mock") {
       const adapter = activeRouter.getAdapter("mock");
-      if (adapter) await finalizeJob(job.id, await adapter.getResult(job.provider_job_id));
+      if (adapter) await finalizeJob(job.id, await adapter.getResult(job.provider_job_id, undefined, job.type as JobType));
     }
     return; // éles provider: webhook/poll folytatja
   }
@@ -64,7 +64,7 @@ export async function runClaimedJob(job: JobRow, routerOverride?: ReturnType<typ
     }
     await mustUpdate("generation_jobs", { status: "processing" }, job.id);
     if (adapter.name === "mock") {
-      const output = await adapter.getResult(providerJobId);
+      const output = await adapter.getResult(providerJobId, undefined, job.type as JobType);
       await finalizeJob(job.id, output);
     }
     // Éles provider: itt a kérés véget ér, a folytatást a provider webhookja indítja.

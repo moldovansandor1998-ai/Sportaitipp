@@ -29,7 +29,7 @@ export function buildRouter(extra: ProviderAdapter[] = []): ProviderRouter {
 
   const primaryFor = (jobType: JobType): string => {
     if (real.length > 0) {
-      if (jobType === "character_swap" && real.some((a) => a.name === "wavespeed")) return "wavespeed";
+      if ((jobType === "character_swap" || jobType === "video_character_swap") && real.some((a) => a.name === "wavespeed")) return "wavespeed";
       const fal = real.find((a) => a.name === "fal");
       if (fal && fal.supports.includes(jobType)) return "fal";
       const rep = real.find((a) => a.name === "replicate");
