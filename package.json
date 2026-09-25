@@ -20,7 +20,8 @@
     "resend": "^4.3.0",
     "server-only": "^0.0.1",
     "svix": "^1.30.0",
-    "zod": "^3.25.0"
+    "zod": "^3.25.0",
+    "sharp": "0.35.4"
   },
   "devDependencies": {
     "@eslint/eslintrc": "^3.3.1",

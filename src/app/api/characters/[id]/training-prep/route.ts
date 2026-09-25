@@ -10,6 +10,7 @@ import { serviceClient } from "@/lib/supabase/server";
 import { buildRouter } from "@/lib/providers";
 import { assertProviderConfigured } from "@/lib/providers";
 import { buildZip, sniffImage, TRAINING_LIMITS } from "@/lib/trainingDataset";
+import sharp from "sharp";
 
 const LIMITS = TRAINING_LIMITS;
 const ALLOWED_PROVIDERS = new Set(["fal", "replicate", "mock"]); // mock: dev/testben
@@ -75,22 +76,34 @@ export async function POST(
   }
 
   // 5) dataset-validáció (magic-byte + kumulatív korlát)
-  const entries = [];
+  const entries: { name: string; data: Buffer }[] = [];
   let totalBytes = 0;
+  let zipImageBytes = 0;
   for (const [i, r] of usable.entries()) {
-    if (totalBytes >= LIMITS.maxTotalBytes) break;
+    if (totalBytes >= LIMITS.maxTotalBytes) return NextResponse.json({ error: "REFERENCE_SET_TOO_LARGE" }, { status: 413 });
     const { data: signed } = await svc.storage.from(r.bucket)
       .createSignedUrl(r.object_path, 120);
     const buf = signed?.signedUrl
       ? await downloadCapped(signed.signedUrl, Math.min(LIMITS.maxFileBytes, LIMITS.maxTotalBytes - totalBytes))
       : null;
-    if (!buf) continue;
+    if (!buf) return NextResponse.json({ error: "REFERENCE_DOWNLOAD_FAILED" }, { status: 502 });
     totalBytes += buf.length;
     const sniffed = sniffImage(buf);
-    if (!sniffed || r.content_type !== sniffed) continue;
-    entries.push({ name: `ref_${String(i + 1).padStart(2, "0")}.${sniffed.split("/")[1].replace("jpeg", "jpg")}`, data: buf });
+    if (!sniffed || r.content_type !== sniffed) return NextResponse.json({ error: "INVALID_REFERENCE_ASSET" }, { status: 422 });
+    // The originals stay in the references bucket. Normalize only the training dataset
+    // so a full set of 25 high-resolution photographs fits into a single provider ZIP.
+    let resized: Buffer;
+    try {
+      resized = await sharp(buf, { limitInputPixels: 40_000_000 }).rotate()
+        .resize(1024, 1024, { fit: "inside", withoutEnlargement: true })
+        .jpeg({ quality: 82, mozjpeg: true }).toBuffer();
+    } catch { return NextResponse.json({ error: "INVALID_REFERENCE_ASSET" }, { status: 422 }); }
+    zipImageBytes += resized.length;
+    if (zipImageBytes + usable.length * 128 > LIMITS.maxZipBytes)
+      return NextResponse.json({ error: "TRAINING_DATASET_TOO_LARGE" }, { status: 413 });
+    entries.push({ name: `ref_${String(i + 1).padStart(2, "0")}.jpg`, data: resized });
   }
-  if (entries.length < LIMITS.minFiles || totalBytes > LIMITS.maxTotalBytes) {
+  if (entries.length !== usable.length || entries.length < LIMITS.minFiles || totalBytes > LIMITS.maxTotalBytes) {
     return NextResponse.json({ error: "DATASET_BUILD_FAILED" }, { status: 413 });
   }
 
@@ -134,6 +147,7 @@ export async function POST(
   }
   const prepKey = randomUUID();                      // stabil kulcs az idempotens claimhez
   const zip = buildZip(entries);
+  if (zip.length > LIMITS.maxZipBytes) return NextResponse.json({ error: "TRAINING_DATASET_TOO_LARGE" }, { status: 413 });
 
   // 8) ATOMI verziófoglalás – a ZIP a catch-ben is elérhető (claim sikertelensége esetén is törlődik)
   let claim: { version_id: string; version_no: number } | null = null;

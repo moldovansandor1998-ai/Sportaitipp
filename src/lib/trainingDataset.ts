@@ -47,8 +47,8 @@ export function sniffMedia(buf: Buffer): string | null {
 export const TRAINING_LIMITS = {
   maxFiles: 40, minFiles: 3,
   maxFileBytes: 8 * 1024 * 1024,
-  maxTotalBytes: 24 * 1024 * 1024,
-  maxZipBytes: 8 * 1024 * 1024,
+  maxTotalBytes: 64 * 1024 * 1024,
+  maxZipBytes: 24 * 1024 * 1024,
 };
 
 /** Minimális, helyes ZIP (store method) – CRC32 és central directory nélkülözhetetlen mezőivel. */
