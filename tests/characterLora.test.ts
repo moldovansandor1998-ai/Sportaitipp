@@ -79,6 +79,11 @@ describe("resolveCharacterLora (mockolt Supabase, URL-szerinti stub)", () => {
     const r = await (await load())(USER, "c1");
     expect(r).toMatchObject({ loraPath: "https://v3.fal.media/w/x.bin", provider: "fal" });
   });
+  it("tesztképhez az elkészült, még nem aktív verzió LoRA-ját használja", async () => {
+    harness({ ...ACTIVE_CH, status: "test_pending", active_version_id: null }, { ...FAL_VER, status: "test_pending" });
+    const r = await (await load())(USER, "c1", true);
+    expect(r).toMatchObject({ loraPath: "https://v3.fal.media/w/x.bin", versionId: "v1" });
+  });
   it("érvénytelen provider-ref → PROVIDER_MODEL_INVALID", async () => {
     harness(ACTIVE_CH, { ...FAL_VER, provider_model_ref: "https://evil.example/x" });
     expect((await (await load())(USER, "c1")).error).toBe("PROVIDER_MODEL_INVALID");
