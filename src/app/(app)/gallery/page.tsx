@@ -18,6 +18,7 @@ export default function GalleryPage() {
   const [typeFilter, setTypeFilter] = useState("all");
   const [albumFilter, setAlbumFilter] = useState("all");
   const [pendingCount, setPendingCount] = useState(0);
+  const [failedEdits, setFailedEdits] = useState(0);
 
   const getSb = () => browserClient();
   const token = useCallback(async () => (await getSb().auth.getSession()).data.session?.access_token ?? "", []);
@@ -37,6 +38,11 @@ export default function GalleryPage() {
         method: "POST", headers: auth,
       })));
     }
+    const { count: failed } = await getSb().from("generation_jobs")
+      .select("id", { count: "exact", head: true }).eq("owner_id", user.id)
+      .eq("type", "character_swap").eq("status", "refunded")
+      .gte("created_at", new Date(Date.now() - 60 * 60 * 1000).toISOString());
+    setFailedEdits(failed ?? 0);
     const qs = albumFilter !== "all" ? `?albumId=${albumFilter}` : "";
     const res = await fetch(`/api/gallery${qs}`, { headers: { authorization: `Bearer ${await token()}` } });
     if (res.ok) setItems((await res.json()).items);
@@ -121,6 +127,7 @@ export default function GalleryPage() {
       </div>
       <p className="muted">{filtered.length} / {items.length} elem{selected.size > 0 && ` · ${selected.size} kiválasztva`}</p>
       {pendingCount > 0 && <p className="muted">{pendingCount} kép feldolgozás alatt. Az eredmények itt automatikusan frissülnek.</p>}
+      {failedEdits > 0 && <p role="status" style={{ color: "#f29a9a" }}>{failedEdits} képszerkesztés meghiúsult az elmúlt órában; ezek krediteit a rendszer visszaadta.</p>}
       {filtered.length === 0 ? (
         <div className="empty">Nincs a szűrésnek megfelelő elem.</div>
       ) : (
