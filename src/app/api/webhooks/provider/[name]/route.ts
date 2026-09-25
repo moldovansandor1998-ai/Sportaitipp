@@ -98,7 +98,11 @@ export async function POST(
   const meta = (row as unknown as { provider_meta?: Record<string, unknown> }).provider_meta ?? undefined;
   if (norm.status === "done") {
     // Lehetőleg KÖZVETLENÜL a webhook payloadja (már aláírás-ellenőrzött)
-    const output = norm.output ?? await adapter.getResult(providerJobId, meta, row.type);
+    // A fal webhook általános képfájl-listája nem tartalmazza a tréning súlyfájlját.
+    // A modell-specifikus eredményt mindig a provider válaszából normalizáljuk.
+    const output = row.type === "character_training"
+      ? await adapter.getResult(providerJobId, meta, row.type)
+      : norm.output ?? await adapter.getResult(providerJobId, meta, row.type);
     await finalizeJob(row.id, output);
   } else if (norm.status === "failed") {
     await failJob(row, "provider webhook: failed");
