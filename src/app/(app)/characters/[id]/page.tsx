@@ -1,5 +1,5 @@
 "use client";
-import { use, useCallback, useEffect, useState } from "react";
+import { use, useCallback, useEffect, useRef, useState } from "react";
 import { browserClient } from "@/lib/supabase/client";
 import Image from "next/image";
 
@@ -10,7 +10,7 @@ interface VersionRow {
   provider_model_ref: string | null;
   test_image_asset_id: string | null;
 }
-interface JobMini { id: string; type: string; status: string; cost_estimate: number; }
+interface JobMini { id: string; type: string; status: string; cost_estimate: number; error?: { message?: string } | null; }
 
 export default function CharacterDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
@@ -26,6 +26,7 @@ export default function CharacterDetailPage({ params }: { params: Promise<{ id: 
     referenceQc: boolean; training: boolean; testImage: boolean;
     identityCheck: boolean; generation: boolean;
   } | null>(null);
+  const recoveredJobs = useRef(new Set<string>());
 
   useEffect(() => {
     fetch("/api/providers/status").then((response) => response.ok ? response.json() : null)
@@ -43,7 +44,7 @@ export default function CharacterDetailPage({ params }: { params: Promise<{ id: 
       .select("*").eq("character_id", id).order("version_no", { ascending: false });
     setVersions(v ?? []);
     const { data: j } = await getSb().from("generation_jobs")
-      .select("id,type,status,cost_estimate").eq("character_id", id)
+      .select("id,type,status,cost_estimate,error").eq("character_id", id)
       .order("created_at", { ascending: false }).limit(10);
     setJobs(j ?? []);
   }, [id]);
@@ -71,6 +72,24 @@ export default function CharacterDetailPage({ params }: { params: Promise<{ id: 
     const timer = setInterval(() => { void refresh(); }, 20000);
     return () => clearInterval(timer);
   }, [runningJobIds, load]);
+
+  const recoverableJobIds = jobs.filter((job) => job.type === "test_image" && job.status === "refunded"
+    && job.error?.message === "URL_HOST_NOT_ALLOWED").map((job) => job.id).join(",");
+  useEffect(() => {
+    for (const jobId of recoverableJobIds.split(",").filter(Boolean)) {
+      if (recoveredJobs.current.has(jobId)) continue;
+      recoveredJobs.current.add(jobId);
+      void (async () => {
+        const { data: { session } } = await browserClient().auth.getSession();
+        if (!session) return;
+        const response = await fetch(`/api/jobs/${jobId}/recover-test-image`, {
+          method: "POST", headers: { authorization: `Bearer ${session.access_token}` },
+        });
+        if (response.ok) await load();
+        else setError("A korábbi tesztkép helyreállítása még nem sikerült.");
+      })().catch(() => setError("A korábbi tesztkép helyreállítása még nem sikerült."));
+    }
+  }, [recoverableJobIds, load]);
 
   useEffect(() => {
     const ids = [...refs.map((r) => r.asset_id), ...versions.map((v) => v.test_image_asset_id).filter((x): x is string => Boolean(x))];
