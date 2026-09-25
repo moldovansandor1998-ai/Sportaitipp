@@ -119,14 +119,14 @@ export default function CharacterDetailPage({ params }: { params: Promise<{ id: 
     })();
   }, []);
 
-  async function uploadFiles(files: FileList | null, kind: string) {
-    if (!files?.length) return;
+  async function uploadFiles(files: File[], kind: string) {
+    if (!files.length) return;
     setBusy(true); setError(null);
     const getSb = () => browserClient();
     const { data: { session } } = await getSb().auth.getSession();
     let skipped = 0;
     try {
-      for (const file of Array.from(files)) {
+      for (const file of files) {
         // 1) Aláírt URL (szerver)
         const sign = await fetch("/api/uploads/sign", {
           method: "POST",
@@ -283,15 +283,19 @@ export default function CharacterDetailPage({ params }: { params: Promise<{ id: 
       <div className="card" style={{ marginTop: 16 }}>
         <h3 style={{ marginTop: 0 }}>Referenciafotók ({refs.length})</h3>
         <p className="muted">Arc-, félalakos és teljes alakos képek, különböző szögekből. Javasolt: min. 10 db, egy személy/kép.</p>
+        {error && <p role="alert" className="error">{error}</p>}
         <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
           {(["face", "half_body", "full_body"] as const).map((kind) => (
-            <label key={kind} style={{ display: "inline-flex", gap: 6, alignItems: "center", margin: 0 }}>
-              <button className="ghost" disabled={busy}
-                onClick={() => document.getElementById(`up-${kind}`)?.click()}>
-                + {kind === "face" ? "Arc" : kind === "half_body" ? "Félalak" : "Teljes alak"}
-              </button>
-              <input id={`up-${kind}`} type="file" accept="image/jpeg,image/png,image/webp" multiple hidden
-                onChange={(e) => { void uploadFiles(e.target.files, kind); e.target.value = ""; }} />
+            <label key={kind} className="ghost" style={{ display: "inline-flex", gap: 6, alignItems: "center", margin: 0, cursor: busy ? "wait" : "pointer" }}>
+              + {kind === "face" ? "Arc" : kind === "half_body" ? "Félalak" : "Teljes alak"}
+              <input type="file" accept="image/jpeg,image/png,image/webp" multiple disabled={busy}
+                style={{ position: "absolute", width: 1, height: 1, opacity: 0 }}
+                onChange={(e) => {
+                  // FileList is live; clearing the input before an async upload empties it.
+                  const selected = Array.from(e.currentTarget.files ?? []);
+                  e.currentTarget.value = "";
+                  void uploadFiles(selected, kind);
+                }} />
             </label>
           ))}
         </div>
@@ -339,7 +343,6 @@ export default function CharacterDetailPage({ params }: { params: Promise<{ id: 
               imageSize: "portrait_4_3",
             })}>Élethű teljes alak</button>
         </div>
-        {error && <p className="error" style={{ marginTop: 12 }}>{error}</p>}
       </div>
 
       {versions.length > 0 && (
