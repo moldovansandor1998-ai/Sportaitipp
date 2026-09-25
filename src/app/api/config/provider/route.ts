@@ -15,5 +15,5 @@ export async function GET() {
 
 
   const talkingModels = mode === "fal" ? [{ id: "sync-lips", label: "Sync Lips (fal.ai)" }] : [];
-  return NextResponse.json({ mode, production: isProd, i2vModels: allowedI2vModels(), talkingModels });
+  return NextResponse.json({ mode, production: isProd, faceSwapConfigured: Boolean(process.env.WAVESPEED_API_KEY), i2vModels: allowedI2vModels(), talkingModels });
 }
