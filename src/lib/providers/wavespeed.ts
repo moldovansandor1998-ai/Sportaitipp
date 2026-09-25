@@ -56,7 +56,12 @@ export class WaveSpeedAdapter implements ProviderAdapter {
   async getStatus(id: string): Promise<"running" | "done" | "failed"> {
     const data = await this.result(id);
     if (data.status === "completed") return "done";
-    if (["failed", "cancelled", "timeout", "deleted"].includes(String(data.status))) return "failed";
+    if (["failed", "cancelled", "timeout", "deleted"].includes(String(data.status))) {
+      const detail = typeof data.error === "string" ? data.error
+        : typeof data.error_message === "string" ? data.error_message
+        : typeof data.message === "string" ? data.message : String(data.status);
+      throw new ProviderError(`WaveSpeed ${String(data.status)}: ${detail.slice(0, 400)}`, false, id, "invalid_input");
+    }
     return "running";
   }
 
