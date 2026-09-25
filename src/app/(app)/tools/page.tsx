@@ -52,8 +52,6 @@ export default function ToolsPage() {
     if (res.ok) {
       const items = ((await res.json()) as { items: GalItem[] }).items.filter((i) => i.url);
       setGallery(items);
-      // Az első látható kép legyen az alapértelmezett alapkép; a kézzel kiválasztottat megtartjuk.
-      setSwapAsset((current) => current || items.find((item) => item.mediaType === "image")?.assetId || "");
     }
     const { data: chars } = await getSb().from("characters").select("id,name").eq("owner_id", user.id).eq("status", "active");
     setCharacters((chars ?? []) as unknown as CharacterRow[]);
@@ -220,14 +218,16 @@ export default function ToolsPage() {
 
       <div className="card" style={{ marginTop: 12 }}>
         <h3 style={{ marginTop: 0 }}>Karaktercsere</h3>
-        <p className="muted">Az arccsere csak az arcot cseréli. A teljes képcsere a két kép alapján újraszerkeszti a személyt, ezért a testet és a környezetet is módosíthatja.</p>
-        <label>Alapkép</label>
+        <p className="muted">Első kép: a megtartandó póz és háttér. Második kép: Petra arca. Az arccsere az első kép kompozícióját tartja meg; a teljes képcsere újraszerkesztheti a testet is.</p>
+        <label>1. Kép, amelyen az arcot cseréled (póz és háttér)</label>
         <Picker media="image" selected={swapAsset} onSelect={setSwapAsset} />
-        <p className="muted" style={{ margin: "8px 0 12px" }}>Az alapkép kék kerettel van kijelölve. Másik képhez kattints a bélyegképére.</p>
-        <label>Cserefotó</label>
+        <button className="ghost" disabled={busyKey !== null} style={{ margin: "8px 0 12px" }} onClick={async () => { const id = await upload("image/*"); if (id) setSwapAsset(id); }}>Kép feltöltése, amelyet át szeretnél alakítani</button>
+        <div className="muted" style={{ overflowWrap: "anywhere" }}>Kiválasztott alapkép: {swapAsset || "még nincs kiválasztva"}</div>
+        <label>2. Petra arcfotója (csak az archoz)</label>
+        <Picker media="image" selected={swapPhoto} onSelect={setSwapPhoto} />
         <div style={{ display: "flex", gap: 8 }}>
-          <button className="ghost" disabled={busyKey !== null} onClick={async () => { const id = await upload("image/*"); if (id) setSwapPhoto(id); }}>Fotó feltöltése</button>
-          <input placeholder="cserefotó asset ID" value={swapPhoto} onChange={(e) => setSwapPhoto(e.target.value)} style={{ flex: 1 }} />
+          <button className="ghost" disabled={busyKey !== null} onClick={async () => { const id = await upload("image/*"); if (id) setSwapPhoto(id); }}>Petra arcfotójának feltöltése</button>
+          <input placeholder="Petra fotójának azonosítója" value={swapPhoto} onChange={(e) => setSwapPhoto(e.target.value)} style={{ flex: 1 }} />
         </div>
         <div style={{ display: "flex", gap: 8, marginTop: 8, alignItems: "center" }}>
           <button disabled={busyKey !== null || !swapAsset || !swapPhoto || swapAsset === swapPhoto}
