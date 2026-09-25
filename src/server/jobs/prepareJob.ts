@@ -9,7 +9,8 @@ import { isAllowedI2vModel } from "@/lib/providers/modelAllowlist";
 export type PrepError =
   | "validation" | "AGE_VERIFICATION_REQUIRED" | LoraError
   | "CHARACTER_REQUIRED" | "EASY_INPUT_INVALID" | "TTS_VOICE_INVALID"
-  | "I2V_MODEL_NOT_ALLOWED" | "URL_NOT_ALLOWED" | "IMAGE_INPUT_REQUIRED" | "SOURCE_IMAGE_REQUIRED";
+  | "I2V_MODEL_NOT_ALLOWED" | "URL_NOT_ALLOWED" | "IMAGE_INPUT_REQUIRED" | "SOURCE_IMAGE_REQUIRED"
+  | "TRAINED_EDIT_UNAVAILABLE";
 
 export interface PreparedJob {
   type: string;
@@ -34,6 +35,12 @@ export async function prepareValidatedJobInput(input: {
   const type = parsed.data.type;
   const characterId = parsed.data.characterId;
   const payload: Record<string, unknown> = { ...parsed.data.payload };
+
+  // This path produced changed compositions and an all-black output in production.
+  // Reject before holding credits until a pose-preserving replacement is verified.
+  if (type === "image_edit" && payload.useTrainedCharacter === true) {
+    return { type, payload: {}, error: "TRAINED_EDIT_UNAVAILABLE", status: 409 };
+  }
 
   // A kliens által küldött LoRA-adatok KIZÁRÓDNEK – csak sikeres szerveroldali feloldás után kerülnek vissza
   delete payload.loraPath;
