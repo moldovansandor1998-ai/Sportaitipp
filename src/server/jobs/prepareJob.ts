@@ -71,12 +71,20 @@ export async function prepareValidatedJobInput(input: {
     }
     finalCharacterId = characterId;
   }
+  if (type === "image_edit" && payload.useTrainedCharacter === true && !characterId) {
+    return { type, payload, error: "CHARACTER_REQUIRED", status: 400 };
+  }
   if (needsCharacter && characterId) {
-    const lora = await resolveCharacterLora(input.userId, characterId, type === "test_image");
+    const lora = await resolveCharacterLora(input.userId, characterId, type === "test_image",
+      type === "image_edit" && payload.useTrainedCharacter === true);
     if (lora.error) return { type, payload, error: lora.error, status: 409 };
+    if (type === "image_edit" && payload.useTrainedCharacter === true && lora.provider !== "fal") {
+      return { type, payload, error: "PROVIDER_MODEL_INVALID", status: 409 };
+    }
     payload.loraPath = lora.loraPath;
     payload.activeVersionId = lora.versionId;
-    if (lora.provider === "fal" && ["test_image", "image_generation"].includes(type)) {
+    if (lora.provider === "fal" && (["test_image", "image_generation"].includes(type)
+        || (type === "image_edit" && payload.useTrainedCharacter === true))) {
       const { data: ch } = await serviceClient().from("characters").select("name")
         .eq("id", characterId).eq("owner_id", input.userId).single();
       if (ch?.name) {
@@ -163,9 +171,16 @@ export async function prepareValidatedJobInput(input: {
       try { assertAllowedUrl(external); } catch { return { type, payload, error: "URL_NOT_ALLOWED", status: 400 }; }
     }
     if (urls.length === 0 && !external) return { type, payload, error: "IMAGE_INPUT_REQUIRED", status: 400 };
+    if (payload.useTrainedCharacter === true && payload.useCharacterReference === true) {
+      return { type, payload, error: "validation", status: 400 };
+    }
+    if (payload.useTrainedCharacter === true && urls.length !== 1) {
+      return { type, payload, error: "IMAGE_INPUT_REQUIRED", status: 400 };
+    }
     const references = payload.useCharacterReference === true ? await resolveCharacterFaces() : [];
     if (payload.useCharacterReference === true && references.length === 0) return { type, payload, error: "IMAGE_INPUT_REQUIRED", status: 409 };
     payload.imageUrls = [...urls, ...(external ? [external] : []), ...references];
+    if (payload.useTrainedCharacter === true) payload.imageUrl = urls[0];
     delete payload.useCharacterReference;
     delete payload.imageAssetIds; delete payload.externalImageUrl;
   }
