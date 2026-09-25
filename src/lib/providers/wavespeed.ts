@@ -6,7 +6,7 @@ const EDIT_MODELS = {
   "seedream-v4.5": "bytedance/seedream-v4.5/edit",
   "nano-banana": "google/nano-banana/edit",
 } as const;
-const CHARACTER_EDIT_PROMPT = "Edit image 1 only. Replace only the visible person's facial identity with the same woman's facial identity shown in the other reference images. Match her eyes, nose, lips, jaw and facial proportions. Keep image 1's exact body, pose, hands, hair, clothing, accessories, background, camera angle, framing, lighting and all other details. Do not create another scene or add people. The final face must clearly resemble the reference woman and blend naturally with image 1.";
+const CHARACTER_EDIT_PROMPT = "Image 1 is the photograph to preserve. Images 2 and 3 show the identity of the woman whose face should appear in image 1. Make a subtle, photorealistic facial identity replacement only within the visible facial region. Preserve image 1 pixel-for-pixel outside the face as much as possible: exact body, anatomy, hands, hair, clothing, accessories, background, framing, camera angle, expression, and head position. Within the face, retain image 1's original light direction, shadow transitions, skin tone variation, visible pores, fine texture, photographic grain and natural imperfections while matching the reference woman's distinctive facial proportions, eyes, nose, mouth and jaw. Match the sharpness, exposure and color of the original photograph. Do not beautify, smooth the skin, enlarge the eyes or lips, alter body shape, change the scene, or produce an illustration or glamour portrait. The result should look like an unretouched photograph of the original scene.";
 
 export class WaveSpeedAdapter implements ProviderAdapter {
   readonly name = "wavespeed";
