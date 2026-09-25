@@ -79,17 +79,22 @@ export async function POST(req: NextRequest) {
   }
 
   // 2) Új claimek – az RPC hibája kötelező ellenőrzés (hiba nem lehet ál-siker)
-  const { data, error: claimErr } = await sb.rpc("claim_next_job");
-  if (claimErr) {
-    console.error(JSON.stringify({ level: "error", scope: "cron.claim", error: claimErr.message }));
-    return NextResponse.json({ error: "claim_failed" }, { status: 500 });
+  const claimed: JobRow[] = [];
+  for (let i = 0; i < 4; i++) {
+    const { data, error: claimErr } = await sb.rpc("claim_next_job");
+    if (claimErr) {
+      console.error(JSON.stringify({ level: "error", scope: "cron.claim", error: claimErr.message }));
+      return NextResponse.json({ error: "claim_failed" }, { status: 500 });
+    }
+    const next = ((data ?? []) as unknown) as JobRow[];
+    if (!next.length) break;
+    claimed.push(...next);
   }
-  const claimed = ((data ?? []) as unknown) as JobRow[];
-  for (const job of claimed) {
+  await Promise.all(claimed.map(async (job) => {
     await runClaimedJob(job).catch((e: unknown) => {
       console.error(JSON.stringify({ level: "error", scope: "cron.process", jobId: job.id, error: String(e) }));
     });
-  }
+  }));
 
   // 3) Lejárt finalizing lease-ek: eredmény újralekérése (idempotens), finalize újra
   const { data: stale } = await sb.from("generation_jobs")
