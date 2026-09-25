@@ -27,6 +27,7 @@ export default function CharacterDetailPage({ params }: { params: Promise<{ id: 
     identityCheck: boolean; generation: boolean;
   } | null>(null);
   const recoveredJobs = useRef(new Set<string>());
+  const startingTraining = useRef(false);
 
   useEffect(() => {
     fetch("/api/providers/status").then((response) => response.ok ? response.json() : null)
@@ -234,6 +235,9 @@ export default function CharacterDetailPage({ params }: { params: Promise<{ id: 
 
   // Tréning: SZERVEROLDALI dataset + destination (training-prep), majd job a visszakapott payloadból
   async function startTraining() {
+    if (startingTraining.current || versions.some((v) => v.status === "training" || v.status === "prepared")
+      || jobs.some((j) => j.type === "character_training" && j.status === "processing")) return;
+    startingTraining.current = true;
     setBusy(true); setError(null);
     const getSb = () => browserClient();
     const { data: { session } } = await getSb().auth.getSession();
@@ -247,7 +251,7 @@ export default function CharacterDetailPage({ params }: { params: Promise<{ id: 
       await startJob("character_training", body.payload);
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : "Tréning-hiba");
-    } finally { setBusy(false); }
+    } finally { startingTraining.current = false; setBusy(false); await load(); }
   }
 
   async function startRetraining() {
@@ -268,6 +272,8 @@ export default function CharacterDetailPage({ params }: { params: Promise<{ id: 
   if (!character) return <div className="skeleton" />;
 
   const approvedRefs = refs.filter((r) => r.qc_status === "approved");
+  const trainingInProgress = versions.some((v) => v.status === "training" || v.status === "prepared")
+    || jobs.some((j) => j.type === "character_training" && ["queued", "processing"].includes(j.status));
   // Identity check: csak valódi (nem mock) providerről tanított verzióval
   const latestRealVersion = versions.find((v) => v.provider && v.provider !== "mock");
   const active = character.status === "active";
@@ -315,6 +321,7 @@ export default function CharacterDetailPage({ params }: { params: Promise<{ id: 
       <div className="card" style={{ marginTop: 16 }}>
         <h3 style={{ marginTop: 0 }}>Karakter létrehozása</h3>
         <p className="muted">A referenciafájlok épségét a szerver ellenőrzi. A szereplő azonosságát és a tesztkép hasonlóságát jelenleg te hagyod jóvá a képek megtekintése után.</p>
+        {trainingInProgress && <p role="status" className="muted">A LoRA tréning már elindult és folyamatban van. Nem kell újra megnyomni; a feladat állapota lent frissül.</p>}
         {active && <p className="muted">Új képek használatához indíts új verziót. Ezután a referenciákat újra jóvá kell hagyni, majd a tréning 1500 kreditbe kerül.</p>}
         <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
           {active && <button className="ghost" disabled={busy || refs.length < 3}
@@ -323,7 +330,7 @@ export default function CharacterDetailPage({ params }: { params: Promise<{ id: 
             onClick={() => startJob("reference_qc", { refIds: refs.map((r) => r.id) })}>1. Automatikus referencia-QC</button>}
           <button className="ghost" disabled={busy || refs.length < 3 || character.status !== "collecting_refs"}
             onClick={() => manualReview("references")}>1. Referenciák kézi jóváhagyása</button>
-          <button className="ghost" disabled={busy || approvedRefs.length < 3 || !providers?.training}
+          <button className="ghost" disabled={busy || trainingInProgress || approvedRefs.length < 3 || !providers?.training}
             onClick={startTraining}>2. Tréning (LoRA)</button>
           <button className="ghost" disabled={busy || character.status !== "test_pending" || !versions.some((v) => v.status === "test_pending" && v.provider_model_ref) || !providers?.testImage}
             onClick={startTestImage}>3. Tesztkép</button>
