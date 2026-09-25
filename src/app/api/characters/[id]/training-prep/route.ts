@@ -9,7 +9,7 @@ import { createClient } from "@supabase/supabase-js";
 import { serviceClient } from "@/lib/supabase/server";
 import { buildRouter } from "@/lib/providers";
 import { assertProviderConfigured } from "@/lib/providers";
-import { buildZip, zipToDataUrl, sniffImage, TRAINING_LIMITS } from "@/lib/trainingDataset";
+import { buildZip, sniffImage, TRAINING_LIMITS } from "@/lib/trainingDataset";
 
 const LIMITS = TRAINING_LIMITS;
 const ALLOWED_PROVIDERS = new Set(["fal", "replicate", "mock"]); // mock: dev/testben
@@ -139,21 +139,15 @@ export async function POST(
   let claim: { version_id: string; version_no: number } | null = null;
   let datasetPath: string | null = null;      // a try ELŐTT – a catch minden esetben látja
   try {
-    // nagy dataset: ZIP feltöltése + signed URL (élettartam a queue-hoz igazítva)
-    let dataset: Record<string, unknown>;
-    let datasetExpires: string | null = null;
-    if (zip.length > LIMITS.maxZipBytes) {
-      datasetPath = `${user.id}/training/${id}/${randomUUID()}.zip`;
-      const { error: upErr } = await svc.storage.from("assets").upload(datasetPath, zip, { contentType: "application/zip" });
-      if (upErr) throw new Error(upErr.message);
-      const { data: signed, error: signErr } = await svc.storage.from("assets")
-        .createSignedUrl(datasetPath, ttlSec);
-      if (signErr || !signed?.signedUrl) throw new Error("SIGNED_URL_FAILED"); // null URL soha nem megy ki
-      dataset = { imagesZipUrl: signed.signedUrl };
-      datasetExpires = new Date(Date.now() + ttlSec * 1000).toISOString();
-    } else {
-      dataset = { imagesDataUrl: zipToDataUrl(zip) };
-    }
+    // A fájl URL-je önmagában is ZIP-ként azonosítható a szolgáltatónál.
+    datasetPath = `${user.id}/training/${id}/${randomUUID()}.zip`;
+    const { error: upErr } = await svc.storage.from("assets").upload(datasetPath, zip, { contentType: "application/zip" });
+    if (upErr) throw new Error(upErr.message);
+    const { data: signed, error: signErr } = await svc.storage.from("assets")
+      .createSignedUrl(datasetPath, ttlSec);
+    if (signErr || !signed?.signedUrl) throw new Error("SIGNED_URL_FAILED");
+    const dataset = { imagesZipUrl: signed.signedUrl };
+    const datasetExpires = new Date(Date.now() + ttlSec * 1000).toISOString();
 
     const { data: claimed, error: claimErr } = await svc.rpc("claim_character_version", {
       p_character: id, p_provider: provider, p_job: null,
