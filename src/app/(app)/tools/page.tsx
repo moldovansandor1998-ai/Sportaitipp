@@ -303,10 +303,29 @@ export default function ToolsPage() {
           <option value="nano-banana">Nano Banana Edit</option>
         </select></label>
         {cfg && !cfg.faceSwapConfigured && <p className="muted">A WaveSpeed API-kulcs még nincs beállítva; az arccsere ezután válik elérhetővé.</p>}
-        <button className="ghost" disabled={busyKey !== null} style={{ margin: "8px 0 12px" }} onClick={async () => {
-          const id = await upload("image/*", (file) => setSwapPreview(URL.createObjectURL(file)));
-          if (id) { setSwapAsset(id); setSwapPinUrl(""); setResults((current) => ({ ...current, fullSwap: [] })); setJobs((current) => { const next = { ...current }; delete next.fullSwap; return next; }); }
-        }}>Átalakítandó kép feltöltése</button>
+        <label htmlFor="character-source-images" style={{ display: "block", margin: "12px 0 8px" }}>
+          Átalakítandó képek feltöltése (egyszerre akár 20)
+        </label>
+        <input id="character-source-images" type="file" accept="image/png,image/jpeg,image/webp,image/*"
+          multiple disabled={busyKey !== null} aria-describedby="character-source-hint"
+          onChange={(event) => {
+            const selected = Array.from(event.currentTarget.files ?? []);
+            event.currentTarget.value = "";
+            if (selected.length > 20) {
+              setMsg((current) => ({ ...current, bulkSwap: "Egyszerre legfeljebb 20 képet választhatsz." }));
+              return;
+            }
+            setBulkFiles(selected);
+            setBulkStatus([]);
+            setSwapAsset(""); setSwapPinUrl(""); setSwapPreview("");
+            setMsg((current) => ({ ...current, bulkSwap: "" }));
+          }} />
+        <p id="character-source-hint" className="muted">A telefon fotóválasztójában több képet is jelölj ki, majd nyomd meg a Kész gombot.</p>
+        {bulkFiles.length > 0 && <div role="status" style={{ margin: "8px 0 16px" }}>
+          <p>{bulkFiles.length} kép kiválasztva</p>
+          <button disabled={busyKey !== null || !toolChar || !cfg?.faceSwapConfigured}
+            onClick={() => void startBulkEdits()}>Mind a {bulkFiles.length} kép elkészítése</button>
+        </div>}
         <div style={{ display: "flex", gap: 8, marginBottom: 10, flexWrap: "wrap" }}>
           <input aria-label="Pinterest keresés" placeholder="Keresés Pinterest képek között…" value={pinterestQuery}
             onChange={(e) => setPinterestQuery(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") void searchPinterest(); }} style={{ flex: 1, minWidth: 180 }} />
@@ -339,23 +358,7 @@ export default function ToolsPage() {
         <Results k="fullSwap" kind="image" />
         {msg.fullSwap && <p className="muted">{msg.fullSwap}</p>}
         <div style={{ borderTop: "1px solid var(--border)", marginTop: 20, paddingTop: 16 }}>
-          <h4 style={{ margin: "0 0 8px" }}>Tömeges képfeltöltés</h4>
-          <p className="muted">Válassz ki egyszerre legfeljebb 20 képet. Mindegyikhez a fenti karaktert és szerkesztő modellt használjuk.</p>
-          <input type="file" accept="image/png,image/jpeg,image/webp" multiple disabled={busyKey !== null}
-            onChange={(event) => {
-              const selected = Array.from(event.target.files ?? []);
-              if (selected.length > 20) {
-                setMsg((current) => ({ ...current, bulkSwap: "Egyszerre legfeljebb 20 képet választhatsz." }));
-                event.target.value = "";
-                return;
-              }
-              setBulkFiles(selected);
-              setBulkStatus([]);
-              setMsg((current) => ({ ...current, bulkSwap: "" }));
-            }} />
-          {bulkFiles.length > 0 && <p className="muted">{bulkFiles.length} kép kiválasztva</p>}
-          <button style={{ marginTop: 10 }} disabled={busyKey !== null || bulkFiles.length === 0 || !toolChar || !cfg?.faceSwapConfigured}
-            onClick={() => void startBulkEdits()}>Mind a {bulkFiles.length || 0} kép elkészítése</button>
+          <h4 style={{ margin: "0 0 8px" }}>Tömeges feldolgozás állapota</h4>
           {msg.bulkSwap && <p role="status" className="muted">{msg.bulkSwap}</p>}
           {bulkStatus.length > 0 && <div role="status" style={{ marginTop: 12 }}>
             {bulkStatus.map((item, index) => <p key={`${index}-${item.name}`} style={{ margin: "4px 0" }}>
