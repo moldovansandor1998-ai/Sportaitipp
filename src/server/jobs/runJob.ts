@@ -166,6 +166,9 @@ async function finalizeLocked(
   const weights = (output.meta as { weightsUrl?: string; weights?: unknown } | null)?.weightsUrl
     ?? (typeof (output.meta as { weights?: unknown } | null)?.weights === "string"
       ? (output.meta as { weights: string }).weights : null);
+  if (job.type === "character_training" && job.provider !== "mock" && !weights) {
+    throw new Error("TRAINING_WEIGHTS_MISSING");
+  }
   const { error: txErr } = await sb.rpc("complete_job_transactional", {
     p_job: jobId,
     p_first_asset: assetIds[0] ?? null,
