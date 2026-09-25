@@ -49,7 +49,12 @@ export default function ToolsPage() {
     const { data: { user } } = await getSb().auth.getUser();
     if (!user) return;
     const res = await fetch("/api/gallery", { headers: { authorization: `Bearer ${await token()}` } });
-    if (res.ok) setGallery(((await res.json()) as { items: GalItem[] }).items.filter((i) => i.url));
+    if (res.ok) {
+      const items = ((await res.json()) as { items: GalItem[] }).items.filter((i) => i.url);
+      setGallery(items);
+      // Az első látható kép legyen az alapértelmezett alapkép; a kézzel kiválasztottat megtartjuk.
+      setSwapAsset((current) => current || items.find((item) => item.mediaType === "image")?.assetId || "");
+    }
     const { data: chars } = await getSb().from("characters").select("id,name").eq("owner_id", user.id).eq("status", "active");
     setCharacters((chars ?? []) as unknown as CharacterRow[]);
     const c = await fetch("/api/config/provider");
@@ -193,13 +198,14 @@ export default function ToolsPage() {
         <h3 style={{ marginTop: 0 }}>Character Swap</h3>
         <label>Alapkép</label>
         <Picker media="image" selected={swapAsset} onSelect={setSwapAsset} />
+        <p className="muted" style={{ margin: "8px 0 12px" }}>Az alapkép kék kerettel van kijelölve. Másik képhez kattints a bélyegképére.</p>
         <label>Cserefotó</label>
         <div style={{ display: "flex", gap: 8 }}>
           <button className="ghost" disabled={busyKey !== null} onClick={async () => { const id = await upload("image/*"); if (id) setSwapPhoto(id); }}>Fotó feltöltése</button>
           <input placeholder="cserefotó asset ID" value={swapPhoto} onChange={(e) => setSwapPhoto(e.target.value)} style={{ flex: 1 }} />
         </div>
         <div style={{ display: "flex", gap: 8, marginTop: 8, alignItems: "center" }}>
-          <button disabled={busyKey === "swap" || !swapAsset || !swapPhoto}
+          <button disabled={busyKey !== null || !swapAsset || !swapPhoto}
             onClick={() => run("swap", "character_swap", { sourceAssetId: swapAsset, swapAssetId: swapPhoto })}>Csere</button>
           <Badge k="swap" /><Price k="swap" />
         </div>
