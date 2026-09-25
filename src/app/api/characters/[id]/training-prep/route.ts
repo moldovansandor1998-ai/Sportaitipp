@@ -109,9 +109,31 @@ export async function POST(
   }
 
   const slug = ch.name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "") || "character";
+  const ttlSec = Number(process.env.TRAINING_SIGNED_URL_TTL_SECONDS ?? 3600);
+  // A job elküldése elbukhat az előkészítés után. A már tárolt, jobhoz még nem
+  // kötött datasetet ilyenkor új aláírt URL-lel használjuk, nem foglalunk új verziót.
+  const { data: prepared, error: preparedError } = await svc.from("character_versions")
+    .select("id,provider,dataset_object_path,generation_job_id")
+    .eq("character_id", id).eq("status", "prepared")
+    .order("created_at", { ascending: false }).limit(1).maybeSingle();
+  if (preparedError) return NextResponse.json({ error: "VERSION_LOOKUP_FAILED" }, { status: 500 });
+  if (prepared && !prepared.generation_job_id && prepared.provider === provider && prepared.dataset_object_path) {
+    const { data: signed, error: signError } = await svc.storage.from("assets")
+      .createSignedUrl(prepared.dataset_object_path, ttlSec);
+    if (signError || !signed?.signedUrl) {
+      return NextResponse.json({ error: "DATASET_SIGN_FAILED" }, { status: 500 });
+    }
+    await svc.from("character_versions").update({ dataset_expires_at: new Date(Date.now() + ttlSec * 1000).toISOString() })
+      .eq("id", prepared.id).eq("status", "prepared");
+    return NextResponse.json({ payload: {
+      imagesZipUrl: signed.signedUrl,
+      triggerWord: `char_${slug.replace(/-/g, "_")}`,
+      steps: 1000,
+      versionId: prepared.id,
+    }, refsUsed: usable.length, provider, signedUrlTtlSeconds: ttlSec });
+  }
   const prepKey = randomUUID();                      // stabil kulcs az idempotens claimhez
   const zip = buildZip(entries);
-  const ttlSec = Number(process.env.TRAINING_SIGNED_URL_TTL_SECONDS ?? 3600); // KONFIGURÁLHATÓ (alap 1 óra)
 
   // 8) ATOMI verziófoglalás – a ZIP a catch-ben is elérhető (claim sikertelensége esetén is törlődik)
   let claim: { version_id: string; version_no: number } | null = null;
