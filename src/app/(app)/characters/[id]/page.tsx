@@ -162,7 +162,9 @@ export default function CharacterDetailPage({ params }: { params: Promise<{ id: 
   // Tesztkép: a legújabb verzió LoRA-refjével (provider_model_ref)
   async function startTestImage() {
     const latest = versions[0];
-    if (!latest) { setError("Nincs verzió – előbb tréning."); return; }
+    if (!latest || latest.status !== "test_pending" || !latest.provider_model_ref) {
+      setError("A tesztképhez előbb meg kell várni a tréning sikeres végét."); return;
+    }
     await startJob("test_image", {
       prompt: "portrait of the character, studio lighting, neutral background",
       loraPath: latest.provider_model_ref ?? undefined,
@@ -238,7 +240,7 @@ export default function CharacterDetailPage({ params }: { params: Promise<{ id: 
             onClick={() => manualReview("references")}>1. Referenciák kézi jóváhagyása</button>
           <button className="ghost" disabled={busy || approvedRefs.length < 3 || !providers?.training}
             onClick={startTraining}>2. Tréning (LoRA)</button>
-          <button className="ghost" disabled={busy || versions.length === 0 || !providers?.testImage}
+          <button className="ghost" disabled={busy || character.status !== "test_pending" || !versions.some((v) => v.status === "test_pending" && v.provider_model_ref) || !providers?.testImage}
             onClick={startTestImage}>3. Tesztkép</button>
           {providers?.identityCheck && <button className="ghost" disabled={busy || !latestRealVersion}
             title={latestRealVersion ? "" : "Mock tréning után nem elérhető – éles providerrel (fal/Replicate) tanított verzió kell"}
