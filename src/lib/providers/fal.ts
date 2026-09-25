@@ -26,6 +26,9 @@ interface FalModelSpec {
 }
 
 const str = (v: unknown): string | undefined => (typeof v === "string" ? v : undefined);
+const fileUrl = (v: unknown): string | undefined =>
+  typeof v === "object" && v !== null && "url" in v
+    ? str((v as { url: unknown }).url) : str(v);
 
 const file = (kind: "image" | "video" | "audio") =>
   (v: unknown): NormalizedOutput["files"] => {
@@ -50,7 +53,10 @@ const MODELS: Partial<Record<JobType, FalModelSpec>> = {
     }),
     mapOutput: (raw) => ({
       files: [],
-      meta: { configFileUrl: str(raw.config_file), weightsUrl: raw.diffusers_lora_file ?? raw.lora_file },
+      meta: {
+        configFileUrl: fileUrl(raw.config_file),
+        weightsUrl: fileUrl(raw.diffusers_lora_file ?? raw.lora_file),
+      },
     }),
   },
   test_image: {
