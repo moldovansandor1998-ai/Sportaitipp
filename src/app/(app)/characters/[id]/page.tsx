@@ -250,6 +250,21 @@ export default function CharacterDetailPage({ params }: { params: Promise<{ id: 
     } finally { setBusy(false); }
   }
 
+  async function startRetraining() {
+    if (!window.confirm("Újratanítod a karaktert a most látható referenciafotókkal? Előbb jóvá kell hagynod őket, majd a Tréning gombbal elindítanod az új, 1500 kredites modellt. Az ellenőrzés idejére a karakter generálása szünetel.")) return;
+    setBusy(true); setError(null);
+    try {
+      const { data: { session } } = await browserClient().auth.getSession();
+      const response = await fetch(`/api/characters/${id}/retrain`, {
+        method: "POST", headers: { authorization: `Bearer ${session?.access_token}` },
+      });
+      const body = await response.json();
+      if (!response.ok) throw new Error(body.error ?? "Az újratanítás előkészítése sikertelen.");
+      await load();
+    } catch (e) { setError(e instanceof Error ? e.message : "Újratanítási hiba"); }
+    finally { setBusy(false); }
+  }
+
   if (!character) return <div className="skeleton" />;
 
   const approvedRefs = refs.filter((r) => r.qc_status === "approved");
@@ -290,13 +305,16 @@ export default function CharacterDetailPage({ params }: { params: Promise<{ id: 
             </li>
           ))}
         </ul>
-        {active && <p className="muted">Az újonnan feltöltött vagy törölt referenciák csak újratanítás után módosítják a jelenlegi modellt.</p>}
+        {active && <p className="muted">Az újonnan feltöltött vagy eltávolított referenciák csak újratanítás után módosítják a jelenlegi modellt.</p>}
       </div>
 
       <div className="card" style={{ marginTop: 16 }}>
         <h3 style={{ marginTop: 0 }}>Karakter létrehozása</h3>
         <p className="muted">A referenciafájlok épségét a szerver ellenőrzi. A szereplő azonosságát és a tesztkép hasonlóságát jelenleg te hagyod jóvá a képek megtekintése után.</p>
+        {active && <p className="muted">Új képek használatához indíts új verziót. Ezután a referenciákat újra jóvá kell hagyni, majd a tréning 1500 kreditbe kerül.</p>}
         <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+          {active && <button className="ghost" disabled={busy || refs.length < 3}
+            onClick={startRetraining}>Újratanítás előkészítése</button>}
           {providers?.referenceQc && <button className="ghost" disabled={busy || refs.length === 0}
             onClick={() => startJob("reference_qc", { refIds: refs.map((r) => r.id) })}>1. Automatikus referencia-QC</button>}
           <button className="ghost" disabled={busy || refs.length < 3 || character.status !== "collecting_refs"}
