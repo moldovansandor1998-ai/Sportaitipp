@@ -133,7 +133,7 @@ export const CreateJobSchema = z.object({
         ctx.addIssue({ code: z.ZodIssueCode.custom, message: "character_swap: alapkép kötelező (sourceAssetId vagy imageUrl)" });
       }
       const sw = p.swapImageUrl ?? p.swapAssetId;
-      if (typeof sw !== "string" || sw.length === 0) {
+      if ((!val.characterId || p.useCharacterReference !== true) && (typeof sw !== "string" || sw.length === 0)) {
         ctx.addIssue({ code: z.ZodIssueCode.custom, message: "character_swap: cserefotó kötelező (swapAssetId vagy swapImageUrl)" });
       }
       break;
