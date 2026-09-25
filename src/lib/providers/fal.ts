@@ -48,6 +48,7 @@ const MODELS: Partial<Record<JobType, FalModelSpec>> = {
     // EGYSÉGES mező: data URL vagy signed zip URL → a fal dokumentált images_data_url mezője
     mapInput: (p) => ({
       images_data_url: p.imagesDataUrl ?? p.imagesZipUrl,
+      data_archive_format: "zip",
       steps: p.steps ?? 1000,
       ...(p.triggerWord ? { trigger_word: p.triggerWord } : {}),
     }),
@@ -285,7 +286,8 @@ export class FalAdapter implements ProviderAdapter {
     const res = await fetch(url, { headers: { authorization: `Key ${this.key()}` } });
     if (!res.ok) {
       const { retryable, category } = classify(res.status);
-      throw new ProviderError(`fal ${res.status}`, retryable, providerJobId, category);
+      const detail = (await res.text()).replace(/https?:\/\/[^\s"']+/g, "[url]").slice(0, 500);
+      throw new ProviderError(`fal ${res.status}: ${detail}`, retryable, providerJobId, category);
     }
     return (await res.json()) as Record<string, unknown>;
   }
