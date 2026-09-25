@@ -115,7 +115,7 @@ export async function prepareValidatedJobInput(input: {
       && !payload.prompt.includes(payload.triggerWord)) {
     payload.prompt = `${payload.triggerWord}, ${payload.prompt}`;
   }
-  delete payload.triggerWord;
+  if (type !== "character_training") delete payload.triggerWord;
 
   // 5) TTS voice validálás
   if (type === "tts" && payload.voice !== undefined
