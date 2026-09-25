@@ -14,7 +14,7 @@ interface GalItem { galleryItemId: string; assetId: string; mediaType: string; u
 interface CharacterRow { id: string; name: string; }
 interface JobRow { id: string; status: string; error: { message?: string } | null; }
 interface Res { assetId: string; galleryItemId: string; mediaType: string; url: string | null; }
-interface Cfg { mode: string; i2vModels: Array<{ id: string; label: string }>; }
+interface Cfg { mode: string; faceSwapConfigured: boolean; i2vModels: Array<{ id: string; label: string }>; }
 
 export default function ToolsPage() {
   const [gallery, setGallery] = useState<GalItem[]>([]);
@@ -60,7 +60,7 @@ export default function ToolsPage() {
     if (c.ok) { const j = await c.json() as Cfg; setCfg(j); if (j.i2vModels[0]) setVModel(j.i2vModels[0].id); }
     // A karakteres képszerkesztés állapota oldalváltás után is visszatölthető.
     const { data: latestEdits } = await getSb().from("generation_jobs")
-      .select("id,status,error").eq("owner_id", user.id).eq("type", "image_edit")
+      .select("id,status,error").eq("owner_id", user.id).eq("type", "character_swap")
       .not("character_id", "is", null).order("created_at", { ascending: false }).limit(1);
     const latestEdit = latestEdits?.[0] as JobRow | undefined;
     if (latestEdit) {
@@ -210,8 +210,9 @@ export default function ToolsPage() {
       </details>
 
       <div className="card" style={{ marginTop: 12 }}>
-        <h3 style={{ marginTop: 0 }}>Karakter ráhelyezése képre</h3>
-        <p className="muted">A karaktercsere ideiglenesen szünetel: a motor az eredeti fotó helyett másik kompozíciót és egy hibás, fekete képet készített. Amíg nincs ellenőrzött megoldás, nem indítható új, kreditet levonó karaktercsere.</p>
+        <h3 style={{ marginTop: 0 }}>Petra arca a feltöltött képen</h3>
+        <p className="muted">Az eredeti képen a test, a póz, a ruha és a háttér marad. A rendszer a kiválasztott karakter jóváhagyott arcfotóját automatikusan használja az arccseréhez.</p>
+        {cfg && !cfg.faceSwapConfigured && <p className="muted">A WaveSpeed API-kulcs még nincs beállítva; az arccsere ezután válik elérhetővé.</p>}
         <button className="ghost" disabled={busyKey !== null} style={{ margin: "8px 0 12px" }} onClick={async () => {
           const id = await upload("image/*", (file) => setSwapPreview(URL.createObjectURL(file)));
           if (id) { setSwapAsset(id); setResults((current) => ({ ...current, fullSwap: [] })); setJobs((current) => { const next = { ...current }; delete next.fullSwap; return next; }); }
@@ -221,11 +222,10 @@ export default function ToolsPage() {
           <img src={swapPreview || gallery.find((item) => item.assetId === swapAsset)?.url || ""} alt="Átalakítandó kép előnézete" style={{ display: "block", maxWidth: "100%", maxHeight: 350, objectFit: "contain", borderRadius: 8 }} />
         )}
         <div style={{ display: "flex", gap: 8, marginTop: 8, alignItems: "center" }}>
-          <button disabled
-            onClick={() => run("fullSwap", "image_edit", {
-              imageAssetIds: [swapAsset], useTrainedCharacter: true,
-              prompt: "A realistic photograph of the trained adult character, with her recognizable face, retaining the exact framing, pose, camera angle, clothing and background of the input photograph. Minimal changes outside the person's face and hair. Preserve the original perspective, lighting and realistic anatomy.",
-            }, { characterId: toolChar })}>Karaktercsere szünetel</button>
+          <button disabled={busyKey !== null || !swapAsset || !toolChar || !cfg?.faceSwapConfigured}
+            onClick={() => run("fullSwap", "character_swap", {
+              sourceAssetId: swapAsset, useCharacterReference: true,
+            }, { characterId: toolChar })}>Petra arcának behelyezése</button>
           <Badge k="fullSwap" /><Price k="fullSwap" />
         </div>
         <Results k="fullSwap" kind="image" />
