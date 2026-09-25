@@ -21,7 +21,8 @@ export async function startJobWithTracker(params: {
   const key = params.tracker.begin();
   if (!key) return { skipped: true };                       // dupla indítás – nincs kérés
 
-  const send = () => params.fetchImpl("/api/jobs", {
+  // Some mobile browsers require fetch to be called with its global receiver.
+  const send = () => params.fetchImpl.call(globalThis, "/api/jobs", {
     method: "POST",
     headers: { authorization: `Bearer ${params.token}`, "content-type": "application/json" },
     body: JSON.stringify({ ...params.body, idempotencyKey: key }),
