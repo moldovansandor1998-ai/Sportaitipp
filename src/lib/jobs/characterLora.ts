@@ -31,13 +31,16 @@ export function validateLoraRef(provider: string | null, ref: string, isProducti
 }
 
 /** Aktív karakter érvényes, elkészült, ADAPTERKOMPATIBILIS LoRA-refjének feloldása. */
-export async function resolveCharacterLora(userId: string, characterId: string, forTestImage = false): Promise<LoraResult> {
+export async function resolveCharacterLora(userId: string, characterId: string, forTestImage = false, allowApprovedDuringRetraining = false): Promise<LoraResult> {
   const sb = serviceClient();
   const { data: character } = await sb.from("characters")
     .select("id,owner_id,status,active_version_id").eq("id", characterId).single();
   const ch = character as { id: string; owner_id: string; status: string; active_version_id: string | null } | null;
   if (!ch || ch.owner_id !== userId) return { error: "CHARACTER_NOT_OWNED" };
-  if (ch.status !== (forTestImage ? "test_pending" : "active")) return { error: "CHARACTER_NOT_ACTIVE" };
+  if (ch.status !== (forTestImage ? "test_pending" : "active")
+      && !(allowApprovedDuringRetraining && !forTestImage && ch.active_version_id)) {
+    return { error: "CHARACTER_NOT_ACTIVE" };
+  }
 
   let query = sb.from("character_versions")
     .select("id,provider,provider_model_ref,status")
