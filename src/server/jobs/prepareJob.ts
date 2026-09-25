@@ -41,6 +41,9 @@ export async function prepareValidatedJobInput(input: {
   if (type === "image_edit" && payload.useTrainedCharacter === true) {
     return { type, payload: {}, error: "TRAINED_EDIT_UNAVAILABLE", status: 409 };
   }
+  if (type === "character_swap" && payload.useCharacterReference === true && !process.env.WAVESPEED_API_KEY) {
+    return { type, payload: {}, error: "PROVIDER_MODEL_INVALID", status: 503 };
+  }
 
   // A kliens által küldött LoRA-adatok KIZÁRÓDNEK – csak sikeres szerveroldali feloldás után kerülnek vissza
   delete payload.loraPath;
