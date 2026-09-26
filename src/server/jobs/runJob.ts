@@ -1,5 +1,6 @@
 import "server-only";
 import { createHash } from "crypto";
+import sharp from "sharp";
 import { serviceClient } from "@/lib/supabase/server";
 import { refundJob } from "@/lib/credits/rpc";
 import { buildRouter } from "@/lib/providers";
@@ -129,6 +130,11 @@ async function finalizeLocked(
   const assetIds: string[] = [];
   for (const [i, f] of output.files.entries()) {
     const { buf, contentType } = await fileToBuffer(f);
+    if (job.payload?.contentAspectRatio === "9:16" && f.kind === "image") {
+      const dimensions = await sharp(buf).metadata();
+      if (!dimensions.width || !dimensions.height || Math.abs(dimensions.width / dimensions.height - 9 / 16) > 0.015)
+        throw new Error("TIKTOK_OUTPUT_NOT_9_16");
+    }
     const objectPath = `${job.owner_id}/${jobId}/${i}-${f.filename ?? "output"}`;
     const sha = createHash("sha256").update(buf).digest("hex");
 

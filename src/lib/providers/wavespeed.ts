@@ -70,6 +70,7 @@ export class WaveSpeedAdapter implements ProviderAdapter {
         : "";
       const data = await this.request(`${API}/${model}`, {
         images: characterImages, prompt: CHARACTER_EDIT_PROMPT + appearance,
+        ...(p.payload.contentAspectRatio === "9:16" ? { size: "1152*2048" } : {}),
         ...(p.payload.editModel === "nano-banana" ? { output_format: "png" } : {}),
       });
       if (typeof data.id !== "string") throw new ProviderError("WaveSpeed did not return a task ID", false);

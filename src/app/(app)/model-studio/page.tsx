@@ -6,6 +6,7 @@ import { browserClient } from "@/lib/supabase/client";
 type Account = { id: string; character_id: string | null; model_name: string; platform: string; login_email: string; account_url: string | null; notes: string | null };
 type Character = { id: string; name: string; status: string; active_version_id: string | null };
 type Item = { id: string; character_id: string; platform: string; local_date: string; post_hour: number; due_at: string; aspect_ratio: string; status: string; trend_title: string | null; trend_url: string | null; copy: { slides?: string[]; caption?: string }; image_jobs: string[]; error: string | null };
+type Source = { id: string; pool: "tiktok" | "telegram_fanvue"; preview_url: string | null; used_at: string | null };
 
 export default function ModelStudio() {
   const [accounts, setAccounts] = useState<Account[]>([]);
@@ -15,12 +16,19 @@ export default function ModelStudio() {
   const [saving, setSaving] = useState<string | null>(null);
   const [previewing, setPreviewing] = useState(false);
   const [previewResult, setPreviewResult] = useState("");
+  const [sources, setSources] = useState<Source[]>([]);
+  const [uploading, setUploading] = useState<string | null>(null);
+  const [uploadResult, setUploadResult] = useState("");
   const load = useCallback(async () => {
     const token = (await browserClient().auth.getSession()).data.session?.access_token;
-    const response = await fetch("/api/model-studio", { headers: { authorization: `Bearer ${token}` } });
+    const [response, sourceResponse] = await Promise.all([
+      fetch("/api/model-studio", { headers: { authorization: `Bearer ${token}` } }),
+      fetch("/api/model-studio/sources", { headers: { authorization: `Bearer ${token}` } }),
+    ]);
     if (!response.ok) { setError("A modellközpont nem tölthető be."); return; }
     const data = await response.json();
     setAccounts(data.accounts); setCharacters(data.characters); setItems(data.items);
+    if (sourceResponse.ok) setSources((await sourceResponse.json()).sources);
   }, []);
   useEffect(() => { void load(); const timer = setInterval(() => { void load(); }, 30000); return () => clearInterval(timer); }, [load]);
 
@@ -42,10 +50,40 @@ export default function ModelStudio() {
     if (!response.ok) setError(response.status === 503 ? "Az automatikus képkészítés minőségi ellenőrzésig szünetel." : "A 19:00-s próba nem indult el.");
     else {
       const result = await response.json();
-      setPreviewResult(`19:00-s próba: ${result.created} új poszt, ${result.processed} képfeladat sorba állítva. A továbbiakat a percenkénti feldolgozó indítja.`);
+      setPreviewResult(`18:00-s próba: ${result.created} új poszt, ${result.processed} képfeladat sorba állítva. A továbbiakat a percenkénti feldolgozó indítja.`);
       await load();
     }
     setPreviewing(false);
+  }
+
+  async function uploadSources(pool: Source["pool"], files: FileList | null) {
+    if (!files?.length) return;
+    setUploading(pool); setError(""); setUploadResult("");
+    const token = (await browserClient().auth.getSession()).data.session?.access_token;
+    let saved = 0;
+    const failures: string[] = [];
+    for (const file of Array.from(files)) {
+      const form = new FormData(); form.set("pool", pool); form.set("file", file);
+      try {
+        const response = await fetch("/api/model-studio/sources", { method: "POST",
+          headers: { authorization: `Bearer ${token}` }, body: form });
+        if (response.ok) saved++;
+        else failures.push(`${file.name}: ${(await response.json()).error ?? "hiba"}`);
+      } catch { failures.push(`${file.name}: hálózati hiba`); }
+    }
+    setUploadResult(`${saved} kép feltöltve.${failures.length ? ` ${failures.join("; ")}` : ""}`);
+    setUploading(null); await load();
+  }
+
+  async function regenerate(item: Item) {
+    setSaving(item.id); setError("");
+    const token = (await browserClient().auth.getSession()).data.session?.access_token;
+    const response = await fetch(`/api/model-studio/items/${item.id}/regenerate`, {
+      method: "POST", headers: { authorization: `Bearer ${token}` },
+    });
+    if (!response.ok) setError((await response.json()).error ?? "Az újragenerálás sikertelen.");
+    else setPreviewResult("Új, még nem használt képpel sorba állítva.");
+    setSaving(null); await load();
   }
 
   return <main style={{ maxWidth: 1050 }}>
@@ -73,9 +111,33 @@ export default function ModelStudio() {
       })}
     </div>
     <section className="card" style={{ marginTop: 16 }}>
+      <h2>Forrásképek tömeges feltöltése</h2>
+      <p className="muted">Ezek a képek a jelenetet adják. A modell arcát és haját a saját, jóváhagyott referenciafotói adják. Egy forrásképet csak egyetlen eredményhez használunk fel.</p>
+      <p className="muted">{characters.filter(c => c.status === "active").length} aktív modell teljes napjához {characters.filter(c => c.status === "active").length * 9} TikTok-forrás és {characters.filter(c => c.status === "active").length * 2} Telegram/Fanvue-forrás szükséges. Ha elfogynak, a következő poszt várakozik, és nem készül helyettesítő véletlen kép.</p>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(270px,1fr))", gap: 16 }}>
+        {([ ["tiktok", "TikTok · 9:16"], ["telegram_fanvue", "Telegram és Fanvue"] ] as const).map(([pool, label]) => {
+          const list = sources.filter(s => s.pool === pool);
+          return <div key={pool}>
+            <h3>{label}</h3>
+            <label htmlFor={`sources-${pool}`}>Képek kiválasztása</label>
+            <input id={`sources-${pool}`} type="file" accept="image/jpeg,image/png,image/webp" multiple
+              disabled={uploading !== null} onChange={e => { void uploadSources(pool, e.target.files); e.currentTarget.value = ""; }} />
+            <p className="muted">{uploading === pool ? "Feltöltés…" : `${list.filter(s => !s.used_at).length} szabad · ${list.filter(s => s.used_at).length} felhasznált`}</p>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(3,minmax(0,1fr))", gap: 6 }}>
+              {list.slice(0, 24).map(s => <div key={s.id} style={{ position: "relative" }}>
+                {s.preview_url && <img src={s.preview_url} alt="Feltöltött jelenetminta" style={{ width: "100%", aspectRatio: "9 / 16", objectFit: "cover" }} />}
+                <small style={{ display: "block" }}>{s.used_at ? "Felhasználva" : "Szabad"}</small>
+              </div>)}
+            </div>
+          </div>;
+        })}
+      </div>
+      {uploadResult && <p role="status">{uploadResult}</p>}
+    </section>
+    <section className="card" style={{ marginTop: 16 }}>
       <h2>Posztok és képcsomagok</h2>
-      <p className="muted">Budapesti idő: TikTok 12, 16, 20 óra; a képek 11, 15, 19 órára készülnek. TikTok 9:16, Fanvue és Telegram szabad képarány.</p>
-      <button disabled={previewing} onClick={() => void previewEvening()}>{previewing ? "Előkészítés…" : "19:00-s előkészítés kipróbálása"}</button>
+      <p className="muted">Budapesti idő: TikTok 12, 16, 20 óra; előkészítés 10, 14, 18 órakor, cél a poszt előtt egy órával kész képcsomag. TikTok 9:16, Fanvue és Telegram szabad képarány.</p>
+      <button disabled={previewing} onClick={() => void previewEvening()}>{previewing ? "Előkészítés…" : "18:00-s előkészítés kipróbálása"}</button>
       {previewResult && <p role="status">{previewResult}</p>}
       {items.length === 0 && <p>Még nincs előkészített tartalom.</p>}
       {items.map(item => <article key={item.id} style={{ borderTop: "1px solid var(--border)", padding: "12px 0" }}>
@@ -84,6 +146,8 @@ export default function ModelStudio() {
         {item.trend_url && <a href={item.trend_url} target="_blank" rel="noreferrer">Trend forrása: {item.trend_title}</a>}
         {item.copy?.slides?.map((slide, i) => <p key={i}>{i + 1}. kép szövege: {slide}</p>)}
         {item.copy?.caption && <p>Posztleírás: {item.copy.caption}</p>}
+        {(["ready", "failed"].includes(item.status)) && <button className="ghost" disabled={saving === item.id}
+          onClick={() => void regenerate(item)}>Újragenerálás új forrásképpel</button>}
         {item.image_jobs?.length > 0 && <p className="muted">Képfeladatok: {item.image_jobs.join(", ")}</p>}
         {item.error && <p className="error">{item.error}</p>}
       </article>)}
