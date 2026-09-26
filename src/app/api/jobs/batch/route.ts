@@ -15,13 +15,14 @@ async function userId(req: NextRequest) {
 export async function POST(req: NextRequest) {
   const owner = await userId(req);
   if (!owner) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
-  const body = await req.json().catch(() => null) as { characterId?: string; characterIds?: string[]; editModel?: string; files?: Array<{ assetId: string; name: string }> } | null;
+  const body = await req.json().catch(() => null) as { characterId?: string; characterIds?: string[]; editModel?: string; contentCategory?: "tiktok" | "fanvue"; files?: Array<{ assetId: string; name: string }> } | null;
   const files = body?.files;
   const characterIds = body?.characterIds ?? (body?.characterId ? [body.characterId] : []);
+  const contentCategory = body?.contentCategory ?? "tiktok";
   if (!Array.isArray(files) || files.length < 1 || files.length > 20 ||
     !files.every((f) => typeof f.assetId === "string" && typeof f.name === "string" && f.name.length <= 255) ||
     new Set(files.map((f) => f.assetId)).size !== files.length ||
-    !["seedream-v4.5", "nano-banana"].includes(body?.editModel ?? "") || !Array.isArray(characterIds) ||
+    !["seedream-v4.5", "nano-banana"].includes(body?.editModel ?? "") || !["tiktok", "fanvue"].includes(contentCategory) || !Array.isArray(characterIds) ||
     characterIds.length < 1 || characterIds.length > 20 || new Set(characterIds).size !== characterIds.length ||
     !characterIds.every(id => typeof id === "string" && /^[0-9a-f-]{36}$/i.test(id)) || files.length * characterIds.length > 400)
     return NextResponse.json({ error: "validation" }, { status: 400 });
@@ -35,7 +36,7 @@ export async function POST(req: NextRequest) {
   const batchId = randomUUID();
   const { error } = await svc.from("bulk_generation_items").insert(characters.flatMap((character) => files.map((f) => ({
     owner_id: owner, batch_id: batchId, character_id: character.id,
-    asset_id: f.assetId, edit_model: body?.editModel, filename: characterIds.length > 1 ? `${character.name} · ${f.name}`.slice(0, 255) : f.name,
+    asset_id: f.assetId, edit_model: body?.editModel, content_category: contentCategory, filename: characterIds.length > 1 ? `${character.name} · ${f.name}`.slice(0, 255) : f.name,
   }))));
   if (error) return NextResponse.json({ error: "QUEUE_FAILED" }, { status: 500 });
   return NextResponse.json({ batchId, count: files.length * characterIds.length }, { status: 202 });
