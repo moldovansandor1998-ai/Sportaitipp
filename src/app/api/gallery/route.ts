@@ -21,6 +21,10 @@ export async function GET(req: NextRequest) {
   const albumId = req.nextUrl.searchParams.get("albumId");
   const characterId = req.nextUrl.searchParams.get("characterId");
   const view = req.nextUrl.searchParams.get("view") === "used" ? "used" : "available";
+  const contentCategory = req.nextUrl.searchParams.get("category");
+  if (contentCategory && !["tiktok", "fanvue"].includes(contentCategory)) {
+    return NextResponse.json({ error: "INVALID_CONTENT_CATEGORY" }, { status: 400 });
+  }
   const page = Math.min(10000, Math.max(0, Number.parseInt(req.nextUrl.searchParams.get("page") ?? "0", 10) || 0));
   const pageSize = 24;
   if (characterId && characterId !== "unassigned") {
@@ -43,16 +47,17 @@ export async function GET(req: NextRequest) {
   }
   // media_type az assets táblából jön
   interface GalleryRow {
-    id: string; job_id: string | null; qc_status: string; character_id: string | null; album_id: string | null; used_at: string | null;
+    id: string; job_id: string | null; qc_status: string; character_id: string | null; album_id: string | null; used_at: string | null; content_category: "tiktok" | "fanvue";
     assets: { id: string; object_path: string; media_type: string; content_type: string; bytes: number } | null;
   }
   let query = svc.from("gallery_items")
-    .select("id,job_id,qc_status,created_at,used_at,character_id,album_id,assets(id,object_path,media_type,content_type,bytes)", { count: "exact" })
+    .select("id,job_id,qc_status,created_at,used_at,character_id,album_id,content_category,assets(id,object_path,media_type,content_type,bytes)", { count: "exact" })
     .eq("owner_id", user.id).is("deleted_at", null)
     .order(view === "used" ? "used_at" : "created_at", { ascending: false })
     .range(page * pageSize, (page + 1) * pageSize - 1);
   query = view === "used" ? query.not("used_at", "is", null) : query.is("used_at", null);
   if (albumId && albumId !== "all") query = query.eq("album_id", albumId);
+  if (contentCategory) query = query.eq("content_category", contentCategory);
   if (characterId === "unassigned") query = query.is("character_id", null);
   else if (characterId) query = query.eq("character_id", characterId);
   const { data: rows, error: rowsError, count } = await query;
@@ -101,6 +106,7 @@ export async function GET(req: NextRequest) {
       characterId: it.character_id,
       albumId: it.album_id,
       usedAt: it.used_at,
+      contentCategory: it.content_category,
       usedByCharacterIds: it.job_id && sourceByJob.get(it.job_id)
         ? [...(usedBySource.get(sourceByJob.get(it.job_id)!) ?? [])] : [],
       url: signedByPath.get(it.assets.object_path) ?? null,
