@@ -15,25 +15,7 @@ import sharp from "sharp";
 const LIMITS = TRAINING_LIMITS;
 const ALLOWED_PROVIDERS = new Set(["fal", "replicate", "mock"]); // mock: dev/testben
 
-async function downloadCapped(url: string, maxBytes: number): Promise<Buffer | null> {
-  const res = await fetch(url);
-  if (!res.ok || !res.body) return null;
-  const chunks: Buffer[] = [];
-  let total = 0;
-  const reader = res.body.getReader();
-  try {
-    for (;;) {
-      const { done, value } = await reader.read();
-      if (done) break;
-      total += value.byteLength;
-      if (total > maxBytes) return null;
-      chunks.push(Buffer.from(value));
-    }
-  } finally { reader.cancel().catch(() => {}); }
-  return Buffer.concat(chunks);
-}
-
-interface RefRow { asset_id: string; }
+interface RefRow { id: string; asset_id: string; }
 interface AssetRow { id: string; bucket: string; object_path: string; content_type: string; }
 
 export async function POST(
@@ -61,16 +43,18 @@ export async function POST(
 
   // 4) approved referenciák
   const { data: refs, error: refsError } = await svc.from("character_reference_images")
-    .select("asset_id")
+    .select("id,asset_id")
     .eq("character_id", id).eq("qc_status", "approved").order("sort_order").limit(LIMITS.maxFiles);
   if (refsError) return NextResponse.json({ error: "REFERENCE_LOOKUP_FAILED" }, { status: 500 });
-  const refIds = ((refs ?? []) as RefRow[]).map((r) => r.asset_id);
+  const approvedRefs = (refs ?? []) as RefRow[];
+  const refIds = approvedRefs.map((r) => r.asset_id);
   const { data: assets, error: assetsError } = refIds.length
     ? await svc.from("assets").select("id,bucket,object_path,content_type").in("id", refIds)
     : { data: [], error: null };
   if (assetsError) return NextResponse.json({ error: "ASSET_LOOKUP_FAILED" }, { status: 500 });
   const byId = new Map(((assets ?? []) as AssetRow[]).map((asset) => [asset.id, asset]));
-  const usable = refIds.map((assetId) => byId.get(assetId)).filter((asset): asset is AssetRow => Boolean(asset));
+  const usable = approvedRefs.map((ref) => ({ ref, asset: byId.get(ref.asset_id) }))
+    .filter((item): item is { ref: RefRow; asset: AssetRow } => Boolean(item.asset));
   if (usable.length < LIMITS.minFiles) {
     return NextResponse.json({ error: "NOT_ENOUGH_APPROVED_REFS", need: LIMITS.minFiles, have: usable.length }, { status: 409 });
   }
@@ -79,17 +63,17 @@ export async function POST(
   const entries: { name: string; data: Buffer }[] = [];
   let totalBytes = 0;
   let zipImageBytes = 0;
-  for (const [i, r] of usable.entries()) {
+  for (const [i, { ref, asset: r }] of usable.entries()) {
     if (totalBytes >= LIMITS.maxTotalBytes) return NextResponse.json({ error: "REFERENCE_SET_TOO_LARGE" }, { status: 413 });
-    const { data: signed } = await svc.storage.from(r.bucket)
-      .createSignedUrl(r.object_path, 120);
-    const buf = signed?.signedUrl
-      ? await downloadCapped(signed.signedUrl, Math.min(LIMITS.maxFileBytes, LIMITS.maxTotalBytes - totalBytes))
-      : null;
-    if (!buf) return NextResponse.json({ error: "REFERENCE_DOWNLOAD_FAILED" }, { status: 502 });
+    // Read private storage directly; signed URL fetches can fail on server egress rules.
+    const { data: blob, error: downloadError } = await svc.storage.from(r.bucket).download(r.object_path);
+    if (downloadError || !blob) return NextResponse.json({ error: "REFERENCE_DOWNLOAD_FAILED", referenceId: ref.id }, { status: 502 });
+    const buf = Buffer.from(await blob.arrayBuffer());
+    if (buf.length > LIMITS.maxFileBytes || totalBytes + buf.length > LIMITS.maxTotalBytes)
+      return NextResponse.json({ error: "REFERENCE_SET_TOO_LARGE", referenceId: ref.id }, { status: 413 });
     totalBytes += buf.length;
     const sniffed = sniffImage(buf);
-    if (!sniffed || r.content_type !== sniffed) return NextResponse.json({ error: "INVALID_REFERENCE_ASSET" }, { status: 422 });
+    if (!sniffed || r.content_type !== sniffed) return NextResponse.json({ error: "INVALID_REFERENCE_ASSET", referenceId: ref.id }, { status: 422 });
     // The originals stay in the references bucket. Normalize only the training dataset
     // so a full set of 25 high-resolution photographs fits into a single provider ZIP.
     let resized: Buffer;
@@ -97,7 +81,7 @@ export async function POST(
       resized = await sharp(buf, { limitInputPixels: 40_000_000 }).rotate()
         .resize(1024, 1024, { fit: "inside", withoutEnlargement: true })
         .jpeg({ quality: 82, mozjpeg: true }).toBuffer();
-    } catch { return NextResponse.json({ error: "INVALID_REFERENCE_ASSET" }, { status: 422 }); }
+    } catch { return NextResponse.json({ error: "INVALID_REFERENCE_ASSET", referenceId: ref.id }, { status: 422 }); }
     zipImageBytes += resized.length;
     if (zipImageBytes + usable.length * 128 > LIMITS.maxZipBytes)
       return NextResponse.json({ error: "TRAINING_DATASET_TOO_LARGE" }, { status: 413 });
