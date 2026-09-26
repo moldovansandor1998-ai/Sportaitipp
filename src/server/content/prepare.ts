@@ -26,13 +26,13 @@ function slotAt(now: Date): Slot | null {
 // The override is available only to the owner-authenticated preview route; cron always uses real time.
 export async function prepareContent(now = new Date(), owner?: string, maxItems = 1) {
   const slot = slotAt(now);
-  if (!slot) return { slot: null, created: 0, processed: 0 };
   const sb = serviceClient();
+  let created = 0;
+  if (slot) {
   const { data: characters, error: characterError } = await sb.from("characters")
     .select("id,name,owner_id,active_version_id").eq("status", "active")
     .not("active_version_id", "is", null).order("id").limit(100);
   if (characterError) throw characterError;
-  let created = 0;
   for (const character of characters ?? []) {
     if (owner && character.owner_id !== owner) continue;
     // Public platform accounts determine which model receives which preparation.
@@ -50,6 +50,7 @@ export async function prepareContent(now = new Date(), owner?: string, maxItems 
       if (error) throw error;
       created += data?.length ?? 0;
     }
+  }
   }
   // A bounded number per cron invocation keeps OpenAI/provider latency under the function limit.
   let pendingQuery = sb.from("model_content_items").select("*")
