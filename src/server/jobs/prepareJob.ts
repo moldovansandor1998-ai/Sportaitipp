@@ -196,7 +196,9 @@ export async function prepareValidatedJobInput(input: {
     const add = (ref: (typeof pool)[number] | undefined) => {
       if (ref && !selected.some((item) => item.asset_id === ref.asset_id)) selected.push(ref);
     };
-    add(pool.find((r) => r.kind === "face" && r.is_primary) ?? pool.find((r) => r.kind === "face"));
+    const identityFace = pool.find((r) => r.kind === "face" && r.is_primary) ?? pool.find((r) => r.kind === "face");
+    if (!identityFace) return [];
+    add(identityFace);
     add(pool.find((r) => r.kind === "full_body"));
     add(pool.find((r) => r.kind === "half_body"));
     if (selected.length < 3) add(pool.find((r) => r.kind === "face" && !selected.some((item) => item.asset_id === r.asset_id)));
