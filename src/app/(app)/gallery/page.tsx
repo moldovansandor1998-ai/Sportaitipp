@@ -57,8 +57,8 @@ export default function GalleryPage() {
 
   const load = useCallback(async () => {
     if (characterFilter === null) return;
-    // Poll every unfinished character edit, including older jobs that were started
-    // before the user navigated away from the Tools page. This never submits a new run.
+    // The background worker processes jobs. Listing the gallery must never
+    // trigger dozens of provider refresh requests on every page visit.
     const { data: { user } } = await getSb().auth.getUser();
     if (!user) return;
     let pendingQuery = getSb().from("generation_jobs")
@@ -68,12 +68,6 @@ export default function GalleryPage() {
     else if (characterFilter !== "all") pendingQuery = pendingQuery.eq("character_id", characterFilter);
     const { data: pending } = await pendingQuery;
     setPendingCount(pending?.length ?? 0);
-    if (pending?.length) {
-      const auth = { authorization: `Bearer ${await token()}` };
-      await Promise.allSettled(pending.map((job) => fetch(`/api/jobs/${job.id}/refresh`, {
-        method: "POST", headers: auth,
-      })));
-    }
     let failedQuery = getSb().from("generation_jobs")
       .select("id", { count: "exact", head: true }).eq("owner_id", user.id)
       .eq("type", "character_swap").eq("status", "refunded")
@@ -104,7 +98,7 @@ export default function GalleryPage() {
     const refresh = () => { if (document.visibilityState === "visible") void load(); };
     // Avoid replacing every signed image URL and triggering new image requests
     // when there is no generation waiting for a gallery result.
-    const timer = pendingCount > 0 ? window.setInterval(refresh, 20000) : null;
+    const timer = pendingCount > 0 ? window.setInterval(refresh, 60000) : null;
     document.addEventListener("visibilitychange", refresh);
     window.addEventListener("focus", refresh);
     return () => {
