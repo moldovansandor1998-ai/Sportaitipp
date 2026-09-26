@@ -110,6 +110,11 @@ export default function ModelStudio() {
     setSaving(null); await load();
   }
 
+  const publicItems = items.filter(item => item.platform !== "fanvue_paid");
+  const archivedPaid = items.filter(item => item.platform === "fanvue_paid");
+  const dates = [...new Set(publicItems.map(item => item.local_date))].sort().reverse();
+  const platformName = (platform: string) => ({ tiktok: "TikTok", telegram: "Telegram", fanvue_public: "Fanvue · nyilvános" }[platform] ?? platform);
+
   return <main style={{ maxWidth: 1050 }}>
     <h1>Modellközpont</h1>
     <p className="muted">Fiókok, aktív karakterek és napi tartalmak egy helyen. A belépési e-mail itt azonosító; jelszót nem tárolunk.</p>
@@ -167,18 +172,25 @@ export default function ModelStudio() {
       <p className="muted">Budapesti idő: TikTok 12, 16, 20 óra; előkészítés 10, 14, 18 órakor, cél a poszt előtt egy órával kész képcsomag. TikTok 9:16, Fanvue és Telegram szabad képarány.</p>
       <button disabled={previewing} onClick={() => void previewEvening()}>{previewing ? "Előkészítés…" : "18:00-s előkészítés kipróbálása"}</button>
       {previewResult && <p role="status">{previewResult}</p>}
-      {items.length === 0 && <p>Még nincs előkészített tartalom.</p>}
-      {items.map(item => <details key={item.id} style={{ borderTop: "1px solid var(--border)", padding: "12px 0" }}>
+      {publicItems.length === 0 && <p>Még nincs előkészített tartalom.</p>}
+      {dates.map(date => <section key={date} style={{ borderTop: "2px solid var(--border)", marginTop: 24, paddingTop: 12 }}>
+        <h3 style={{ marginTop: 0 }}>{new Date(`${date}T12:00:00Z`).toLocaleDateString("hu-HU", { timeZone: "Europe/Budapest", year: "numeric", month: "long", day: "numeric" })}</h3>
+        {[...new Set(publicItems.filter(item => item.local_date === date).map(item => item.post_hour))].sort((a, b) => b - a).map(hour => <div key={hour} style={{ margin: "16px 0 24px", padding: 14, border: "1px solid var(--border)", borderRadius: 12 }}>
+          <h4 style={{ margin: "0 0 12px" }}>{String(hour).padStart(2, "0")}:00-s posztok · budapesti idő</h4>
+          {publicItems.filter(item => item.local_date === date && item.post_hour === hour)
+            .sort((a, b) => (characters.find(c => c.id === a.character_id)?.name ?? "").localeCompare(characters.find(c => c.id === b.character_id)?.name ?? "", "hu")
+              || ["tiktok", "telegram", "fanvue_public"].indexOf(a.platform) - ["tiktok", "telegram", "fanvue_public"].indexOf(b.platform))
+            .map(item => <details key={item.id} style={{ borderTop: "1px solid var(--border)", padding: "12px 0" }}>
         <summary style={{ cursor: "pointer", fontWeight: 600 }}>
-          {characters.find(c => c.id === item.character_id)?.name ?? "Modell"} · {item.platform} · {item.local_date} {item.post_hour}:00 · {item.status} · {item.slides?.length ?? 0} kép
+          {characters.find(c => c.id === item.character_id)?.name ?? "Modell"} · {platformName(item.platform)} · {item.slides?.some(slide => slide.status === "deleted") ? "galériából törölt kép" : item.status === "ready" ? "kész" : item.status === "generating" ? "készül" : item.status === "planned" ? "tervezett" : "hiba"} · {item.slides?.length ?? 0} kép
         </summary>
-        <p className="muted">{item.aspect_ratio} · határidő: {new Date(item.due_at).toLocaleString("hu-HU", { timeZone: "Europe/Budapest" })}</p>
+        <p className="muted">{item.aspect_ratio} · elkészítési célidő: {new Date(item.due_at).toLocaleString("hu-HU", { timeZone: "Europe/Budapest" })}</p>
         {item.trend_url && <a href={item.trend_url} target="_blank" rel="noreferrer">Trend forrása: {item.trend_title}</a>}
         {item.slides?.length ? <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(220px,1fr))", gap: 12 }}>
           {item.slides.map(slide => <div className="card" key={slide.job_id} style={{ padding: 12 }}>
-            <strong>{slide.index + 1}. kép · {slide.status}</strong>
+            <strong>{slide.index + 1}. kép · {slide.status === "completed" ? "kész" : slide.status === "deleted" ? "törölve" : slide.status === "processing" || slide.status === "queued" ? "készül" : "hiba"}</strong>
             {slide.output_url ? <a href={slide.output_url} target="_blank" rel="noreferrer"><img src={slide.output_url} alt={`${slide.index + 1}. elkészült kép`} style={{ display: "block", width: "100%", maxHeight: 390, objectFit: "contain", marginTop: 8 }} /></a>
-              : <p className="muted">A kép még készül vagy hibás.</p>}
+              : <p className="muted">{slide.status === "deleted" ? "A kép elkészült, de később törölték a galériából." : slide.status === "completed" ? "A kép elkészült, de a fájl nem elérhető." : ["failed", "cancelled"].includes(slide.status) ? "A képkészítés sikertelen volt." : "A kép még készül."}</p>}
             {item.copy?.slides?.[slide.index] && <p><strong>Képszöveg:</strong> {item.copy.slides[slide.index]}</p>}
             <p className="muted">Forráskép: {slide.source_id ? slide.source_id.slice(0, 8) : "még nincs"} · {slide.review_status ?? "—"}</p>
             {slide.source_url && <a href={slide.source_url} target="_blank" rel="noreferrer"><img src={slide.source_url} alt={`${slide.index + 1}. kép forrása`} style={{ width: 80, height: 100, objectFit: "cover" }} /></a>}
@@ -186,14 +198,21 @@ export default function ModelStudio() {
               <button className="ghost" disabled={saving === slide.job_id} onClick={() => void favorite(item, slide)}>
                 {slide.favorite ? "Kedvenc forrás kikapcsolása" : "Jó forrás · használd újra ehhez a modellhez"}
               </button>}
-            {["completed", "failed", "cancelled"].includes(slide.status) && ["ready", "failed"].includes(item.status)
+            {["completed", "deleted", "failed", "cancelled"].includes(slide.status) && ["ready", "failed"].includes(item.status)
               && slide.review_status !== "rejected" && <button className="ghost" disabled={saving === slide.job_id}
-                onClick={() => void regenerate(item, slide)}>Ez a kép nem jó · újragenerálás</button>}
+                onClick={() => void regenerate(item, slide)}>{slide.status === "deleted" ? "Törölt kép pótlása" : "Ez a kép nem jó · újragenerálás"}</button>}
           </div>)}
         </div> : <p className="muted">A csomaghoz még nem indult képfeladat.</p>}
         {item.copy?.caption && <p><strong>Posztleírás:</strong> {item.copy.caption}</p>}
         {item.error && <p className="error">{item.error}</p>}
-      </details>)}
+            </details>)}
+        </div>)}
+      </section>)}
+      {archivedPaid.length > 0 && <details style={{ marginTop: 20 }}>
+        <summary>Régi, nem aktív Fanvue-feladatok ({archivedPaid.length})</summary>
+        <p className="muted">Ezek nem részei a most elkészült nyilvános Fanvue-csomagoknak.</p>
+        {archivedPaid.map(item => <p key={item.id}>{characters.find(c => c.id === item.character_id)?.name ?? "Modell"} · {item.local_date} {item.post_hour}:00 · {item.status}</p>)}
+      </details>}
     </section>
   </main>;
 }
