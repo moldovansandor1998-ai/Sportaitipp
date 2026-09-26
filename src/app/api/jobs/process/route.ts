@@ -45,7 +45,7 @@ export async function POST(req: NextRequest) {
   for (let i = 0; i < 4; i++) {
     const { data: items, error: queueError } = await sb.rpc("claim_bulk_generation_item");
     if (queueError) return NextResponse.json({ error: "bulk_claim_failed" }, { status: 500 });
-    const item = (items as Array<{ id: string; owner_id: string; character_id: string; asset_id: string; edit_model: string }> | null)?.[0];
+    const item = (items as Array<{ id: string; owner_id: string; character_id: string; asset_id: string; edit_model: string; content_category: "tiktok" | "fanvue" }> | null)?.[0];
     if (!item) break;
     try {
       const { data: existing } = await sb.from("generation_jobs").select("id")
@@ -57,6 +57,7 @@ export async function POST(req: NextRequest) {
           payload: { sourceAssetId: item.asset_id, useCharacterReference: true, editModel: item.edit_model },
         });
         if (prepared.error) throw new Error(prepared.error);
+        prepared.payload.outputCategory = item.content_category === "fanvue" ? "fanvue" : "tiktok";
         const router = buildRouter();
         const estimate = await router.estimate("character_swap", prepared.payload);
         jobId = await createJobWithHold({
