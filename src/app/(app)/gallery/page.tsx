@@ -8,6 +8,7 @@ import { zipFiles } from "@/lib/downloadZip";
 interface Item {
   galleryItemId: string; assetId: string; mediaType: string; qcStatus: string;
   url: string | null; characterId: string | null; contentType: string; albumId: string | null; usedAt: string | null;
+  usedByCharacterIds: string[];
 }
 interface Album { id: string; name: string; }
 interface Character { id: string; name: string; }
@@ -24,6 +25,7 @@ export default function GalleryPage() {
   const [albumFilter, setAlbumFilter] = useState("all");
   const [view, setView] = useState<"available" | "used">("available");
   const [usageError, setUsageError] = useState("");
+  const [deleting, setDeleting] = useState(false);
   const [savingUsage, setSavingUsage] = useState<string | null>(null);
   const [downloading, setDownloading] = useState(false);
   const [downloadStatus, setDownloadStatus] = useState("");
@@ -100,15 +102,17 @@ export default function GalleryPage() {
   useEffect(() => { load(); }, [load]);
   useEffect(() => {
     const refresh = () => { if (document.visibilityState === "visible") void load(); };
-    const timer = window.setInterval(refresh, 20000);
+    // Avoid replacing every signed image URL and triggering new image requests
+    // when there is no generation waiting for a gallery result.
+    const timer = pendingCount > 0 ? window.setInterval(refresh, 20000) : null;
     document.addEventListener("visibilitychange", refresh);
     window.addEventListener("focus", refresh);
     return () => {
-      window.clearInterval(timer);
+      if (timer !== null) window.clearInterval(timer);
       document.removeEventListener("visibilitychange", refresh);
       window.removeEventListener("focus", refresh);
     };
-  }, [load]);
+  }, [load, pendingCount]);
 
   async function createAlbum() {
     const name = prompt("Album neve?");
@@ -130,17 +134,35 @@ export default function GalleryPage() {
   }
   async function removeMany() {
     if (!confirm(`${selected.size} elem törlése?`)) return;
-    const t = await token();
-    for (const gid of selected) {
-      await fetch(`/api/gallery/${gid}`, { method: "DELETE", headers: { authorization: `Bearer ${t}` } });
+    setDeleting(true); setUsageError("");
+    try {
+      const ids = [...selected];
+      const t = await token();
+      const results = await Promise.allSettled(ids.map(gid => fetch(`/api/gallery/${gid}`, {
+        method: "DELETE", headers: { authorization: `Bearer ${t}` },
+      })));
+      const removed = ids.filter((_, i) => results[i].status === "fulfilled" && results[i].value.ok);
+      if (removed.length !== ids.length) setUsageError(`${ids.length - removed.length} képet nem sikerült törölni. Próbáld újra.`);
+      setItems(current => current?.filter(item => !removed.includes(item.galleryItemId)) ?? null);
+      setSelected(new Set(ids.filter(id => !removed.includes(id))));
+      setTotal(current => Math.max(0, current - removed.length));
+    } catch {
+      setUsageError("A képek törlése hálózati hiba miatt sikertelen.");
+    } finally {
+      setDeleting(false);
     }
-    setSelected(new Set());
-    await load();
   }
   async function removeOne(id: string) {
     if (!confirm("Törlöd ezt az elemet?")) return;
-    await fetch(`/api/gallery/${id}`, { method: "DELETE", headers: { authorization: `Bearer ${await token()}` } });
-    await load();
+    setDeleting(true); setUsageError("");
+    try {
+      const result = await fetch(`/api/gallery/${id}`, { method: "DELETE", headers: { authorization: `Bearer ${await token()}` } });
+      if (!result.ok) { setUsageError("A kép törlése sikertelen. Próbáld újra."); return; }
+      setItems(current => current?.filter(item => item.galleryItemId !== id) ?? null);
+      setTotal(current => Math.max(0, current - 1));
+      setSelected(current => { const next = new Set(current); next.delete(id); return next; });
+    } catch { setUsageError("A kép törlése hálózati hiba miatt sikertelen."); }
+    finally { setDeleting(false); }
   }
   async function setUsed(ids: string[], used: boolean) {
     setUsageError("");
@@ -235,7 +257,7 @@ export default function GalleryPage() {
             {albums.map((a) => <option key={a.id} value={a.id}>{a.name}</option>)}
           </select>
         )}
-        {selected.size > 0 && <button className="ghost" onClick={removeMany}>Törlés ({selected.size})</button>}
+        {selected.size > 0 && <button className="ghost" disabled={deleting} onClick={removeMany}>{deleting ? "Törlés…" : `Törlés (${selected.size})`}</button>}
         {selected.size > 0 && <button className="ghost" disabled={downloading} onClick={() => void downloadSelected()}>
           {downloading ? "ZIP készítése…" : `Kijelöltek letöltése ZIP-ben (${selected.size})`}
         </button>}
@@ -246,10 +268,10 @@ export default function GalleryPage() {
       {downloadStatus && <p role="status">{downloadStatus}</p>}
       <p className="muted">{view === "available" ? "Az itt felhasználva jelölt képek átkerülnek a Felhasznált képek nézetbe." : "A felhasznált képek megmaradnak, innen letölthetők és visszaállíthatók."}</p>
       <p className="muted">{total} elem · {page + 1}. oldal{selected.size > 0 && ` · ${selected.size} kiválasztva`}</p>
-      {total > 60 && <div style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 12 }}>
+      {total > 24 && <div style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 12 }}>
         <button className="ghost" disabled={page === 0} onClick={() => { setPage(page - 1); setSelected(new Set()); }}>Előző oldal</button>
-        <span>{page + 1} / {Math.ceil(total / 60)}</span>
-        <button className="ghost" disabled={(page + 1) * 60 >= total} onClick={() => { setPage(page + 1); setSelected(new Set()); }}>Következő oldal</button>
+        <span>{page + 1} / {Math.ceil(total / 24)}</span>
+        <button className="ghost" disabled={(page + 1) * 24 >= total} onClick={() => { setPage(page + 1); setSelected(new Set()); }}>Következő oldal</button>
       </div>}
       {pendingCount > 0 && <p className="muted">{pendingCount} kép feldolgozás alatt. Az eredmények itt automatikusan frissülnek.</p>}
       {failedEdits > 0 && <p role="status" style={{ color: "#f29a9a" }}>{failedEdits} képszerkesztés meghiúsult az elmúlt órában; ezek krediteit a rendszer visszaadta.</p>}
@@ -260,7 +282,7 @@ export default function GalleryPage() {
           {filtered.map((it) => (
             <div key={it.galleryItemId} className="card" style={{ padding: 10, outline: selected.has(it.galleryItemId) ? "2px solid var(--accent)" : "none" }}>
               {it.url && it.mediaType === "image" ? (
-                <Image src={it.url} alt="" width={480} height={480}
+                <Image src={it.url} alt="" width={480} height={853} sizes="(max-width: 640px) 100vw, (max-width: 1100px) 50vw, 25vw"
                   style={{ width: "100%", height: "auto", borderRadius: 8, cursor: "pointer" }}
                   onClick={() => toggle(it.galleryItemId)} />
               ) : it.url && it.mediaType === "video" ? (
@@ -272,9 +294,13 @@ export default function GalleryPage() {
                   <button className="ghost" style={{ padding: "4px 10px" }} disabled={savingUsage !== null}
                     onClick={() => void setUsed([it.galleryItemId], view === "available")}>{view === "available" ? "Felhasználva" : "Vissza"}</button>
                   <a href={it.url ?? "#"} download><button className="ghost" style={{ padding: "4px 10px" }}>Letöltés</button></a>
-                  <button className="ghost" style={{ padding: "4px 10px" }} onClick={() => removeOne(it.galleryItemId)}>Törlés</button>
+                  <button className="ghost" style={{ padding: "4px 10px" }} disabled={deleting} onClick={() => removeOne(it.galleryItemId)}>Törlés</button>
                 </span>
               </div>
+              {it.usedByCharacterIds.length > 0 && <p className="muted" style={{ marginBottom: 0 }}>
+                Ugyanez a forráskép már felhasználva: {it.usedByCharacterIds.map(id =>
+                  characters.find(c => c.id === id)?.name ?? "Ismeretlen modell").join(", ")}
+              </p>}
             </div>
           ))}
         </div>
