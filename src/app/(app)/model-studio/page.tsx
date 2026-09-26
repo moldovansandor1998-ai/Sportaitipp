@@ -4,7 +4,7 @@ import Link from "next/link";
 import { browserClient } from "@/lib/supabase/client";
 
 type Account = { id: string; character_id: string | null; model_name: string; platform: string; login_email: string; account_url: string | null; notes: string | null };
-type Character = { id: string; name: string; status: string; active_version_id: string | null };
+type Character = { id: string; name: string; status: string; active_version_id: string | null; birth_date: string | null };
 type Slide = { index: number; job_id: string; status: string; output_url: string | null; source_id: string | null; source_url: string | null; review_status: string | null; favorite: boolean; error: unknown };
 type Item = { id: string; character_id: string; platform: string; local_date: string; post_hour: number; due_at: string; aspect_ratio: string; status: string; trend_title: string | null; trend_url: string | null; copy: { slides?: string[]; caption?: string }; image_jobs: string[]; slides: Slide[]; error: string | null };
 type Source = { id: string; pool: "tiktok" | "telegram" | "fanvue_public"; preview_url: string | null; used_at: string | null };
@@ -114,6 +114,14 @@ export default function ModelStudio() {
   const archivedPaid = items.filter(item => item.platform === "fanvue_paid");
   const dates = [...new Set(publicItems.map(item => item.local_date))].sort().reverse();
   const platformName = (platform: string) => ({ tiktok: "TikTok", telegram: "Telegram", fanvue_public: "Fanvue · nyilvános" }[platform] ?? platform);
+  const birthDetails = (birthDate: string) => {
+    const [year, month, day] = birthDate.split("-").map(Number);
+    const now = new Date();
+    const today = new Intl.DateTimeFormat("en-CA", { timeZone: "Europe/Budapest", year: "numeric", month: "2-digit", day: "2-digit" }).format(now);
+    const [currentYear, currentMonth, currentDay] = today.split("-").map(Number);
+    const age = currentYear - year - (currentMonth < month || (currentMonth === month && currentDay < day) ? 1 : 0);
+    return `${new Intl.DateTimeFormat("hu-HU", { year: "numeric", month: "long", day: "numeric", timeZone: "UTC" }).format(new Date(Date.UTC(year, month - 1, day)))} · ${age} éves`;
+  };
 
   return <main style={{ maxWidth: 1050 }}>
     <h1>Modellközpont</h1>
@@ -125,6 +133,7 @@ export default function ModelStudio() {
         const character = characters.find(c => c.id === list[0]?.character_id);
         return <section className="card" key={name}>
           <h2 style={{ marginTop: 0 }}>{name}</h2>
+          {character?.birth_date && <p>Született: {birthDetails(character.birth_date)}</p>}
           <p className="muted">{character ? `Karakter: ${character.status}` : "Karakter még nincs létrehozva"}</p>
           {character && <Link href={`/characters/${character.id}`}>Karakter megnyitása</Link>}
           {list.map(a => <div key={a.id} style={{ borderTop: "1px solid var(--border)", marginTop: 12, paddingTop: 12 }}>
