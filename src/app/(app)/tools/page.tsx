@@ -208,6 +208,7 @@ export default function ToolsPage() {
     setBulkStatus(bulkFiles.map((file) => ({ name: file.name, state: "várakozik" })));
     const update = (index: number, change: Partial<{ name: string; state: string; jobId: string }>) =>
       setBulkStatus((current) => current.map((row, i) => i === index ? { ...row, ...change } : row));
+    let queuedSources = 0;
     try {
       const accessToken = await token();
       if (!accessToken) throw new Error("Jelentkezz be újra a feltöltéshez.");
@@ -227,11 +228,16 @@ export default function ToolsPage() {
         }
       }
       if (uploadedFiles.length) {
-        const response = await fetch("/api/jobs/batch", {
-          method: "POST", headers: { authorization: `Bearer ${accessToken}`, "content-type": "application/json" },
-          body: JSON.stringify({ ...(allModels ? { characterIds: characters.map((c) => c.id) } : { characterId: toolChar }), editModel: characterEditModel, files: uploadedFiles }),
-        });
-        if (!response.ok) throw new Error("A képek feltöltődtek, de a háttérfeldolgozás indítása nem sikerült. Ne töltsd fel újra; jelezd a hibát.");
+        for (let offset = 0; offset < uploadedFiles.length; offset += 20) {
+          const part = uploadedFiles.slice(offset, offset + 20);
+          const response = await fetch("/api/jobs/batch", {
+            method: "POST", headers: { authorization: `Bearer ${accessToken}`, "content-type": "application/json" },
+            body: JSON.stringify({ ...(allModels ? { characterIds: characters.map((c) => c.id) } : { characterId: toolChar }), editModel: characterEditModel, files: part }),
+          });
+          if (!response.ok) throw new Error(`${queuedSources} forráskép már sorban van, a következő adag indítása nem sikerült. Ne indítsd újra az egész csomagot.`);
+          queuedSources += part.length;
+          setMsg((current) => ({ ...current, bulkSwap: `${queuedSources}/${uploadedFiles.length} forráskép sorba állítva…` }));
+        }
         setBulkStatus(allModels ? characters.flatMap((c) => uploadedFiles.map((f) => ({ name: `${c.name} · ${f.name}`, state: "sorban" })))
           : uploadedFiles.map((f) => ({ name: f.name, state: "sorban" })));
         setMsg((current) => ({ ...current, bulkSwap: `${uploadedFiles.length} forráskép × ${allModels ? characters.length : 1} modell = ${uploadedFiles.length * (allModels ? characters.length : 1)} kép sorba állítva. Most már elhagyhatod vagy frissítheted az oldalt.` }));
@@ -241,6 +247,11 @@ export default function ToolsPage() {
       }
     } catch (error) {
       setMsg((current) => ({ ...current, bulkSwap: error instanceof Error ? error.message : "Hiba történt" }));
+      if (queuedSources > 0) {
+        setBulkFiles([]);
+        const picker = document.getElementById("character-source-images") as HTMLInputElement | null;
+        if (picker) picker.value = "";
+      }
     } finally {
       bulkBusyRef.current = false;
       setBusyKey(null);
@@ -371,16 +382,12 @@ export default function ToolsPage() {
         </select></label>
         {cfg && !cfg.faceSwapConfigured && <p className="muted">A WaveSpeed API-kulcs még nincs beállítva; az arccsere ezután válik elérhetővé.</p>}
         <label htmlFor="character-source-images" style={{ display: "block", margin: "12px 0 8px" }}>
-          Átalakítandó képek feltöltése (egyszerre akár 20)
+          Átalakítandó képek tömeges feltöltése
         </label>
         <input id="character-source-images" type="file" accept="image/png,image/jpeg,image/webp,image/*"
           multiple disabled={busyKey !== null} aria-describedby="character-source-hint"
           onChange={(event) => {
             const selected = Array.from(event.currentTarget.files ?? []);
-            if (selected.length > 20) {
-              setMsg((current) => ({ ...current, bulkSwap: "Egyszerre legfeljebb 20 képet választhatsz." }));
-              return;
-            }
             setBulkFiles(selected);
             setBulkStatus([]);
             setSwapAsset(""); setSwapPinUrl(""); setSwapPreview("");
