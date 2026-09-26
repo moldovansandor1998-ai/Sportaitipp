@@ -8,7 +8,7 @@ import { zipFiles } from "@/lib/downloadZip";
 interface Item {
   galleryItemId: string; assetId: string; mediaType: string; qcStatus: string;
   url: string | null; characterId: string | null; contentType: string; albumId: string | null; usedAt: string | null;
-  usedByCharacterIds: string[];
+  contentCategory: "tiktok" | "fanvue"; usedByCharacterIds: string[];
 }
 interface Album { id: string; name: string; }
 interface Character { id: string; name: string; }
@@ -24,6 +24,7 @@ export default function GalleryPage() {
   const [typeFilter, setTypeFilter] = useState("all");
   const [albumFilter, setAlbumFilter] = useState("all");
   const [view, setView] = useState<"available" | "used">("available");
+  const [contentCategory, setContentCategory] = useState<"tiktok" | "fanvue">("tiktok");
   const [usageError, setUsageError] = useState("");
   const [deleting, setDeleting] = useState(false);
   const [savingUsage, setSavingUsage] = useState<string | null>(null);
@@ -80,6 +81,7 @@ export default function GalleryPage() {
     if (characterFilter !== "all") qs.set("characterId", characterFilter);
     if (albumFilter !== "all") qs.set("albumId", albumFilter);
     qs.set("view", view);
+    qs.set("category", contentCategory);
     qs.set("page", String(page));
     const res = await fetch(`/api/gallery?${qs}`, { headers: { authorization: `Bearer ${await token()}` } });
     if (res.ok) {
@@ -92,7 +94,7 @@ export default function GalleryPage() {
     }
     const alb = await fetch("/api/albums", { headers: { authorization: `Bearer ${await token()}` } });
     if (alb.ok) setAlbums((await alb.json()).albums);
-  }, [token, albumFilter, characterFilter, view, page]);
+  }, [token, albumFilter, characterFilter, view, contentCategory, page]);
   useEffect(() => { load(); }, [load]);
   useEffect(() => {
     const refresh = () => { if (document.visibilityState === "visible") void load(); };
@@ -221,6 +223,10 @@ export default function GalleryPage() {
     <main>
       <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
         <h1 style={{ fontSize: 22, margin: 0 }}>Galériám</h1>
+        <button className={contentCategory === "tiktok" ? "" : "ghost"} disabled={contentCategory === "tiktok"}
+          onClick={() => { setContentCategory("tiktok"); setPage(0); setSelected(new Set()); setItems(null); }}>TikTok képek</button>
+        <button className={contentCategory === "fanvue" ? "" : "ghost"} disabled={contentCategory === "fanvue"}
+          onClick={() => { setContentCategory("fanvue"); setPage(0); setSelected(new Set()); setItems(null); }}>Fanvue képek</button>
         <button className={view === "available" ? "" : "ghost"} disabled={view === "available"}
           onClick={() => { setView("available"); setPage(0); setSelected(new Set()); setItems(null); }}>Használatlan képek</button>
         <button className={view === "used" ? "" : "ghost"} disabled={view === "used"}
@@ -283,7 +289,7 @@ export default function GalleryPage() {
                 <video src={it.url} controls style={{ width: "100%", borderRadius: 8 }} onClick={() => toggle(it.galleryItemId)} />
               ) : <div className="skeleton" />}
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 8 }}>
-                <span className="badge">{characters.find((c) => c.id === it.characterId)?.name ?? "Egyéb"} · {it.mediaType} · {it.qcStatus}{selected.has(it.galleryItemId) && " ✓"}</span>
+                <span className="badge">{characters.find((c) => c.id === it.characterId)?.name ?? "Egyéb"} · {it.contentCategory === "fanvue" ? "Fanvue" : "TikTok"} · {it.mediaType} · {it.qcStatus}{selected.has(it.galleryItemId) && " ✓"}</span>
                 <span style={{ display: "flex", gap: 6 }}>
                   <button className="ghost" style={{ padding: "4px 10px" }} disabled={savingUsage !== null}
                     onClick={() => void setUsed([it.galleryItemId], view === "available")}>{view === "available" ? "Felhasználva" : "Vissza"}</button>
