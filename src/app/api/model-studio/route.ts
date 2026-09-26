@@ -30,13 +30,15 @@ export async function GET(req: NextRequest) {
   if (uses.error || jobs.error) return NextResponse.json({ error: "PACKAGE_DETAILS_UNAVAILABLE" }, { status: 500 });
   const assetIds = [...new Set((jobs.data ?? []).flatMap(job => (job.result as { assetIds?: string[] } | null)?.assetIds ?? []))];
   const sourceIds = [...new Set((uses.data ?? []).map(use => use.source_id))];
-  const [assets, sources] = await Promise.all([
+  const [assets, sources, gallery] = await Promise.all([
     assetIds.length ? svc.from("assets").select("id,bucket,object_path").eq("owner_id", user.id).in("id", assetIds)
       : Promise.resolve({ data: [], error: null }),
     sourceIds.length ? svc.from("content_source_images").select("id,asset_id,preferred_for_character").eq("owner_id", user.id).in("id", sourceIds)
       : Promise.resolve({ data: [], error: null }),
+    assetIds.length ? svc.from("gallery_items").select("asset_id,deleted_at").eq("owner_id", user.id).in("asset_id", assetIds)
+      : Promise.resolve({ data: [], error: null }),
   ]);
-  if (assets.error || sources.error) return NextResponse.json({ error: "PACKAGE_MEDIA_UNAVAILABLE" }, { status: 500 });
+  if (assets.error || sources.error || gallery.error) return NextResponse.json({ error: "PACKAGE_MEDIA_UNAVAILABLE" }, { status: 500 });
   const sourceAssetIds = (sources.data ?? []).map(source => source.asset_id);
   const sourceAssets = sourceAssetIds.length ? await svc.from("assets")
     .select("id,bucket,object_path").eq("owner_id", user.id).in("id", sourceAssetIds)
@@ -50,6 +52,7 @@ export async function GET(req: NextRequest) {
   }));
   const jobsById = new Map((jobs.data ?? []).map(job => [job.id, job]));
   const sourceById = new Map((sources.data ?? []).map(source => [source.id, source]));
+  const deletedAssets = new Set((gallery.data ?? []).filter(row => row.deleted_at).map(row => row.asset_id));
   const detailed = (items.data ?? []).map(item => ({ ...item,
     slides: (item.image_jobs ?? []).map((id: string, index: number) => {
       const job = jobsById.get(id);
@@ -57,7 +60,9 @@ export async function GET(req: NextRequest) {
         .sort((a, b) => b.revision - a.revision)[0];
       const outputId = (job?.result as { assetIds?: string[] } | null)?.assetIds?.[0];
       const source = use ? sourceById.get(use.source_id) : null;
-      return { index, job_id: id, status: job?.status ?? "unknown", output_url: outputId ? urls.get(outputId) ?? null : null,
+      const deleted = Boolean(outputId && deletedAssets.has(outputId));
+      return { index, job_id: id, status: deleted ? "deleted" : job?.status ?? "unknown",
+        output_url: outputId && !deleted ? urls.get(outputId) ?? null : null,
         source_id: use?.source_id ?? null, source_url: source ? urls.get(source.asset_id) ?? null : null,
         review_status: use?.review_status ?? null, favorite: source?.preferred_for_character === item.character_id,
         error: job?.error ?? null };
