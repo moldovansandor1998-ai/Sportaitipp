@@ -7,6 +7,7 @@ interface CharacterRow { id: string; name: string; status: string; }
 interface RefRow { id: string; asset_id: string; kind: string; qc_status: string; is_primary: boolean; sort_order: number; }
 interface VersionRow {
   id: string; version_no: number; status: string; provider: string | null; identity_score: number | null;
+  generation_job_id: string | null;
   provider_model_ref: string | null;
   test_image_asset_id: string | null;
 }
@@ -51,7 +52,7 @@ export default function CharacterDetailPage({ params }: { params: Promise<{ id: 
   }, [id]);
   useEffect(() => { load(); }, [load]);
 
-  const runningJobIds = jobs.filter((job) => job.status === "processing").map((job) => job.id).join(",");
+  const runningJobIds = jobs.filter((job) => ["queued", "processing"].includes(job.status)).map((job) => job.id).join(",");
   // A provider webhookja késhet: a már futó feladatot külön lekérdezzük.
   useEffect(() => {
     if (!runningJobIds) return;
@@ -182,19 +183,20 @@ export default function CharacterDetailPage({ params }: { params: Promise<{ id: 
     finally { setBusy(false); }
   }
 
-  async function startJob(type: string, payload: Record<string, unknown>) {
+  async function startJob(type: string, payload: Record<string, unknown>, idempotencyKey?: string) {
     setBusy(true); setError(null);
     const getSb = () => browserClient();
     const { data: { session } } = await getSb().auth.getSession();
     const res = await fetch("/api/jobs", {
       method: "POST",
       headers: { authorization: `Bearer ${session?.access_token}`, "content-type": "application/json" },
-      body: JSON.stringify({ type, characterId: id, payload }),
+      body: JSON.stringify({ type, characterId: id, payload, idempotencyKey }),
     });
     setBusy(false);
     if (!res.ok) {
       const body = await res.json();
       setError(body.error === "INSUFFICIENT_CREDITS" ? "Nincs elég kredited." : body.error ?? "Hiba");
+      return;
     }
     setTimeout(load, 1500); // after() aszinkron kick – állapot frissítés
     await load();
@@ -237,8 +239,8 @@ export default function CharacterDetailPage({ params }: { params: Promise<{ id: 
 
   // Tréning: SZERVEROLDALI dataset + destination (training-prep), majd job a visszakapott payloadból
   async function startTraining() {
-    if (startingTraining.current || versions.some((v) => v.status === "training" || v.status === "prepared")
-      || jobs.some((j) => j.type === "character_training" && j.status === "processing")) return;
+    if (startingTraining.current || versions.some((v) => v.status === "training")
+      || jobs.some((j) => j.type === "character_training" && ["queued", "processing"].includes(j.status))) return;
     startingTraining.current = true;
     setBusy(true); setError(null);
     const getSb = () => browserClient();
@@ -252,7 +254,7 @@ export default function CharacterDetailPage({ params }: { params: Promise<{ id: 
       if (!res.ok) throw new Error(body.referenceId
         ? `A ${refs.findIndex((r) => r.id === body.referenceId) + 1}. referenciafájl nem olvasható (${body.error}). Távolítsd el és töltsd fel újra.`
         : body.error ?? "training-prep hiba");
-      await startJob("character_training", body.payload);
+      await startJob("character_training", body.payload, `character-training:${body.payload.versionId}`);
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : "Tréning-hiba");
     } finally { startingTraining.current = false; setBusy(false); await load(); }
@@ -276,7 +278,8 @@ export default function CharacterDetailPage({ params }: { params: Promise<{ id: 
   if (!character) return <div className="skeleton" />;
 
   const approvedRefs = refs.filter((r) => r.qc_status === "approved");
-  const trainingInProgress = versions.some((v) => v.status === "training" || v.status === "prepared")
+  const preparedVersion = versions.find((v) => v.status === "prepared" && !v.generation_job_id);
+  const trainingInProgress = versions.some((v) => v.status === "training")
     || jobs.some((j) => j.type === "character_training" && ["queued", "processing"].includes(j.status));
   // Identity check: csak valódi (nem mock) providerről tanított verzióval
   const latestRealVersion = versions.find((v) => v.provider && v.provider !== "mock");
@@ -326,6 +329,7 @@ export default function CharacterDetailPage({ params }: { params: Promise<{ id: 
         <h3 style={{ marginTop: 0 }}>Karakter létrehozása</h3>
         <p className="muted">A referenciafájlok épségét a szerver ellenőrzi. A szereplő azonosságát és a tesztkép hasonlóságát jelenleg te hagyod jóvá a képek megtekintése után.</p>
         {trainingInProgress && <p role="status" className="muted">A LoRA tréning már elindult és folyamatban van. Nem kell újra megnyomni; a feladat állapota lent frissül.</p>}
+        {preparedVersion && !trainingInProgress && <p role="status" className="muted">A v{preparedVersion.version_no} dataset elkészült, de a tréning még nem indult el. A Tréning gomb ugyanazzal a datasettel és verzióval folytatja.</p>}
         {active && <p className="muted">Új képek használatához indíts új verziót. Ezután a referenciákat újra jóvá kell hagyni, majd a tréning 1500 kreditbe kerül.</p>}
         <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
           {active && <button className="ghost" disabled={busy || refs.length < 3}
