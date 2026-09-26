@@ -54,7 +54,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       return NextResponse.json({ error: "REFERENCE_SET_TOO_LARGE" }, { status: 413 });
     }
     const { data: blob, error: downloadError } = await svc.storage.from("references").download(asset.object_path);
-    if (downloadError || !blob) return NextResponse.json({ error: "REFERENCE_DOWNLOAD_FAILED" }, { status: 502 });
+    if (downloadError || !blob) return NextResponse.json({ error: "REFERENCE_DOWNLOAD_FAILED", referenceId: ref.id }, { status: 502 });
     const check = inspectReferenceFile(Buffer.from(await blob.arrayBuffer()), asset, seen);
     if (!check.ok) return NextResponse.json({ error: check.error, referenceId: ref.id }, { status: 422 });
     if (check.contentType !== asset.content_type) {
