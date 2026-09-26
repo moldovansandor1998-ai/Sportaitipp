@@ -97,12 +97,24 @@ export async function prepareValidatedJobInput(input: {
     payload.activeVersionId = lora.versionId;
     if (lora.provider === "fal" && (["test_image", "image_generation"].includes(type)
         || (type === "image_edit" && payload.useTrainedCharacter === true))) {
-      const { data: ch } = await serviceClient().from("characters").select("name")
-        .eq("id", characterId).eq("owner_id", input.userId).single();
-      if (ch?.name) {
-        const slug = ch.name.toLowerCase()
-          .replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "") || "character";
-        payload.triggerWord = `char_${slug.replace(/-/g, "_")}`;
+      // The LoRA trigger is fixed at training time. Renaming a character must
+      // never silently change the trained token used for generation.
+      const { data: version } = await serviceClient().from("character_versions")
+        .select("generation_job_id").eq("id", lora.versionId).single();
+      const { data: trainingJob } = version?.generation_job_id
+        ? await serviceClient().from("generation_jobs").select("payload")
+          .eq("id", version.generation_job_id).eq("character_id", characterId).single()
+        : { data: null };
+      const trainedTrigger = (trainingJob?.payload as { triggerWord?: unknown } | null)?.triggerWord;
+      if (typeof trainedTrigger === "string" && /^char_[a-z0-9_]+$/.test(trainedTrigger)) {
+        payload.triggerWord = trainedTrigger;
+      } else {
+        const { data: ch } = await serviceClient().from("characters").select("name")
+          .eq("id", characterId).eq("owner_id", input.userId).single();
+        if (ch?.name) {
+          const slug = ch.name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "") || "character";
+          payload.triggerWord = `char_${slug.replace(/-/g, "_")}`;
+        }
       }
     }
   }
