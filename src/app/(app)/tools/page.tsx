@@ -267,6 +267,43 @@ export default function ToolsPage() {
     }
   }
 
+  async function recoverBulkEdits(allModels = false) {
+    if (bulkBusyRef.current || (!allModels && !toolChar) || (allModels && !characters.length) || !cfg?.faceSwapConfigured) return;
+    bulkBusyRef.current = true;
+    setBusyKey("bulkSwap");
+    try {
+      const accessToken = await token();
+      if (!accessToken) throw new Error("Jelentkezz be újra.");
+      const recovered = await fetch("/api/jobs/batch/recover", { headers: { authorization: `Bearer ${accessToken}` } });
+      if (!recovered.ok) throw new Error("A korábbi feltöltések lekérése nem sikerült.");
+      const { items } = await recovered.json() as { items: Array<{ assetId: string; name: string }> };
+      if (!items.length) {
+        setMsg((current) => ({ ...current, bulkSwap: "Nincs sorba nem állított kép az elmúlt 8 órából." }));
+        return;
+      }
+      let queued = 0;
+      for (let offset = 0; offset < items.length; offset += 20) {
+        const response = await fetch("/api/jobs/batch", {
+          method: "POST", headers: { authorization: `Bearer ${accessToken}`, "content-type": "application/json" },
+          body: JSON.stringify({ ...(allModels ? { characterIds: characters.map((c) => c.id) } : { characterId: toolChar }), editModel: characterEditModel, contentCategory: bulkCategory, files: items.slice(offset, offset + 20) }),
+        });
+        if (!response.ok) {
+          const detail = await response.json().catch(() => null) as { error?: string } | null;
+          throw new Error(`${queued}/${items.length} kép sorban. A következő adag hibája: ${detail?.error ?? response.status}. Az elkészült adagokat ne indítsd újra.`);
+        }
+        queued += Math.min(20, items.length - offset);
+        setMsg((current) => ({ ...current, bulkSwap: `${queued}/${items.length} korábbi kép sorba állítva…` }));
+      }
+      setMsg((current) => ({ ...current, bulkSwap: `${items.length} korábbi kép × ${allModels ? characters.length : 1} modell sorba állítva a ${bulkCategory === "fanvue" ? "Fanvue" : "TikTok"} galériához.` }));
+      void init();
+    } catch (error) {
+      setMsg((current) => ({ ...current, bulkSwap: error instanceof Error ? error.message : "Helyreállítási hiba" }));
+    } finally {
+      bulkBusyRef.current = false;
+      setBusyKey(null);
+    }
+  }
+
   async function searchPinterest() {
     if (pinterestQuery.trim().length < 2) return;
     setPinterestMessage("Keresés…");
@@ -417,7 +454,14 @@ export default function ToolsPage() {
           <button className="ghost" style={{ marginLeft: 8 }} disabled={busyKey !== null || !characters.length || !cfg?.faceSwapConfigured}
             onClick={() => void startBulkEdits(true)}>Készítés az összes modellre · {bulkCategory === "fanvue" ? "Fanvue" : "TikTok"} ({bulkFiles.length * characters.length} kép)</button>
         </div>}
-        <div style={{ display: "flex", gap: 8, marginBottom: 10, flexWrap: "wrap" }}>
+        <div style={{ margin: "8px 0 16px" }}>
+          <p className="muted">Ha egy korábbi feltöltés megszakadt, válaszd ki fent a modellt és a galéria helyét, majd folytasd a már feltöltött képeket.</p>
+          <button className="ghost" disabled={busyKey !== null || !toolChar || !cfg?.faceSwapConfigured}
+            onClick={() => void recoverBulkEdits()}>Korábbi feltöltések folytatása a kiválasztott modellre</button>
+          <button className="ghost" style={{ marginLeft: 8 }} disabled={busyKey !== null || !characters.length || !cfg?.faceSwapConfigured}
+            onClick={() => void recoverBulkEdits(true)}>Korábbi feltöltések folytatása az összes modellre</button>
+        </div>
+        <div style={{ display: "flex", gap: 8, marginBottom: 10, flexWrap: "wrap" }}> 
           <input aria-label="Pinterest keresés" placeholder="Keresés Pinterest képek között…" value={pinterestQuery}
             onChange={(e) => setPinterestQuery(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") void searchPinterest(); }} style={{ flex: 1, minWidth: 180 }} />
           <button className="ghost" disabled={pinterestQuery.trim().length < 2} onClick={() => void searchPinterest()}>Pinterest keresés</button>
