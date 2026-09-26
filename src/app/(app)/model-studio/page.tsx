@@ -5,7 +5,7 @@ import { browserClient } from "@/lib/supabase/client";
 
 type Account = { id: string; character_id: string | null; model_name: string; platform: string; login_email: string; account_url: string | null; notes: string | null };
 type Character = { id: string; name: string; status: string; active_version_id: string | null };
-type Slide = { index: number; job_id: string; status: string; output_url: string | null; source_id: string | null; source_url: string | null; review_status: string | null; error: unknown };
+type Slide = { index: number; job_id: string; status: string; output_url: string | null; source_id: string | null; source_url: string | null; review_status: string | null; favorite: boolean; error: unknown };
 type Item = { id: string; character_id: string; platform: string; local_date: string; post_hour: number; due_at: string; aspect_ratio: string; status: string; trend_title: string | null; trend_url: string | null; copy: { slides?: string[]; caption?: string }; image_jobs: string[]; slides: Slide[]; error: string | null };
 type Source = { id: string; pool: "tiktok" | "telegram" | "fanvue_public"; preview_url: string | null; used_at: string | null };
 
@@ -98,6 +98,18 @@ export default function ModelStudio() {
     setSaving(null); await load();
   }
 
+  async function favorite(item: Item, slide: Slide) {
+    if (!slide.source_id) return;
+    setSaving(slide.job_id); setError("");
+    const token = (await browserClient().auth.getSession()).data.session?.access_token;
+    const response = await fetch(`/api/model-studio/sources/${slide.source_id}/preferred`, {
+      method: "POST", headers: { authorization: `Bearer ${token}`, "content-type": "application/json" },
+      body: JSON.stringify({ characterId: item.character_id, preferred: !slide.favorite }),
+    });
+    if (!response.ok) setError((await response.json()).error ?? "A kedvenc forrás mentése sikertelen.");
+    setSaving(null); await load();
+  }
+
   return <main style={{ maxWidth: 1050 }}>
     <h1>Modellközpont</h1>
     <p className="muted">Fiókok, aktív karakterek és napi tartalmak egy helyen. A belépési e-mail itt azonosító; jelszót nem tárolunk.</p>
@@ -170,6 +182,10 @@ export default function ModelStudio() {
             {item.copy?.slides?.[slide.index] && <p><strong>Képszöveg:</strong> {item.copy.slides[slide.index]}</p>}
             <p className="muted">Forráskép: {slide.source_id ? slide.source_id.slice(0, 8) : "még nincs"} · {slide.review_status ?? "—"}</p>
             {slide.source_url && <a href={slide.source_url} target="_blank" rel="noreferrer"><img src={slide.source_url} alt={`${slide.index + 1}. kép forrása`} style={{ width: 80, height: 100, objectFit: "cover" }} /></a>}
+            {slide.source_id && slide.status === "completed" && slide.review_status !== "rejected" &&
+              <button className="ghost" disabled={saving === slide.job_id} onClick={() => void favorite(item, slide)}>
+                {slide.favorite ? "Kedvenc forrás kikapcsolása" : "Jó forrás · használd újra ehhez a modellhez"}
+              </button>}
             {["completed", "failed", "cancelled"].includes(slide.status) && ["ready", "failed"].includes(item.status)
               && slide.review_status !== "rejected" && <button className="ghost" disabled={saving === slide.job_id}
                 onClick={() => void regenerate(item, slide)}>Ez a kép nem jó · újragenerálás</button>}

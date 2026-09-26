@@ -31,11 +31,20 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   const { data: previous } = await sb.from("content_source_uses").select("source_id")
     .eq("owner_id", user.id).eq("character_id", item.character_id);
   const excluded = (previous ?? []).map(row => row.source_id);
+  const { data: favorites } = await sb.from("content_source_images").select("id,asset_id")
+    .eq("owner_id", user.id).eq("pool", pool).eq("preferred_for_character", item.character_id)
+    .is("retired_at", null).order("created_at");
+  const { data: usesOnItem } = await sb.from("content_source_uses").select("source_id")
+    .eq("owner_id", user.id).eq("item_id", id).neq("review_status", "rejected");
+  const usedOnItem = new Set((usesOnItem ?? []).map(row => row.source_id));
+  const favorite = (favorites ?? []).find(row => !usedOnItem.has(row.id));
   let candidates = sb.from("content_source_images").select("id,asset_id")
-    .eq("owner_id", user.id).eq("pool", pool).is("used_at", null).order("created_at").limit(1);
+    .eq("owner_id", user.id).eq("pool", pool).is("used_at", null).is("retired_at", null)
+    .order("created_at").limit(1);
   if (excluded.length) candidates = candidates.not("id", "in", `(${excluded.join(",")})`);
   const { data: available, error: findError } = await candidates;
-  if (findError || !available?.length)
+  const selected = favorite ?? available?.[0];
+  if (findError || !selected)
     return NextResponse.json({ error: "Nincs még kipróbálatlan forráskép ehhez a modellhez." }, { status: 409 });
 
   const revision = item.regeneration_count + 1;
@@ -51,7 +60,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     if (rejectError) throw rejectError;
     const { data: reserved, error: sourceError } = await sb.rpc("reserve_content_source", {
       p_owner: user.id, p_item: id, p_pool: pool, p_slide: index,
-      p_revision: revision, p_preferred: available[0].id,
+      p_revision: revision, p_preferred: selected.id,
     });
     if (sourceError || !reserved?.[0]?.asset_id) throw sourceError ?? new Error("SOURCE_TAKEN");
     const prepared = await prepareValidatedJobInput({ userId: user.id, type: "character_swap",
