@@ -18,6 +18,7 @@ export default function ModelStudio() {
   const [previewResult, setPreviewResult] = useState("");
   const [sources, setSources] = useState<Source[]>([]);
   const [uploading, setUploading] = useState<string | null>(null);
+  const [uploadProgress, setUploadProgress] = useState(0);
   const [uploadResult, setUploadResult] = useState("");
   const load = useCallback(async () => {
     const token = (await browserClient().auth.getSession()).data.session?.access_token;
@@ -56,13 +57,14 @@ export default function ModelStudio() {
     setPreviewing(false);
   }
 
-  async function uploadSources(pool: Source["pool"], files: FileList | null) {
-    if (!files?.length) return;
+  async function uploadSources(pool: Source["pool"], files: File[]) {
+    if (!files.length) return;
     setUploading(pool); setError(""); setUploadResult("");
+    setUploadProgress(0);
     const token = (await browserClient().auth.getSession()).data.session?.access_token;
     let saved = 0;
     const failures: string[] = [];
-    for (const file of Array.from(files)) {
+    for (const [index, file] of files.entries()) {
       try {
         const signResponse = await fetch("/api/model-studio/sources/sign", { method: "POST",
           headers: { authorization: `Bearer ${token}`, "content-type": "application/json" },
@@ -78,6 +80,7 @@ export default function ModelStudio() {
         if (response.ok) saved++;
         else failures.push(`${file.name}: ${(await response.json()).error ?? "lezárási hiba"}`);
       } catch { failures.push(`${file.name}: hálózati hiba`); }
+      finally { setUploadProgress(index + 1); }
     }
     setUploadResult(`${saved} kép feltöltve.${failures.length ? ` ${failures.join("; ")}` : ""}`);
     setUploading(null); await load();
@@ -129,8 +132,12 @@ export default function ModelStudio() {
             <h3>{label}</h3>
             <label htmlFor={`sources-${pool}`}>Képek kiválasztása</label>
             <input id={`sources-${pool}`} type="file" accept="image/jpeg,image/png,image/webp" multiple
-              disabled={uploading !== null} onChange={e => { void uploadSources(pool, e.target.files); e.currentTarget.value = ""; }} />
-            <p className="muted">{uploading === pool ? "Feltöltés…" : `${list.filter(s => !s.used_at).length} szabad · ${list.filter(s => s.used_at).length} felhasznált`}</p>
+              disabled={uploading !== null} onChange={e => {
+                const selected = Array.from(e.currentTarget.files ?? []);
+                e.currentTarget.value = "";
+                void uploadSources(pool, selected);
+              }} />
+            <p className="muted">{uploading === pool ? `Feltöltés: ${uploadProgress} feldolgozva` : `${list.filter(s => !s.used_at).length} szabad · ${list.filter(s => s.used_at).length} felhasznált`}</p>
             <div style={{ display: "grid", gridTemplateColumns: "repeat(3,minmax(0,1fr))", gap: 6 }}>
               {list.slice(0, 24).map(s => <div key={s.id} style={{ position: "relative" }}>
                 {s.preview_url && <img src={s.preview_url} alt="Feltöltött jelenetminta" style={{ width: "100%", aspectRatio: "9 / 16", objectFit: "cover" }} />}
