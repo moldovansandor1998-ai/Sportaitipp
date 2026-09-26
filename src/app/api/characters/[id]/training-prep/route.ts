@@ -41,6 +41,46 @@ export async function POST(
     return NextResponse.json({ error: "CHARACTER_NOT_READY" }, { status: 409 });
   }
 
+  // Resume the unsubmitted version before inspecting mutable references. The ZIP is
+  // the exact snapshot approved when this version was prepared.
+  const router = buildRouter();
+  try { assertProviderConfigured(router, "character_training"); }
+  catch { return NextResponse.json({ error: "NO_PROVIDER_CONFIGURED" }, { status: 503 }); }
+  const provider = router.candidates("character_training")[0].name;
+  if (!ALLOWED_PROVIDERS.has(provider)) return NextResponse.json({ error: "PROVIDER_NOT_ALLOWED" }, { status: 500 });
+  const ttlSec = Number(process.env.TRAINING_SIGNED_URL_TTL_SECONDS ?? 3600);
+  const slug = ch.name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "") || "character";
+  // A job elküldése elbukhat az előkészítés után. A már tárolt, jobhoz még nem
+  // kötött datasetet ilyenkor új aláírt URL-lel használjuk, nem foglalunk új verziót.
+  const { data: prepared, error: preparedError } = await svc.from("character_versions")
+    .select("id,provider,destination,dataset_object_path,generation_job_id")
+    .eq("character_id", id).eq("status", "prepared")
+    .order("created_at", { ascending: false }).limit(1).maybeSingle();
+  if (preparedError) return NextResponse.json({ error: "VERSION_LOOKUP_FAILED" }, { status: 500 });
+  if (prepared && (prepared.generation_job_id || prepared.provider !== provider || !prepared.dataset_object_path)) {
+    return NextResponse.json({ error: "PREPARED_VERSION_CONFLICT" }, { status: 409 });
+  }
+  if (prepared && !prepared.generation_job_id && prepared.provider === provider && prepared.dataset_object_path) {
+    // A signed URL may be created even if the object was removed; verify the ZIP.
+    const { data: dataset, error: datasetError } = await svc.storage.from("assets")
+      .download(prepared.dataset_object_path);
+    if (datasetError || !dataset) return NextResponse.json({ error: "PREPARED_DATASET_MISSING" }, { status: 409 });
+    const { data: signed, error: signError } = await svc.storage.from("assets")
+      .createSignedUrl(prepared.dataset_object_path, ttlSec);
+    if (signError || !signed?.signedUrl) {
+      return NextResponse.json({ error: "DATASET_SIGN_FAILED" }, { status: 500 });
+    }
+    await svc.from("character_versions").update({ dataset_expires_at: new Date(Date.now() + ttlSec * 1000).toISOString() })
+      .eq("id", prepared.id).eq("status", "prepared");
+    return NextResponse.json({ payload: {
+      imagesZipUrl: signed.signedUrl,
+      triggerWord: `char_${slug.replace(/-/g, "_")}`,
+      steps: 1000,
+      versionId: prepared.id,
+      ...(prepared.destination ? { destination: prepared.destination } : {}),
+    }, provider, signedUrlTtlSeconds: ttlSec });
+  }
+
   // 4) approved referenciák
   const { data: refs, error: refsError } = await svc.from("character_reference_images")
     .select("id,asset_id")
@@ -91,43 +131,10 @@ export async function POST(
     return NextResponse.json({ error: "DATASET_BUILD_FAILED" }, { status: 413 });
   }
 
-  // 6) provider-kiválasztás (a ROUTER dönt, nem hardcode; kliens nem választhat)
-  const router = buildRouter();
-  try { assertProviderConfigured(router, "character_training"); }
-  catch { return NextResponse.json({ error: "NO_PROVIDER_CONFIGURED" }, { status: 503 }); }
-  const provider = router.candidates("character_training")[0].name;
-  if (!ALLOWED_PROVIDERS.has(provider)) {
-    return NextResponse.json({ error: "PROVIDER_NOT_ALLOWED", provider }, { status: 500 });
-  }
-  // Replicate saját modellfiókba ment; a fal.ai a súlyfájlt URL-ként adja vissza.
+  // The provider and version were checked before rebuilding the dataset.
   const prefix = process.env.LORA_DESTINATION_PREFIX;
   if (provider === "replicate" && !prefix) {
     return NextResponse.json({ error: "LORA_DESTINATION_PREFIX_NOT_CONFIGURED" }, { status: 500 });
-  }
-
-  const slug = ch.name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "") || "character";
-  const ttlSec = Number(process.env.TRAINING_SIGNED_URL_TTL_SECONDS ?? 3600);
-  // A job elküldése elbukhat az előkészítés után. A már tárolt, jobhoz még nem
-  // kötött datasetet ilyenkor új aláírt URL-lel használjuk, nem foglalunk új verziót.
-  const { data: prepared, error: preparedError } = await svc.from("character_versions")
-    .select("id,provider,dataset_object_path,generation_job_id")
-    .eq("character_id", id).eq("status", "prepared")
-    .order("created_at", { ascending: false }).limit(1).maybeSingle();
-  if (preparedError) return NextResponse.json({ error: "VERSION_LOOKUP_FAILED" }, { status: 500 });
-  if (prepared && !prepared.generation_job_id && prepared.provider === provider && prepared.dataset_object_path) {
-    const { data: signed, error: signError } = await svc.storage.from("assets")
-      .createSignedUrl(prepared.dataset_object_path, ttlSec);
-    if (signError || !signed?.signedUrl) {
-      return NextResponse.json({ error: "DATASET_SIGN_FAILED" }, { status: 500 });
-    }
-    await svc.from("character_versions").update({ dataset_expires_at: new Date(Date.now() + ttlSec * 1000).toISOString() })
-      .eq("id", prepared.id).eq("status", "prepared");
-    return NextResponse.json({ payload: {
-      imagesZipUrl: signed.signedUrl,
-      triggerWord: `char_${slug.replace(/-/g, "_")}`,
-      steps: 1000,
-      versionId: prepared.id,
-    }, refsUsed: usable.length, provider, signedUrlTtlSeconds: ttlSec });
   }
   const prepKey = randomUUID();                      // stabil kulcs az idempotens claimhez
   const zip = buildZip(entries);
