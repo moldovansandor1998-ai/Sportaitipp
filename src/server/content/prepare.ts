@@ -1,7 +1,7 @@
 import "server-only";
 import { z } from "zod";
 import { serviceClient } from "@/lib/supabase/server";
-import { contentAiConfigured, generateContentJson } from "@/lib/contentAi";
+import { choosePublicScenes, contentAiConfigured, generateContentJson } from "@/lib/contentAi";
 import { prepareValidatedJobInput } from "@/server/jobs/prepareJob";
 import { buildRouter } from "@/lib/providers";
 import { createJobWithHold } from "@/lib/credits/rpc";
@@ -93,10 +93,33 @@ export async function prepareContent(now = new Date(), owner?: string, maxItems 
       if (parsed.success) copy = parsed.data;
       else copy = Copy.parse(await generateContentJson<unknown>(instruction,
         `${context}\nThe previous response omitted required fields. Return exactly slides (array of three strings), caption (string), scene (string).`));
+      const { data: candidateRows, error: candidatesError } = await sb.from("content_source_images")
+        .select("id,asset_id,assets(bucket,object_path)").eq("owner_id", item.owner_id)
+        .eq("pool", pool).is("used_at", null).order("created_at").limit(pool === "tiktok" ? 8 : 1);
+      if (candidatesError) throw candidatesError;
+      let chosenIds = (candidateRows ?? []).map(row => row.id);
+      if (pool === "tiktok" && chosenIds.length >= slideCount) {
+        const candidates = await Promise.all((candidateRows ?? []).map(async row => {
+          const asset = row.assets as unknown as { bucket: string; object_path: string } | null;
+          if (!asset) return null;
+          const { data: signed } = await sb.storage.from(asset.bucket).createSignedUrl(asset.object_path, 1800);
+          return signed?.signedUrl ? { id: row.id, url: signed.signedUrl } : null;
+        }));
+        const visible = candidates.filter((candidate): candidate is { id: string; url: string } => candidate !== null);
+        if (visible.length >= slideCount) {
+          try { chosenIds = await choosePublicScenes(visible, slideCount, copy.slides.join(" ")); }
+          catch (visionError) {
+            // Keep the schedule alive with the owner's curated images, never
+            // fall back to random text-to-image generation.
+            console.error(JSON.stringify({ scope: "content.scene-selection", itemId: item.id, error: String(visionError) }));
+          }
+        }
+      }
       const jobIds: string[] = [];
       for (let slide = 0; slide < slideCount; slide++) {
         const { data: selected, error: sourceError } = await sb.rpc("reserve_content_source", {
           p_owner: item.owner_id, p_item: item.id, p_pool: pool, p_slide: slide, p_revision: item.regeneration_count ?? 0,
+          p_preferred: chosenIds[slide],
         });
         if (sourceError) throw sourceError;
         const assetId = selected?.[0]?.asset_id;
