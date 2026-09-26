@@ -5,7 +5,8 @@ import { browserClient } from "@/lib/supabase/client";
 
 type Account = { id: string; character_id: string | null; model_name: string; platform: string; login_email: string; account_url: string | null; notes: string | null };
 type Character = { id: string; name: string; status: string; active_version_id: string | null };
-type Item = { id: string; character_id: string; platform: string; local_date: string; post_hour: number; due_at: string; aspect_ratio: string; status: string; trend_title: string | null; trend_url: string | null; copy: { slides?: string[]; caption?: string }; image_jobs: string[]; error: string | null };
+type Slide = { index: number; job_id: string; status: string; output_url: string | null; source_id: string | null; source_url: string | null; review_status: string | null; error: unknown };
+type Item = { id: string; character_id: string; platform: string; local_date: string; post_hour: number; due_at: string; aspect_ratio: string; status: string; trend_title: string | null; trend_url: string | null; copy: { slides?: string[]; caption?: string }; image_jobs: string[]; slides: Slide[]; error: string | null };
 type Source = { id: string; pool: "tiktok" | "telegram" | "fanvue_public"; preview_url: string | null; used_at: string | null };
 
 export default function ModelStudio() {
@@ -86,14 +87,14 @@ export default function ModelStudio() {
     setUploading(null); await load();
   }
 
-  async function regenerate(item: Item) {
-    setSaving(item.id); setError("");
+  async function regenerate(item: Item, slide: Slide) {
+    setSaving(slide.job_id); setError("");
     const token = (await browserClient().auth.getSession()).data.session?.access_token;
-    const response = await fetch(`/api/model-studio/items/${item.id}/regenerate`, {
+    const response = await fetch(`/api/model-studio/items/${item.id}/slides/${slide.index}/regenerate`, {
       method: "POST", headers: { authorization: `Bearer ${token}` },
     });
     if (!response.ok) setError((await response.json()).error ?? "Az újragenerálás sikertelen.");
-    else setPreviewResult("Új, még nem használt képpel sorba állítva.");
+    else setPreviewResult(`${slide.index + 1}. kép új forrásképpel sorba állítva.`);
     setSaving(null); await load();
   }
 
@@ -155,17 +156,28 @@ export default function ModelStudio() {
       <button disabled={previewing} onClick={() => void previewEvening()}>{previewing ? "Előkészítés…" : "18:00-s előkészítés kipróbálása"}</button>
       {previewResult && <p role="status">{previewResult}</p>}
       {items.length === 0 && <p>Még nincs előkészített tartalom.</p>}
-      {items.map(item => <article key={item.id} style={{ borderTop: "1px solid var(--border)", padding: "12px 0" }}>
-        <strong>{characters.find(c => c.id === item.character_id)?.name ?? "Modell"} · {item.platform} · {item.local_date} {item.post_hour}:00</strong>
-        <p className="muted">{item.status} · {item.aspect_ratio} · határidő: {new Date(item.due_at).toLocaleString("hu-HU", { timeZone: "Europe/Budapest" })}</p>
+      {items.map(item => <details key={item.id} style={{ borderTop: "1px solid var(--border)", padding: "12px 0" }}>
+        <summary style={{ cursor: "pointer", fontWeight: 600 }}>
+          {characters.find(c => c.id === item.character_id)?.name ?? "Modell"} · {item.platform} · {item.local_date} {item.post_hour}:00 · {item.status} · {item.slides?.length ?? 0} kép
+        </summary>
+        <p className="muted">{item.aspect_ratio} · határidő: {new Date(item.due_at).toLocaleString("hu-HU", { timeZone: "Europe/Budapest" })}</p>
         {item.trend_url && <a href={item.trend_url} target="_blank" rel="noreferrer">Trend forrása: {item.trend_title}</a>}
-        {item.copy?.slides?.map((slide, i) => <p key={i}>{i + 1}. kép szövege: {slide}</p>)}
-        {item.copy?.caption && <p>Posztleírás: {item.copy.caption}</p>}
-        {(["ready", "failed"].includes(item.status)) && <button className="ghost" disabled={saving === item.id}
-          onClick={() => void regenerate(item)}>Újragenerálás új forrásképpel</button>}
-        {item.image_jobs?.length > 0 && <p className="muted">Képfeladatok: {item.image_jobs.join(", ")}</p>}
+        {item.slides?.length ? <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(220px,1fr))", gap: 12 }}>
+          {item.slides.map(slide => <div className="card" key={slide.job_id} style={{ padding: 12 }}>
+            <strong>{slide.index + 1}. kép · {slide.status}</strong>
+            {slide.output_url ? <a href={slide.output_url} target="_blank" rel="noreferrer"><img src={slide.output_url} alt={`${slide.index + 1}. elkészült kép`} style={{ display: "block", width: "100%", maxHeight: 390, objectFit: "contain", marginTop: 8 }} /></a>
+              : <p className="muted">A kép még készül vagy hibás.</p>}
+            {item.copy?.slides?.[slide.index] && <p><strong>Képszöveg:</strong> {item.copy.slides[slide.index]}</p>}
+            <p className="muted">Forráskép: {slide.source_id ? slide.source_id.slice(0, 8) : "még nincs"} · {slide.review_status ?? "—"}</p>
+            {slide.source_url && <a href={slide.source_url} target="_blank" rel="noreferrer"><img src={slide.source_url} alt={`${slide.index + 1}. kép forrása`} style={{ width: 80, height: 100, objectFit: "cover" }} /></a>}
+            {["completed", "failed", "cancelled"].includes(slide.status) && ["ready", "failed"].includes(item.status)
+              && slide.review_status !== "rejected" && <button className="ghost" disabled={saving === slide.job_id}
+                onClick={() => void regenerate(item, slide)}>Ez a kép nem jó · újragenerálás</button>}
+          </div>)}
+        </div> : <p className="muted">A csomaghoz még nem indult képfeladat.</p>}
+        {item.copy?.caption && <p><strong>Posztleírás:</strong> {item.copy.caption}</p>}
         {item.error && <p className="error">{item.error}</p>}
-      </article>)}
+      </details>)}
     </section>
   </main>;
 }

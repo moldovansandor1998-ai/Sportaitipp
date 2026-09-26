@@ -63,9 +63,15 @@ export async function prepareContent(now = new Date(), owner?: string, maxItems 
       : item.platform === "telegram" ? "telegram" : "fanvue_public";
     const slideCount = item.platform === "tiktok" ? 3 : 1;
     if (item.platform === "fanvue_paid") continue;
+    const { data: attempted, error: attemptedError } = await sb.from("content_source_uses")
+      .select("source_id").eq("owner_id", item.owner_id).eq("character_id", item.character_id);
+    if (attemptedError) throw attemptedError;
+    const excluded = (attempted ?? []).map(row => row.source_id);
+    let eligibleQuery = sb.from("content_source_images").select("id", { count: "exact", head: true })
+      .eq("owner_id", item.owner_id).eq("pool", pool).is("used_at", null);
+    if (excluded.length) eligibleQuery = eligibleQuery.not("id", "in", `(${excluded.join(",")})`);
     const [{ count: free, error: countError }, { count: reserved, error: reserveError }] = await Promise.all([
-      sb.from("content_source_images").select("id", { count: "exact", head: true })
-        .eq("owner_id", item.owner_id).eq("pool", pool).is("used_at", null),
+      eligibleQuery,
       sb.from("content_source_uses").select("id", { count: "exact", head: true })
         .eq("item_id", item.id).eq("revision", item.regeneration_count ?? 0),
     ]);
@@ -94,9 +100,11 @@ export async function prepareContent(now = new Date(), owner?: string, maxItems 
       if (parsed.success) copy = parsed.data;
       else copy = Copy.parse(await generateContentJson<unknown>(instruction,
         `${context}\nThe previous response omitted required fields. Return exactly slides (array of three strings), caption (string), scene (string).`));
-      const { data: candidateRows, error: candidatesError } = await sb.from("content_source_images")
+      let candidateQuery = sb.from("content_source_images")
         .select("id,asset_id,assets(bucket,object_path)").eq("owner_id", item.owner_id)
         .eq("pool", pool).is("used_at", null).order("created_at").limit(pool === "tiktok" ? 8 : 1);
+      if (excluded.length) candidateQuery = candidateQuery.not("id", "in", `(${excluded.join(",")})`);
+      const { data: candidateRows, error: candidatesError } = await candidateQuery;
       if (candidatesError) throw candidatesError;
       let chosenIds = (candidateRows ?? []).map(row => row.id);
       if (pool === "tiktok" && chosenIds.length >= slideCount) {
@@ -163,7 +171,7 @@ export async function refreshContentJobs() {
     if (!jobIds.length) continue;
     const { data: jobs } = await sb.from("generation_jobs").select("id,status,error").in("id", jobIds);
     const failed = jobs?.find(j => j.status === "failed" || j.status === "cancelled");
-    if (failed) await sb.from("model_content_items").update({ status: "failed", error: failed.error ?? failed.status }).eq("id", item.id);
+    if (failed) await sb.from("model_content_items").update({ status: "failed", error: JSON.stringify(failed.error ?? failed.status).slice(0, 250) }).eq("id", item.id);
     else if (jobs && jobs.length === jobIds.length && jobs.every(j => j.status === "completed"))
       await sb.from("model_content_items").update({ status: "ready" }).eq("id", item.id);
   }
