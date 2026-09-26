@@ -40,6 +40,7 @@ export default function ToolsPage() {
   const [simpleAsset, setSimpleAsset] = useState("");           // i2p/upscale/bgremoval/skin/fix
   const [swapAsset, setSwapAsset] = useState(""); const [swapPreview, setSwapPreview] = useState("");
   const [bulkFiles, setBulkFiles] = useState<File[]>([]);
+  const [bulkCategory, setBulkCategory] = useState<"tiktok" | "fanvue">("tiktok");
   const [bulkStatus, setBulkStatus] = useState<Array<{ name: string; state: string; jobId?: string }>>([]);
   const bulkBusyRef = useRef(false);
   const [pinterestQuery, setPinterestQuery] = useState("");
@@ -236,7 +237,7 @@ export default function ToolsPage() {
           const part = uploadedFiles.slice(offset, offset + 20);
           const response = await fetch("/api/jobs/batch", {
             method: "POST", headers: { authorization: `Bearer ${accessToken}`, "content-type": "application/json" },
-            body: JSON.stringify({ ...(allModels ? { characterIds: characters.map((c) => c.id) } : { characterId: toolChar }), editModel: characterEditModel, files: part }),
+            body: JSON.stringify({ ...(allModels ? { characterIds: characters.map((c) => c.id) } : { characterId: toolChar }), editModel: characterEditModel, contentCategory: bulkCategory, files: part }),
           });
           if (!response.ok) throw new Error(`${queuedSources} forráskép már sorban van, a következő adag indítása nem sikerült. Ne indítsd újra az egész csomagot.`);
           queuedSources += part.length;
@@ -244,7 +245,7 @@ export default function ToolsPage() {
         }
         setBulkStatus(allModels ? characters.flatMap((c) => uploadedFiles.map((f) => ({ name: `${c.name} · ${f.name}`, state: "sorban" })))
           : uploadedFiles.map((f) => ({ name: f.name, state: "sorban" })));
-        setMsg((current) => ({ ...current, bulkSwap: `${uploadedFiles.length} forráskép × ${allModels ? characters.length : 1} modell = ${uploadedFiles.length * (allModels ? characters.length : 1)} kép sorba állítva. Most már elhagyhatod vagy frissítheted az oldalt.` }));
+        setMsg((current) => ({ ...current, bulkSwap: `${uploadedFiles.length} forráskép × ${allModels ? characters.length : 1} modell = ${uploadedFiles.length * (allModels ? characters.length : 1)} ${bulkCategory === "fanvue" ? "Fanvue" : "TikTok"} kép sorba állítva. Most már elhagyhatod vagy frissítheted az oldalt.` }));
         setBulkFiles([]);
         const picker = document.getElementById("character-source-images") as HTMLInputElement | null;
         if (picker) picker.value = "";
@@ -385,6 +386,12 @@ export default function ToolsPage() {
           <option value="nano-banana">Nano Banana Edit</option>
         </select></label>
         {cfg && !cfg.faceSwapConfigured && <p className="muted">A WaveSpeed API-kulcs még nincs beállítva; az arccsere ezután válik elérhetővé.</p>}
+        <label style={{ display: "block", margin: "12px 0 8px" }}>Képek helye a galériában
+          <select value={bulkCategory} onChange={(e) => setBulkCategory(e.target.value as "tiktok" | "fanvue")} style={{ marginLeft: 8 }} disabled={busyKey !== null}>
+            <option value="tiktok">TikTok képek</option>
+            <option value="fanvue">Fanvue képek</option>
+          </select>
+        </label>
         <label htmlFor="character-source-images" style={{ display: "block", margin: "12px 0 8px" }}>
           Átalakítandó képek tömeges feltöltése
         </label>
@@ -402,9 +409,9 @@ export default function ToolsPage() {
         {bulkFiles.length > 0 && <div role="status" style={{ margin: "8px 0 16px" }}>
           <p>{bulkFiles.length} kép kiválasztva</p>
           <button disabled={busyKey !== null || !toolChar || !cfg?.faceSwapConfigured}
-            onClick={() => void startBulkEdits()}>Mind a {bulkFiles.length} kép elkészítése</button>
+            onClick={() => void startBulkEdits()}>Mind a {bulkFiles.length} {bulkCategory === "fanvue" ? "Fanvue" : "TikTok"} kép elkészítése</button>
           <button className="ghost" style={{ marginLeft: 8 }} disabled={busyKey !== null || !characters.length || !cfg?.faceSwapConfigured}
-            onClick={() => void startBulkEdits(true)}>Készítés az összes modellre ({bulkFiles.length * characters.length} kép)</button>
+            onClick={() => void startBulkEdits(true)}>Készítés az összes modellre · {bulkCategory === "fanvue" ? "Fanvue" : "TikTok"} ({bulkFiles.length * characters.length} kép)</button>
         </div>}
         <div style={{ display: "flex", gap: 8, marginBottom: 10, flexWrap: "wrap" }}>
           <input aria-label="Pinterest keresés" placeholder="Keresés Pinterest képek között…" value={pinterestQuery}
