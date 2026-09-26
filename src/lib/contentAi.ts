@@ -5,13 +5,18 @@ export class ContentAiNotConfiguredError extends Error {
 }
 
 export function contentAiConfigured(): boolean {
-  return Boolean(process.env.OPENAI_API_KEY || (process.env.CONTENT_AI_API_URL && process.env.CONTENT_AI_API_KEY && process.env.CONTENT_AI_MODEL));
+  return Boolean(openAiKey() || (process.env.CONTENT_AI_API_URL && process.env.CONTENT_AI_API_KEY && process.env.CONTENT_AI_MODEL));
+}
+
+function openAiKey(): string | undefined {
+  // Temporary compatibility for a production secret saved with an extra trailing q.
+  return process.env.OPENAI_API_KEY || process.env.OPENAI_API_KEYq;
 }
 
 export async function generateContentJson<T>(system: string, prompt: string): Promise<T> {
   const customConfigured = Boolean(process.env.CONTENT_AI_API_URL && process.env.CONTENT_AI_API_KEY && process.env.CONTENT_AI_MODEL);
   const apiUrl = customConfigured ? process.env.CONTENT_AI_API_URL : "https://api.openai.com/v1/chat/completions";
-  const apiKey = customConfigured ? process.env.CONTENT_AI_API_KEY : process.env.OPENAI_API_KEY;
+  const apiKey = customConfigured ? process.env.CONTENT_AI_API_KEY : openAiKey();
   const model = customConfigured ? process.env.CONTENT_AI_MODEL : "gpt-5.6-luna";
   if (!apiUrl || !apiKey || !model) throw new ContentAiNotConfiguredError();
   const controller = new AbortController();
