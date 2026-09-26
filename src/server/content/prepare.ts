@@ -68,6 +68,8 @@ export async function prepareContent(now = new Date(), owner?: string, maxItems 
       const instruction = "Return ONLY this exact JSON object: {\"slides\":[\"Hungarian slide 1\",\"Hungarian slide 2\",\"Hungarian slide 3\"],\"caption\":\"Hungarian caption\",\"scene\":\"English photorealistic image scene\"}. All five values are required. Do not claim a live trend, ranking or source you have not checked. No text embedded in the image. The subject is an adult fictional character; keep public imagery suitable for social platforms.";
       const context = JSON.stringify({ model: character?.name, platform: item.platform, postingHour: item.post_hour,
         inspiration: "A supplied example uses a natural mirror selfie and a three-slide Hungarian relationship story. Produce an original variation; do not copy it.",
+        visualStyle: item.platform === "tiktok" ? "Everyday candid Hungarian social photo carousel, fully clothed" :
+          "Tasteful adult glamour portrait in elegant lingerie, confident pose, non-explicit",
         format: item.aspect_ratio });
       let copy: z.infer<typeof Copy>;
       const first = await generateContentJson<unknown>(instruction, context);
