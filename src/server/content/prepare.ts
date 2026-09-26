@@ -36,12 +36,8 @@ export async function prepareContent(now = new Date(), owner?: string, maxItems 
   if (characterError) throw characterError;
   for (const character of characters ?? []) {
     if (owner && character.owner_id !== owner) continue;
-    // Public platform accounts determine which model receives which preparation.
-    const { data: accounts } = await sb.from("model_accounts").select("platform")
-      .eq("character_id", character.id).eq("owner_id", character.owner_id);
-    const platforms = new Set((accounts ?? []).map(a => a.platform));
-    const destinations = ["tiktok", ...(slot.hour === 20 && platforms.has("telegram") ? ["telegram"] : []),
-      ...(slot.hour === 20 && platforms.has("fanvue") ? ["fanvue_public", "fanvue_paid"] : [])];
+    // Drafts are useful even if a publishing account has not been linked yet.
+    const destinations = ["tiktok", ...(slot.hour === 20 ? ["telegram", "fanvue_public", "fanvue_paid"] : [])];
     for (const platform of destinations) {
       const { data, error } = await sb.from("model_content_items").upsert({
         owner_id: character.owner_id, character_id: character.id, platform,
