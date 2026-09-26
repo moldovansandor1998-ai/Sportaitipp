@@ -64,11 +64,18 @@ export async function prepareContent(now = new Date(), owner?: string, maxItems 
     const slideCount = item.platform === "tiktok" ? 3 : 1;
     if (item.platform === "fanvue_paid") continue;
     const { data: attempted, error: attemptedError } = await sb.from("content_source_uses")
-      .select("source_id").eq("owner_id", item.owner_id).eq("character_id", item.character_id);
+      .select("source_id,item_id,review_status").eq("owner_id", item.owner_id).eq("character_id", item.character_id);
     if (attemptedError) throw attemptedError;
     const excluded = (attempted ?? []).map(row => row.source_id);
+    const usedOnThisItem = new Set((attempted ?? []).filter(row => row.item_id === item.id && row.review_status !== "rejected")
+      .map(row => row.source_id));
+    const { data: favorites, error: favoritesError } = await sb.from("content_source_images")
+      .select("id,asset_id,assets(bucket,object_path)").eq("owner_id", item.owner_id)
+      .eq("pool", pool).eq("preferred_for_character", item.character_id).is("retired_at", null).order("created_at");
+    if (favoritesError) throw favoritesError;
+    const preferredRows = (favorites ?? []).filter(row => !usedOnThisItem.has(row.id)).slice(0, slideCount);
     let eligibleQuery = sb.from("content_source_images").select("id", { count: "exact", head: true })
-      .eq("owner_id", item.owner_id).eq("pool", pool).is("used_at", null);
+      .eq("owner_id", item.owner_id).eq("pool", pool).is("used_at", null).is("retired_at", null);
     if (excluded.length) eligibleQuery = eligibleQuery.not("id", "in", `(${excluded.join(",")})`);
     const [{ count: free, error: countError }, { count: reserved, error: reserveError }] = await Promise.all([
       eligibleQuery,
@@ -76,7 +83,7 @@ export async function prepareContent(now = new Date(), owner?: string, maxItems 
         .eq("item_id", item.id).eq("revision", item.regeneration_count ?? 0),
     ]);
     if (countError || reserveError) throw countError ?? reserveError;
-    if ((free ?? 0) + (reserved ?? 0) < slideCount) {
+    if ((free ?? 0) + preferredRows.length + (reserved ?? 0) < slideCount) {
       await sb.from("model_content_items").update({ error: `WAITING_FOR_${pool.toUpperCase()}_SOURCES`,
         prepare_at: new Date(now.getTime() + 5 * 60_000).toISOString() }).eq("id", item.id).eq("status", "planned");
       continue;
@@ -102,21 +109,24 @@ export async function prepareContent(now = new Date(), owner?: string, maxItems 
         `${context}\nThe previous response omitted required fields. Return exactly slides (array of three strings), caption (string), scene (string).`));
       let candidateQuery = sb.from("content_source_images")
         .select("id,asset_id,assets(bucket,object_path)").eq("owner_id", item.owner_id)
-        .eq("pool", pool).is("used_at", null).order("created_at").limit(pool === "tiktok" ? 8 : 1);
+        .eq("pool", pool).is("used_at", null).is("retired_at", null).order("created_at")
+        .limit(pool === "tiktok" ? 8 : 1);
       if (excluded.length) candidateQuery = candidateQuery.not("id", "in", `(${excluded.join(",")})`);
-      const { data: candidateRows, error: candidatesError } = await candidateQuery;
+      const { data: freeRows, error: candidatesError } = await candidateQuery;
       if (candidatesError) throw candidatesError;
-      let chosenIds = (candidateRows ?? []).map(row => row.id);
-      if (pool === "tiktok" && chosenIds.length >= slideCount) {
-        const candidates = await Promise.all((candidateRows ?? []).map(async row => {
+      const chosenIds = preferredRows.map(row => row.id);
+      const stillNeeded = slideCount - chosenIds.length;
+      let otherIds = (freeRows ?? []).map(row => row.id);
+      if (pool === "tiktok" && stillNeeded > 0 && otherIds.length >= stillNeeded) {
+        const candidates = await Promise.all((freeRows ?? []).map(async row => {
           const asset = row.assets as unknown as { bucket: string; object_path: string } | null;
           if (!asset) return null;
           const { data: signed } = await sb.storage.from(asset.bucket).createSignedUrl(asset.object_path, 1800);
           return signed?.signedUrl ? { id: row.id, url: signed.signedUrl } : null;
         }));
         const visible = candidates.filter((candidate): candidate is { id: string; url: string } => candidate !== null);
-        if (visible.length >= slideCount) {
-          try { chosenIds = await choosePublicScenes(visible, slideCount, copy.slides.join(" ")); }
+        if (visible.length >= stillNeeded) {
+          try { otherIds = await choosePublicScenes(visible, stillNeeded, copy.slides.join(" ")); }
           catch (visionError) {
             // Keep the schedule alive with the owner's curated images, never
             // fall back to random text-to-image generation.
@@ -124,6 +134,7 @@ export async function prepareContent(now = new Date(), owner?: string, maxItems 
           }
         }
       }
+      chosenIds.push(...otherIds);
       const jobIds: string[] = [];
       for (let slide = 0; slide < slideCount; slide++) {
         const { data: selected, error: sourceError } = await sb.rpc("reserve_content_source", {

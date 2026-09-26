@@ -33,7 +33,7 @@ export async function GET(req: NextRequest) {
   const [assets, sources] = await Promise.all([
     assetIds.length ? svc.from("assets").select("id,bucket,object_path").eq("owner_id", user.id).in("id", assetIds)
       : Promise.resolve({ data: [], error: null }),
-    sourceIds.length ? svc.from("content_source_images").select("id,asset_id").eq("owner_id", user.id).in("id", sourceIds)
+    sourceIds.length ? svc.from("content_source_images").select("id,asset_id,preferred_for_character").eq("owner_id", user.id).in("id", sourceIds)
       : Promise.resolve({ data: [], error: null }),
   ]);
   if (assets.error || sources.error) return NextResponse.json({ error: "PACKAGE_MEDIA_UNAVAILABLE" }, { status: 500 });
@@ -59,7 +59,8 @@ export async function GET(req: NextRequest) {
       const source = use ? sourceById.get(use.source_id) : null;
       return { index, job_id: id, status: job?.status ?? "unknown", output_url: outputId ? urls.get(outputId) ?? null : null,
         source_id: use?.source_id ?? null, source_url: source ? urls.get(source.asset_id) ?? null : null,
-        review_status: use?.review_status ?? null, error: job?.error ?? null };
+        review_status: use?.review_status ?? null, favorite: source?.preferred_for_character === item.character_id,
+        error: job?.error ?? null };
     }),
   }));
   return NextResponse.json({ accounts: accounts.data, characters: characters.data, items: detailed });
