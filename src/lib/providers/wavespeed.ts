@@ -6,7 +6,7 @@ const EDIT_MODELS = {
   "seedream-v4.5": "bytedance/seedream-v4.5/edit",
   "nano-banana": "google/nano-banana/edit",
 } as const;
-const CHARACTER_EDIT_PROMPT = "refer to image 2 to make the same picture but use the face and hair of image 1. If image 2 contains a phone, make that phone an astro gray iPhone 14 Pro Max in the same position. If image 2 has no phone, do not add one.";
+const CHARACTER_EDIT_PROMPT = "refer to image 2 to make the same picture but use the face and hair of image 1";
 
 export class WaveSpeedAdapter implements ProviderAdapter {
   readonly name = "wavespeed";
