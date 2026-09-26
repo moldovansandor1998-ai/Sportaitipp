@@ -151,12 +151,13 @@ async function finalizeLocked(
     if (assetErr || !asset) throw new Error(`asset upsert failed: ${assetErr?.message}`);
     assetIds.push(asset.id);
 
+    const outputCategory = job.payload?.outputCategory === "fanvue" ? "fanvue" : "tiktok";
     const { data: existing } = await sb.from("gallery_items")
       .select("id").eq("owner_id", job.owner_id).eq("asset_id", asset.id).maybeSingle();
     if (!existing) {
       const { error: gErr } = await sb.from("gallery_items").insert({
         owner_id: job.owner_id, asset_id: asset.id, job_id: jobId,
-        character_id: job.character_id, qc_status: "pending",
+        character_id: job.character_id, qc_status: "pending", content_category: outputCategory,
       });
       if (gErr) throw new Error(`gallery insert failed: ${gErr.message}`);
     }
