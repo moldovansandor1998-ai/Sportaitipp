@@ -6,7 +6,7 @@ import { browserClient } from "@/lib/supabase/client";
 
 interface Item {
   galleryItemId: string; assetId: string; mediaType: string; qcStatus: string;
-  url: string | null; characterId: string | null; contentType: string; albumId: string | null;
+  url: string | null; characterId: string | null; contentType: string; albumId: string | null; usedAt: string | null;
 }
 interface Album { id: string; name: string; }
 interface Character { id: string; name: string; }
@@ -21,6 +21,11 @@ export default function GalleryPage() {
   const [q, setQ] = useState("");
   const [typeFilter, setTypeFilter] = useState("all");
   const [albumFilter, setAlbumFilter] = useState("all");
+  const [view, setView] = useState<"available" | "used">("available");
+  const [usageError, setUsageError] = useState("");
+  const [savingUsage, setSavingUsage] = useState<string | null>(null);
+  const [page, setPage] = useState(0);
+  const [total, setTotal] = useState(0);
   const [pendingCount, setPendingCount] = useState(0);
   const [failedEdits, setFailedEdits] = useState(0);
 
@@ -75,14 +80,20 @@ export default function GalleryPage() {
     const qs = new URLSearchParams();
     if (characterFilter !== "all") qs.set("characterId", characterFilter);
     if (albumFilter !== "all") qs.set("albumId", albumFilter);
+    qs.set("view", view);
+    qs.set("page", String(page));
     const res = await fetch(`/api/gallery?${qs}`, { headers: { authorization: `Bearer ${await token()}` } });
     if (res.ok) {
       const body = await res.json();
-      if (characterFilterRef.current === characterFilter) setItems(body.items);
+      if (characterFilterRef.current === characterFilter) {
+        setItems(body.items);
+        setTotal(body.total ?? body.items.length);
+        if (page > 0 && body.items.length === 0) setPage(page - 1);
+      }
     }
     const alb = await fetch("/api/albums", { headers: { authorization: `Bearer ${await token()}` } });
     if (alb.ok) setAlbums((await alb.json()).albums);
-  }, [token, albumFilter, characterFilter]);
+  }, [token, albumFilter, characterFilter, view, page]);
   useEffect(() => { load(); }, [load]);
   useEffect(() => {
     const refresh = () => { if (document.visibilityState === "visible") void load(); };
@@ -128,6 +139,19 @@ export default function GalleryPage() {
     await fetch(`/api/gallery/${id}`, { method: "DELETE", headers: { authorization: `Bearer ${await token()}` } });
     await load();
   }
+  async function setUsed(ids: string[], used: boolean) {
+    setUsageError("");
+    setSavingUsage(ids[0] ?? null);
+    const auth = { authorization: `Bearer ${await token()}`, "content-type": "application/json" };
+    const results = await Promise.allSettled(ids.map(id => fetch(`/api/gallery/${id}/usage`, {
+      method: "PATCH", headers: auth, body: JSON.stringify({ used }),
+    })));
+    const failed = results.filter(result => result.status === "rejected" || !result.value.ok);
+    if (failed.length) setUsageError(`${failed.length} kép állapotát nem sikerült menteni.`);
+    setSelected(new Set());
+    setSavingUsage(null);
+    await load();
+  }
   function toggle(id: string) {
     setSelected((s) => { const n = new Set(s); if (n.has(id)) n.delete(id); else n.add(id); return n; });
   }
@@ -142,8 +166,12 @@ export default function GalleryPage() {
     <main>
       <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
         <h1 style={{ fontSize: 22, margin: 0 }}>Galériám</h1>
+        <button className={view === "available" ? "" : "ghost"} disabled={view === "available"}
+          onClick={() => { setView("available"); setPage(0); setSelected(new Set()); setItems(null); }}>Használatlan képek</button>
+        <button className={view === "used" ? "" : "ghost"} disabled={view === "used"}
+          onClick={() => { setView("used"); setPage(0); setSelected(new Set()); setItems(null); }}>Felhasznált képek</button>
         <select aria-label="Modell galériája" value={characterFilter} onChange={(e) => {
-          setItems(null);
+          setItems(null); setPage(0);
           setSelected(new Set());
           characterFilterRef.current = e.target.value;
           setCharacterFilter(e.target.value);
@@ -154,7 +182,7 @@ export default function GalleryPage() {
           <option value="unassigned">Egyéb képek (modell nélkül)</option>
         </select>
         <input placeholder="keresés (asset típus)…" value={q} onChange={(e) => setQ(e.target.value)} style={{ flex: 1, minWidth: 140 }} />
-        <select value={albumFilter} onChange={(e) => setAlbumFilter(e.target.value)}>
+        <select value={albumFilter} onChange={(e) => { setAlbumFilter(e.target.value); setPage(0); }}>
           <option value="all">minden album</option>
           {albums.map((a) => <option key={a.id} value={a.id}>{a.name}</option>)}
         </select>
@@ -169,8 +197,17 @@ export default function GalleryPage() {
           </select>
         )}
         {selected.size > 0 && <button className="ghost" onClick={removeMany}>Törlés ({selected.size})</button>}
+        {selected.size > 0 && <button className="ghost" disabled={savingUsage !== null}
+          onClick={() => void setUsed([...selected], view === "available")}>{view === "available" ? "Felhasználva jelölés" : "Vissza a használatlanokhoz"} ({selected.size})</button>}
       </div>
-      <p className="muted">{filtered.length} / {items.length} elem{selected.size > 0 && ` · ${selected.size} kiválasztva`}</p>
+      {usageError && <p className="error" role="alert">{usageError}</p>}
+      <p className="muted">{view === "available" ? "Az itt felhasználva jelölt képek átkerülnek a Felhasznált képek nézetbe." : "A felhasznált képek megmaradnak, innen letölthetők és visszaállíthatók."}</p>
+      <p className="muted">{total} elem · {page + 1}. oldal{selected.size > 0 && ` · ${selected.size} kiválasztva`}</p>
+      {total > 60 && <div style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 12 }}>
+        <button className="ghost" disabled={page === 0} onClick={() => { setPage(page - 1); setSelected(new Set()); }}>Előző oldal</button>
+        <span>{page + 1} / {Math.ceil(total / 60)}</span>
+        <button className="ghost" disabled={(page + 1) * 60 >= total} onClick={() => { setPage(page + 1); setSelected(new Set()); }}>Következő oldal</button>
+      </div>}
       {pendingCount > 0 && <p className="muted">{pendingCount} kép feldolgozás alatt. Az eredmények itt automatikusan frissülnek.</p>}
       {failedEdits > 0 && <p role="status" style={{ color: "#f29a9a" }}>{failedEdits} képszerkesztés meghiúsult az elmúlt órában; ezek krediteit a rendszer visszaadta.</p>}
       {filtered.length === 0 ? (
@@ -189,6 +226,8 @@ export default function GalleryPage() {
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 8 }}>
                 <span className="badge">{characters.find((c) => c.id === it.characterId)?.name ?? "Egyéb"} · {it.mediaType} · {it.qcStatus}{selected.has(it.galleryItemId) && " ✓"}</span>
                 <span style={{ display: "flex", gap: 6 }}>
+                  <button className="ghost" style={{ padding: "4px 10px" }} disabled={savingUsage !== null}
+                    onClick={() => void setUsed([it.galleryItemId], view === "available")}>{view === "available" ? "Felhasználva" : "Vissza"}</button>
                   <a href={it.url ?? "#"} download><button className="ghost" style={{ padding: "4px 10px" }}>Letöltés</button></a>
                   <button className="ghost" style={{ padding: "4px 10px" }} onClick={() => removeOne(it.galleryItemId)}>Törlés</button>
                 </span>

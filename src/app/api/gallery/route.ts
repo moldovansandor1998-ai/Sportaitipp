@@ -20,6 +20,9 @@ export async function GET(req: NextRequest) {
   const svc = serviceClient();
   const albumId = req.nextUrl.searchParams.get("albumId");
   const characterId = req.nextUrl.searchParams.get("characterId");
+  const view = req.nextUrl.searchParams.get("view") === "used" ? "used" : "available";
+  const page = Math.min(10000, Math.max(0, Number.parseInt(req.nextUrl.searchParams.get("page") ?? "0", 10) || 0));
+  const pageSize = 60;
   if (characterId && characterId !== "unassigned") {
     if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(characterId)) {
       return NextResponse.json({ error: "INVALID_CHARACTER_ID" }, { status: 400 });
@@ -40,17 +43,19 @@ export async function GET(req: NextRequest) {
   }
   // media_type az assets táblából jön
   interface GalleryRow {
-    id: string; qc_status: string; character_id: string | null; album_id: string | null;
+    id: string; qc_status: string; character_id: string | null; album_id: string | null; used_at: string | null;
     assets: { id: string; object_path: string; media_type: string; content_type: string; bytes: number } | null;
   }
   let query = svc.from("gallery_items")
-    .select("id,qc_status,created_at,character_id,album_id,assets(id,object_path,media_type,content_type,bytes)")
+    .select("id,qc_status,created_at,used_at,character_id,album_id,assets(id,object_path,media_type,content_type,bytes)", { count: "exact" })
     .eq("owner_id", user.id).is("deleted_at", null)
-    .order("created_at", { ascending: false }).limit(100);
+    .order(view === "used" ? "used_at" : "created_at", { ascending: false })
+    .range(page * pageSize, (page + 1) * pageSize - 1);
+  query = view === "used" ? query.not("used_at", "is", null) : query.is("used_at", null);
   if (albumId && albumId !== "all") query = query.eq("album_id", albumId);
   if (characterId === "unassigned") query = query.is("character_id", null);
   else if (characterId) query = query.eq("character_id", characterId);
-  const { data: rows, error: rowsError } = await query;
+  const { data: rows, error: rowsError, count } = await query;
   if (rowsError) return NextResponse.json({ error: "GALLERY_LOOKUP_FAILED" }, { status: 500 });
   const items = (rows ?? []) as unknown as GalleryRow[];
 
@@ -69,7 +74,8 @@ export async function GET(req: NextRequest) {
       qcStatus: it.qc_status,
       characterId: it.character_id,
       albumId: it.album_id,
+      usedAt: it.used_at,
       url: signed?.signedUrl ?? null,
     };  }));
-  return NextResponse.json({ items: enriched.filter((i) => i !== null) });
+  return NextResponse.json({ items: enriched.filter((i) => i !== null), total: count ?? 0, page, pageSize });
 }
