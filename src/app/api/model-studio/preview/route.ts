@@ -8,6 +8,8 @@ export const runtime = "nodejs";
 export async function POST(req: NextRequest) {
   const user = await authed(req);
   if (!user) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+  if (process.env.CONTENT_AUTOMATION_ENABLED !== "true")
+    return NextResponse.json({ error: "QUALITY_REVIEW_REQUIRED" }, { status: 503 });
   const now = new Date();
   const localHour = Number(new Intl.DateTimeFormat("en-GB", { timeZone: "Europe/Budapest", hour: "2-digit", hourCycle: "h23" }).format(now));
   const simulated = new Date(now.getTime() + (19 - localHour) * 3600000);
