@@ -179,7 +179,7 @@ export default function ModelStudio() {
     </section>
     <section className="card" style={{ marginTop: 16 }}>
       <h2>Posztok és képcsomagok</h2>
-      <p className="muted">Budapesti idő: TikTok 12, 16, 20 óra; előkészítés 10, 14, 18 órakor, cél a poszt előtt egy órával kész képcsomag. TikTok 9:16, Fanvue és Telegram szabad képarány.</p>
+      <p className="muted">Budapesti idő: TikTok 12, 16, 20 óra; előkészítés 10, 14, 18 órakor, cél a poszt előtt egy órával kész képcsomag. Minden új képcsomag képei 9:16 arányúak.</p>
       <button disabled={previewing} onClick={() => void previewEvening()}>{previewing ? "Előkészítés…" : "18:00-s előkészítés kipróbálása"}</button>
       {previewResult && <p role="status">{previewResult}</p>}
       {publicItems.length === 0 && <p>Még nincs előkészített tartalom.</p>}
