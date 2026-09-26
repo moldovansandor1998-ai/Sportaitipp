@@ -103,8 +103,9 @@ export async function prepareContent(now = new Date(), owner?: string, maxItems 
 
 export async function refreshContentJobs() {
   const sb = serviceClient();
-  const { data: items } = await sb.from("model_content_items").select("id,image_jobs")
-    .eq("status", "generating").neq("image_jobs", "{}").limit(40);
+  const { data: items, error } = await sb.from("model_content_items").select("id,image_jobs")
+    .eq("status", "generating").limit(40);
+  if (error) throw error;
   for (const item of items ?? []) {
     const jobId = item.image_jobs?.[0];
     if (!jobId) continue;
