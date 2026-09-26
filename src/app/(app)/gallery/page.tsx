@@ -37,8 +37,8 @@ export default function GalleryPage() {
       const available = (data ?? []) as Character[];
       setCharacters(available);
       const requested = new URLSearchParams(window.location.search).get("characterId");
-      const initial = requested === "unassigned" || available.some((c) => c.id === requested)
-        ? requested! : available[0]?.id ?? "unassigned";
+      const initial = requested === "all" || requested === "unassigned" || available.some((c) => c.id === requested)
+        ? requested! : "all";
       characterFilterRef.current = initial;
       setCharacterFilter(initial);
     })();
@@ -51,10 +51,12 @@ export default function GalleryPage() {
     // before the user navigated away from the Tools page. This never submits a new run.
     const { data: { user } } = await getSb().auth.getUser();
     if (!user) return;
-    const { data: pending } = await getSb().from("generation_jobs")
+    let pendingQuery = getSb().from("generation_jobs")
       .select("id").eq("owner_id", user.id).eq("type", "character_swap").eq("status", "processing")
-      .eq("character_id", characterFilter === "unassigned" ? "00000000-0000-0000-0000-000000000000" : characterFilter)
       .order("created_at", { ascending: false }).limit(50);
+    if (characterFilter === "unassigned") pendingQuery = pendingQuery.is("character_id", null);
+    else if (characterFilter !== "all") pendingQuery = pendingQuery.eq("character_id", characterFilter);
+    const { data: pending } = await pendingQuery;
     setPendingCount(pending?.length ?? 0);
     if (pending?.length) {
       const auth = { authorization: `Bearer ${await token()}` };
@@ -62,13 +64,16 @@ export default function GalleryPage() {
         method: "POST", headers: auth,
       })));
     }
-    const { count: failed } = await getSb().from("generation_jobs")
+    let failedQuery = getSb().from("generation_jobs")
       .select("id", { count: "exact", head: true }).eq("owner_id", user.id)
-      .eq("character_id", characterFilter === "unassigned" ? "00000000-0000-0000-0000-000000000000" : characterFilter)
       .eq("type", "character_swap").eq("status", "refunded")
       .gte("created_at", new Date(Date.now() - 60 * 60 * 1000).toISOString());
+    if (characterFilter === "unassigned") failedQuery = failedQuery.is("character_id", null);
+    else if (characterFilter !== "all") failedQuery = failedQuery.eq("character_id", characterFilter);
+    const { count: failed } = await failedQuery;
     setFailedEdits(failed ?? 0);
-    const qs = new URLSearchParams({ characterId: characterFilter });
+    const qs = new URLSearchParams();
+    if (characterFilter !== "all") qs.set("characterId", characterFilter);
     if (albumFilter !== "all") qs.set("albumId", albumFilter);
     const res = await fetch(`/api/gallery?${qs}`, { headers: { authorization: `Bearer ${await token()}` } });
     if (res.ok) {
@@ -144,6 +149,7 @@ export default function GalleryPage() {
           setCharacterFilter(e.target.value);
           window.history.replaceState(null, "", `/gallery?characterId=${encodeURIComponent(e.target.value)}`);
         }}>
+          <option value="all">Összes modell</option>
           {characters.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
           <option value="unassigned">Egyéb képek (modell nélkül)</option>
         </select>
@@ -181,7 +187,7 @@ export default function GalleryPage() {
                 <video src={it.url} controls style={{ width: "100%", borderRadius: 8 }} onClick={() => toggle(it.galleryItemId)} />
               ) : <div className="skeleton" />}
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 8 }}>
-                <span className="badge">{it.mediaType} · {it.qcStatus}{selected.has(it.galleryItemId) && " ✓"}</span>
+                <span className="badge">{characters.find((c) => c.id === it.characterId)?.name ?? "Egyéb"} · {it.mediaType} · {it.qcStatus}{selected.has(it.galleryItemId) && " ✓"}</span>
                 <span style={{ display: "flex", gap: 6 }}>
                   <a href={it.url ?? "#"} download><button className="ghost" style={{ padding: "4px 10px" }}>Letöltés</button></a>
                   <button className="ghost" style={{ padding: "4px 10px" }} onClick={() => removeOne(it.galleryItemId)}>Törlés</button>
