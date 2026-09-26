@@ -7,7 +7,8 @@ import { buildRouter } from "@/lib/providers";
 import { createJobWithHold } from "@/lib/credits/rpc";
 import { scheduleKick } from "@/server/jobs/schedule";
 
-const Copy = z.object({ slides: z.array(z.string().min(1).max(220)).length(3), caption: z.string().min(1).max(900), scene: z.string().min(1).max(500) });
+const Copy = z.object({ slides: z.array(z.string().min(1).max(220)).length(3), caption: z.string().min(1).max(900),
+  scene: z.string().min(1).max(500).default("Natural candid mirror selfie in a contemporary room, coherent adult body proportions, realistic soft lighting") });
 const zone = "Europe/Budapest";
 type Slot = { date: string; hour: number; due: string };
 
