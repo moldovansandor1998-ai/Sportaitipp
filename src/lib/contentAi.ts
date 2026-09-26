@@ -5,13 +5,13 @@ export class ContentAiNotConfiguredError extends Error {
 }
 
 export function contentAiConfigured(): boolean {
-  return Boolean(process.env.CONTENT_AI_API_URL && process.env.CONTENT_AI_API_KEY && process.env.CONTENT_AI_MODEL);
+  return Boolean(process.env.OPENAI_API_KEY || (process.env.CONTENT_AI_API_URL && process.env.CONTENT_AI_API_KEY && process.env.CONTENT_AI_MODEL));
 }
 
 export async function generateContentJson<T>(system: string, prompt: string): Promise<T> {
-  const apiUrl = process.env.CONTENT_AI_API_URL;
-  const apiKey = process.env.CONTENT_AI_API_KEY;
-  const model = process.env.CONTENT_AI_MODEL;
+  const apiUrl = process.env.CONTENT_AI_API_URL || "https://api.openai.com/v1/chat/completions";
+  const apiKey = process.env.CONTENT_AI_API_KEY || process.env.OPENAI_API_KEY;
+  const model = process.env.CONTENT_AI_MODEL || "gpt-5.6-luna";
   if (!apiUrl || !apiKey || !model) throw new ContentAiNotConfiguredError();
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), 30_000);
@@ -21,7 +21,6 @@ export async function generateContentJson<T>(system: string, prompt: string): Pr
       headers: { authorization: `Bearer ${apiKey}`, "content-type": "application/json" },
       body: JSON.stringify({
         model,
-        temperature: 0.7,
         response_format: { type: "json_object" },
         messages: [{ role: "system", content: system }, { role: "user", content: prompt }],
       }),
