@@ -218,6 +218,18 @@ export default function ToolsPage() {
       const accessToken = await token();
       if (!accessToken) throw new Error("Jelentkezz be újra a feltöltéshez.");
       const uploadedFiles: Array<{ assetId: string; name: string }> = [];
+      const enqueue = async (part: Array<{ assetId: string; name: string }>) => {
+        const response = await fetch("/api/jobs/batch", {
+          method: "POST", headers: { authorization: `Bearer ${accessToken}`, "content-type": "application/json" },
+          body: JSON.stringify({ ...(allModels ? { characterIds: characters.map((c) => c.id) } : { characterId: toolChar }), editModel: characterEditModel, contentCategory: bulkCategory, files: part }),
+        });
+        if (!response.ok) {
+          const detail = await response.json().catch(() => null) as { error?: string } | null;
+          throw new Error(`${queuedSources} forráskép sorban; a következő adag hibája: ${detail?.error ?? response.status}. A teljes csomagot ne indítsd újra.`);
+        }
+        queuedSources += part.length;
+        setMsg((current) => ({ ...current, bulkSwap: `${queuedSources}/${bulkFiles.length} forráskép sorba állítva…` }));
+      };
       for (let i = 0; i < bulkFiles.length; i++) {
         const file = bulkFiles[i];
         update(i, { state: "feltöltés" });
@@ -231,18 +243,10 @@ export default function ToolsPage() {
         } catch (error) {
           update(i, { state: `hiba: ${error instanceof Error ? error.message : "ismeretlen hiba"}` });
         }
+        if (uploadedFiles.length - queuedSources >= 20) await enqueue(uploadedFiles.slice(queuedSources, queuedSources + 20));
       }
       if (uploadedFiles.length) {
-        for (let offset = 0; offset < uploadedFiles.length; offset += 20) {
-          const part = uploadedFiles.slice(offset, offset + 20);
-          const response = await fetch("/api/jobs/batch", {
-            method: "POST", headers: { authorization: `Bearer ${accessToken}`, "content-type": "application/json" },
-            body: JSON.stringify({ ...(allModels ? { characterIds: characters.map((c) => c.id) } : { characterId: toolChar }), editModel: characterEditModel, contentCategory: bulkCategory, files: part }),
-          });
-          if (!response.ok) throw new Error(`${queuedSources} forráskép már sorban van, a következő adag indítása nem sikerült. Ne indítsd újra az egész csomagot.`);
-          queuedSources += part.length;
-          setMsg((current) => ({ ...current, bulkSwap: `${queuedSources}/${uploadedFiles.length} forráskép sorba állítva…` }));
-        }
+        if (uploadedFiles.length > queuedSources) await enqueue(uploadedFiles.slice(queuedSources));
         setBulkStatus(allModels ? characters.flatMap((c) => uploadedFiles.map((f) => ({ name: `${c.name} · ${f.name}`, state: "sorban" })))
           : uploadedFiles.map((f) => ({ name: f.name, state: "sorban" })));
         setMsg((current) => ({ ...current, bulkSwap: `${uploadedFiles.length} forráskép × ${allModels ? characters.length : 1} modell = ${uploadedFiles.length * (allModels ? characters.length : 1)} ${bulkCategory === "fanvue" ? "Fanvue" : "TikTok"} kép sorba állítva. Most már elhagyhatod vagy frissítheted az oldalt.` }));
