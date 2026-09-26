@@ -15,7 +15,7 @@ export async function GET(req: NextRequest) {
   const svc = serviceClient();
   const [accounts, characters, items] = await Promise.all([
     svc.from("model_accounts").select("id,character_id,model_name,platform,login_email,account_url,notes").eq("owner_id", user.id).order("model_name"),
-    svc.from("characters").select("id,name,status,active_version_id,birth_date").eq("owner_id", user.id),
+    svc.from("characters").select("id,name,status,active_version_id,birth_date,occupation").eq("owner_id", user.id),
     svc.from("model_content_items").select("*").eq("owner_id", user.id).order("due_at", { ascending: false }).limit(100),
   ]);
   if (accounts.error || characters.error || items.error) return NextResponse.json({ error: "MODEL_STUDIO_UNAVAILABLE" }, { status: 500 });
