@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import Image from "next/image";
 import { browserClient } from "@/lib/supabase/client";
+import { zipFiles } from "@/lib/downloadZip";
 
 interface Item {
   galleryItemId: string; assetId: string; mediaType: string; qcStatus: string;
@@ -24,6 +25,8 @@ export default function GalleryPage() {
   const [view, setView] = useState<"available" | "used">("available");
   const [usageError, setUsageError] = useState("");
   const [savingUsage, setSavingUsage] = useState<string | null>(null);
+  const [downloading, setDownloading] = useState(false);
+  const [downloadStatus, setDownloadStatus] = useState("");
   const [page, setPage] = useState(0);
   const [total, setTotal] = useState(0);
   const [pendingCount, setPendingCount] = useState(0);
@@ -156,6 +159,42 @@ export default function GalleryPage() {
     setSelected((s) => { const n = new Set(s); if (n.has(id)) n.delete(id); else n.add(id); return n; });
   }
 
+  async function downloadSelected() {
+    const chosen = (items ?? []).filter(it => selected.has(it.galleryItemId));
+    if (!chosen.length) return;
+    setDownloading(true);
+    setDownloadStatus(`Letöltés: 0/${chosen.length}`);
+    try {
+      const files: { name: string; bytes: ArrayBuffer }[] = [];
+      for (const [index, item] of chosen.entries()) {
+        if (!item.url) throw new Error("Egy kijelölt fájl nem érhető el. Frissítsd a galériát.");
+        const response = await fetch(item.url);
+        if (!response.ok) throw new Error(`Nem sikerült letölteni a(z) ${index + 1}. fájlt.`);
+        const bytes = await response.arrayBuffer();
+        const ext = item.contentType === "image/png" ? "png" : item.contentType === "image/webp" ? "webp"
+          : item.contentType === "image/jpeg" ? "jpg" : item.contentType === "video/mp4" ? "mp4"
+          : item.contentType === "audio/mpeg" ? "mp3" : "bin";
+        const model = (characters.find(c => c.id === item.characterId)?.name ?? "egyeb")
+          .normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-zA-Z0-9_-]/g, "_");
+        files.push({ name: `${String(index + 1).padStart(3, "0")}_${model}_${item.assetId.slice(0, 8)}.${ext}`, bytes });
+        setDownloadStatus(`Letöltés: ${index + 1}/${chosen.length}`);
+      }
+      const url = URL.createObjectURL(zipFiles(files));
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = `castora-kepek-${new Date().toISOString().slice(0, 10)}.zip`;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.setTimeout(() => URL.revokeObjectURL(url), 60_000);
+      setDownloadStatus(`${files.length} fájl ZIP-ben letöltve.`);
+    } catch (error) {
+      setDownloadStatus(error instanceof Error ? error.message : "A közös letöltés nem sikerült.");
+    } finally {
+      setDownloading(false);
+    }
+  }
+
   if (characterFilter === null || items === null) return <div className="skeleton" />;
   const filtered = items.filter((it) =>
     (typeFilter === "all" || it.mediaType === typeFilter)
@@ -197,10 +236,14 @@ export default function GalleryPage() {
           </select>
         )}
         {selected.size > 0 && <button className="ghost" onClick={removeMany}>Törlés ({selected.size})</button>}
+        {selected.size > 0 && <button className="ghost" disabled={downloading} onClick={() => void downloadSelected()}>
+          {downloading ? "ZIP készítése…" : `Kijelöltek letöltése ZIP-ben (${selected.size})`}
+        </button>}
         {selected.size > 0 && <button className="ghost" disabled={savingUsage !== null}
           onClick={() => void setUsed([...selected], view === "available")}>{view === "available" ? "Felhasználva jelölés" : "Vissza a használatlanokhoz"} ({selected.size})</button>}
       </div>
       {usageError && <p className="error" role="alert">{usageError}</p>}
+      {downloadStatus && <p role="status">{downloadStatus}</p>}
       <p className="muted">{view === "available" ? "Az itt felhasználva jelölt képek átkerülnek a Felhasznált képek nézetbe." : "A felhasznált képek megmaradnak, innen letölthetők és visszaállíthatók."}</p>
       <p className="muted">{total} elem · {page + 1}. oldal{selected.size > 0 && ` · ${selected.size} kiválasztva`}</p>
       {total > 60 && <div style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 12 }}>
