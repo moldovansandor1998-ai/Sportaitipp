@@ -39,7 +39,7 @@ export default function ModelStudio() {
     setPreviewing(true); setError("");
     const token = (await browserClient().auth.getSession()).data.session?.access_token;
     const response = await fetch("/api/model-studio/preview", { method: "POST", headers: { authorization: `Bearer ${token}` } });
-    if (!response.ok) setError("A 19:00-s próba nem indult el.");
+    if (!response.ok) setError(response.status === 503 ? "Az automatikus képkészítés minőségi ellenőrzésig szünetel." : "A 19:00-s próba nem indult el.");
     else {
       const result = await response.json();
       setPreviewResult(`19:00-s próba: ${result.created} új poszt, ${result.processed} képfeladat sorba állítva. A továbbiakat a percenkénti feldolgozó indítja.`);
