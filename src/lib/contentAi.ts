@@ -9,9 +9,10 @@ export function contentAiConfigured(): boolean {
 }
 
 export async function generateContentJson<T>(system: string, prompt: string): Promise<T> {
-  const apiUrl = process.env.CONTENT_AI_API_URL || "https://api.openai.com/v1/chat/completions";
-  const apiKey = process.env.CONTENT_AI_API_KEY || process.env.OPENAI_API_KEY;
-  const model = process.env.CONTENT_AI_MODEL || "gpt-5.6-luna";
+  const customConfigured = Boolean(process.env.CONTENT_AI_API_URL && process.env.CONTENT_AI_API_KEY && process.env.CONTENT_AI_MODEL);
+  const apiUrl = customConfigured ? process.env.CONTENT_AI_API_URL : "https://api.openai.com/v1/chat/completions";
+  const apiKey = customConfigured ? process.env.CONTENT_AI_API_KEY : process.env.OPENAI_API_KEY;
+  const model = customConfigured ? process.env.CONTENT_AI_MODEL : "gpt-5.6-luna";
   if (!apiUrl || !apiKey || !model) throw new ContentAiNotConfiguredError();
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), 30_000);
