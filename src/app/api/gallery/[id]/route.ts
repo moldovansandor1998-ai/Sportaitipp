@@ -1,6 +1,6 @@
 export const runtime = "nodejs";
 
-// Galéria-törlés: soft-delete (deleted_at) + retryzható, best-effort storage-purgálás.
+// Galéria-törlés: azonnali soft-delete. A fizikai tárhelytakarítás külön feladat.
 // Sorrend és tulajdon-ellenőrzés szerveroldali.
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
@@ -37,11 +37,5 @@ export async function DELETE(
     if (error) return NextResponse.json({ error: error.message }, { status: 500 });
   }
 
-  // 2) Storage-purgálás best-effort – hiba esetén retry-vel újrapróbálható
-  let purged = true;
-  if (item.assets) {
-    const { error: rmErr } = await svc.storage.from(item.assets.bucket).remove([item.assets.object_path]);
-    purged = !rmErr;
-  }
-  return NextResponse.json({ ok: true, purged });
+  return NextResponse.json({ ok: true, purged: false });
 }
