@@ -15,8 +15,14 @@ export async function POST(req: NextRequest) {
   const simulated = new Date(now.getTime() + (18 - localHour) * 3600000);
   const seeded = await prepareContent(simulated, user.id, 0);
   if (!seeded.slot) return NextResponse.json({ error: "INVALID_TIME" }, { status: 500 });
-  // Bring only this owner's 20:00 test queue forward. The post date and hour remain 20:00.
-  await serviceClient().from("model_content_items").update({ prepare_at: now.toISOString() })
+  // Old quality-review failures can be retried now that the owner has uploaded
+  // scenes. Only today's public 20:00 drafts are included.
+  const sb = serviceClient();
+  await sb.from("model_content_items").update({ status: "planned", error: null, prepare_at: now.toISOString() })
+    .eq("owner_id", user.id).eq("local_date", seeded.slot.date).eq("post_hour", 20)
+    .in("platform", ["tiktok", "telegram", "fanvue_public"])
+    .eq("status", "failed").like("error", "QUALITY_REVIEW_REQUIRED%");
+  await sb.from("model_content_items").update({ prepare_at: now.toISOString() })
     .eq("owner_id", user.id).eq("local_date", seeded.slot.date).eq("post_hour", 20).eq("status", "planned");
   const result = await prepareContent(now, user.id, 1);
   return NextResponse.json({ ...result, created: seeded.created });
