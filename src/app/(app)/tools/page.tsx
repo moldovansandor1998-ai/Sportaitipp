@@ -92,9 +92,9 @@ export default function ToolsPage() {
     const latestEdit = latestEdits?.[0] as JobRow | undefined;
     if (latestEdit) {
       setJobs((current) => ({ ...current, fullSwap: latestEdit }));
-      for (const edit of (latestEdits ?? []) as JobRow[]) {
-        if (edit.status === "processing") poll(edit.id, edit.id === latestEdit.id ? "fullSwap" : `fullSwap:${edit.id}`);
-      }
+      // Only the current edit needs live status in this view. Older jobs are
+      // finalized by the background worker; polling all 50 floods the API.
+      if (latestEdit.status === "processing") poll(latestEdit.id, "fullSwap");
       if (latestEdit.status === "completed") await loadJobResults(latestEdit.id, "fullSwap");
       let restored = 0;
       for (const edit of (latestEdits ?? []) as JobRow[]) {
