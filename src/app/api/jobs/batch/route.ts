@@ -38,7 +38,10 @@ export async function POST(req: NextRequest) {
     owner_id: owner, batch_id: batchId, character_id: character.id,
     asset_id: f.assetId, edit_model: body?.editModel, content_category: contentCategory, filename: characterIds.length > 1 ? `${character.name} · ${f.name}`.slice(0, 255) : f.name,
   }))));
-  if (error) return NextResponse.json({ error: "QUEUE_FAILED" }, { status: 500 });
+  if (error) {
+    console.error(JSON.stringify({ scope: "bulk.queue", code: error.code, message: error.message, count: files.length * characterIds.length }));
+    return NextResponse.json({ error: `QUEUE_FAILED: ${error.code ?? "UNKNOWN"}` }, { status: 500 });
+  }
   return NextResponse.json({ batchId, count: files.length * characterIds.length }, { status: 202 });
 }
 
