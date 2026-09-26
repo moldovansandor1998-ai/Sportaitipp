@@ -7,6 +7,7 @@ import { browserClient } from "@/lib/supabase/client";
 const NAV = [
   { href: "/dashboard", icon: "⌂", label: "Explore" },
   { href: "/characters", icon: "◉", label: "My Models" },
+  { href: "/model-studio", icon: "▥", label: "Modellközpont" },
   { href: "/gallery", icon: "▦", label: "Galéria" },
   { href: "/generate", icon: "✦", label: "Generator" },
   { href: "/tools", icon: "⧉", label: "AI Tools" },
