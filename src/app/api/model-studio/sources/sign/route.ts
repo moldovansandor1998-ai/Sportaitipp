@@ -9,7 +9,7 @@ export async function POST(req: NextRequest) {
   const user = await authed(req);
   if (!user) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   const input = await req.json().catch(() => ({}));
-  if (!["tiktok", "telegram_fanvue"].includes(input.pool)
+  if (!["tiktok", "telegram", "fanvue_public"].includes(input.pool)
       || !["image/jpeg", "image/png", "image/webp"].includes(input.contentType)
       || !Number.isInteger(input.size) || input.size <= 0 || input.size > 15 * 1024 * 1024)
     return NextResponse.json({ error: "INVALID_UPLOAD" }, { status: 400 });

@@ -6,7 +6,7 @@ import { browserClient } from "@/lib/supabase/client";
 type Account = { id: string; character_id: string | null; model_name: string; platform: string; login_email: string; account_url: string | null; notes: string | null };
 type Character = { id: string; name: string; status: string; active_version_id: string | null };
 type Item = { id: string; character_id: string; platform: string; local_date: string; post_hour: number; due_at: string; aspect_ratio: string; status: string; trend_title: string | null; trend_url: string | null; copy: { slides?: string[]; caption?: string }; image_jobs: string[]; error: string | null };
-type Source = { id: string; pool: "tiktok" | "telegram_fanvue"; preview_url: string | null; used_at: string | null };
+type Source = { id: string; pool: "tiktok" | "telegram" | "fanvue_public"; preview_url: string | null; used_at: string | null };
 
 export default function ModelStudio() {
   const [accounts, setAccounts] = useState<Account[]>([]);
@@ -121,9 +121,9 @@ export default function ModelStudio() {
     <section className="card" style={{ marginTop: 16 }}>
       <h2>Forrásképek tömeges feltöltése</h2>
       <p className="muted">Ezek a képek a jelenetet adják. A modell arcát és haját a saját, jóváhagyott referenciafotói adják. Egy forrásképet csak egyetlen eredményhez használunk fel.</p>
-      <p className="muted">{characters.filter(c => c.status === "active").length} aktív modell teljes napjához {characters.filter(c => c.status === "active").length * 9} TikTok-forrás és {characters.filter(c => c.status === "active").length * 2} Telegram/Fanvue-forrás szükséges. Ha elfogynak, a következő poszt várakozik, és nem készül helyettesítő véletlen kép.</p>
+      <p className="muted">{characters.filter(c => c.status === "active").length} aktív modell teljes napjához {characters.filter(c => c.status === "active").length * 9} TikTok-forrás, {characters.filter(c => c.status === "active").length} Telegram-forrás és {characters.filter(c => c.status === "active").length} Fanvue-forrás szükséges. Ha elfogynak, a következő poszt várakozik.</p>
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(270px,1fr))", gap: 16 }}>
-        {([ ["tiktok", "TikTok · 9:16"], ["telegram_fanvue", "Telegram és Fanvue"] ] as const).map(([pool, label]) => {
+        {([ ["tiktok", "TikTok · 9:16"], ["telegram", "Telegram"], ["fanvue_public", "Fanvue · nyilvános, nem explicit"] ] as const).map(([pool, label]) => {
           const list = sources.filter(s => s.pool === pool);
           return <div key={pool}>
             <h3>{label}</h3>

@@ -11,7 +11,7 @@ export async function POST(req: NextRequest) {
   const user = await authed(req);
   if (!user) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   const body = await req.json().catch(() => ({}));
-  if (!["tiktok", "telegram_fanvue"].includes(body.pool)
+  if (!["tiktok", "telegram", "fanvue_public"].includes(body.pool)
       || typeof body.objectPath !== "string"
       || !new RegExp(`^${user.id}/content-sources/[0-9a-f-]{36}$`).test(body.objectPath))
     return NextResponse.json({ error: "INVALID_UPLOAD" }, { status: 400 });

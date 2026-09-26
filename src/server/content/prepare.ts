@@ -59,7 +59,8 @@ export async function prepareContent(now = new Date(), owner?: string, maxItems 
   let processed = 0;
   for (const item of pending ?? []) {
     if (owner && item.owner_id !== owner) continue;
-    const pool = item.platform === "tiktok" ? "tiktok" : "telegram_fanvue";
+    const pool = item.platform === "tiktok" ? "tiktok"
+      : item.platform === "telegram" ? "telegram" : "fanvue_public";
     const slideCount = item.platform === "tiktok" ? 3 : 1;
     if (item.platform === "fanvue_paid") continue;
     const [{ count: free, error: countError }, { count: reserved, error: reserveError }] = await Promise.all([

@@ -7,7 +7,7 @@ import { sniffMedia } from "@/lib/trainingDataset";
 
 export const runtime = "nodejs";
 const MAX_FILE = 15 * 1024 * 1024;
-const pools = new Set(["tiktok", "telegram_fanvue"]);
+const pools = new Set(["tiktok", "telegram", "fanvue_public"]);
 
 export async function GET(req: NextRequest) {
   const user = await authed(req);
