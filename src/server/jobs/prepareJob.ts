@@ -50,6 +50,7 @@ export async function prepareValidatedJobInput(input: {
   // A kliens által küldött LoRA-adatok KIZÁRÓDNEK – csak sikeres szerveroldali feloldás után kerülnek vissza
   delete payload.loraPath;
   delete payload.activeVersionId;
+  if (type !== "character_training") delete payload.triggerWord;
 
   // 1b) projekt-ownership (estimate-ben is – módosítás nélkül)
   let finalProjectId: string | undefined;
@@ -129,7 +130,6 @@ export async function prepareValidatedJobInput(input: {
       && !payload.prompt.includes(payload.triggerWord)) {
     payload.prompt = `${payload.triggerWord}, ${payload.prompt}`;
   }
-  if (type !== "character_training") delete payload.triggerWord;
 
   // 5) TTS voice validálás
   if (type === "tts" && payload.voice !== undefined
