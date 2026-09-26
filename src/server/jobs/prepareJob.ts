@@ -192,7 +192,17 @@ export async function prepareValidatedJobInput(input: {
       .order("is_primary", { ascending: false }).order("uploaded_at", { ascending: true })
       .limit(50);
     // Face and body references from the same training set establish the character.
-    const pool = refs ?? [];
+    let pool = refs ?? [];
+    // An approved training dataset can include face photos uploaded before the
+    // immediately preceding version. Fall back to the model's own approved
+    // portraits when the timestamp window contains only body shots.
+    if (!pool.some((r) => r.kind === "face")) {
+      const { data: approvedFaces } = await svc.from("character_reference_images")
+        .select("asset_id,qc_status,is_primary,kind").eq("character_id", characterId)
+        .eq("qc_status", "approved").eq("kind", "face")
+        .order("is_primary", { ascending: false }).order("uploaded_at", { ascending: false }).limit(5);
+      pool = [...(approvedFaces ?? []), ...pool];
+    }
     const selected: typeof pool = [];
     const add = (ref: (typeof pool)[number] | undefined) => {
       if (ref && !selected.some((item) => item.asset_id === ref.asset_id)) selected.push(ref);

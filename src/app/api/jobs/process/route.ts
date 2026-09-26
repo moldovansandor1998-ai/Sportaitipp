@@ -32,9 +32,9 @@ export async function POST(req: NextRequest) {
   // Failures must not stop the existing generation queue.
   let content: unknown = null;
   try {
-    // Keep scheduling disabled until reference-led generation and visual QA are verified.
-    // Existing image jobs still finalize; no new content credits are held by cron.
-    if (process.env.CONTENT_AUTOMATION_ENABLED === "true") content = await prepareContent(new Date(), undefined, 3);
+    // Source-gated scheduling: without enough unused images this only leaves
+    // visible, retryable drafts and never holds credits or submits a provider job.
+    if (process.env.CONTENT_AUTOMATION_ENABLED !== "false") content = await prepareContent(new Date(), undefined, 3);
     await refreshContentJobs();
   } catch (e) {
     console.error(JSON.stringify({ scope: "cron.content", error: String(e) }));
