@@ -375,7 +375,7 @@ export default function ToolsPage() {
 
       <div className="card" style={{ marginTop: 12 }}>
         <h3 style={{ marginTop: 0 }}>{characters.find((c) => c.id === toolChar)?.name ?? "Karakter"} arca a feltöltött képen</h3>
-        <p className="muted">A kiválasztott karakter arca és haja automatikusan kerül a képre. A rendszer a pózt és a hátteret megtartja; a látható telefont szürke iPhone 14 Pro Maxra állítja, és nem hagy tetoválást vagy vízjelet a kész képen.</p>
+        <p className="muted">A kiválasztott karakter arca és haja automatikusan kerül a képre. A póz, a háttér és a tárgyak a feltöltött képhez igazodnak; telefon csak akkor maradhat a képen, ha a forrásképen is látszik.</p>
         <label>Szerkesztő modell <select value={characterEditModel} onChange={(e) => setCharacterEditModel(e.target.value as "seedream-v4.5" | "nano-banana")}>
           <option value="seedream-v4.5">Seedream 4.5 Edit</option>
           <option value="nano-banana">Nano Banana Edit</option>
