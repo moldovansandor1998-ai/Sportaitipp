@@ -36,11 +36,15 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
       const { data: { user } } = await sb.auth.getUser();
       if (!user) return;
       setEmail(user.email ?? "");
-      const { data } = await sb.from("credit_accounts").select("balance").eq("user_id", user.id).single();
+      const [creditResult, profileResult, cfg] = await Promise.all([
+        sb.from("credit_accounts").select("balance").eq("user_id", user.id).single(),
+        sb.from("profiles").select("role").eq("id", user.id).single(),
+        fetch("/api/config/provider"),
+      ]);
+      const { data } = creditResult;
       setCredits(data?.balance ?? 0);
-      const { data: prof } = await sb.from("profiles").select("role").eq("id", user.id).single();
+      const { data: prof } = profileResult;
       setIsAdmin((prof as { role: string } | null)?.role === "admin");
-      const cfg = await fetch("/api/config/provider");
       if (cfg.ok) setProviderMode(((await cfg.json()) as { mode: string }).mode);
     })();
   }, [pathname]);
