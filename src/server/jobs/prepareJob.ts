@@ -177,26 +177,29 @@ export async function prepareValidatedJobInput(input: {
     if (!character) return [];
     // Retraining resets reference review; the previously approved version is still available.
     const { data: version } = character.active_version_id
-      ? await svc.from("character_versions").select("id").eq("id", character.active_version_id).eq("status", "approved").maybeSingle()
+      ? await svc.from("character_versions").select("id,created_at").eq("id", character.active_version_id).eq("status", "approved").maybeSingle()
       : { data: null };
-    const { data: refs } = await svc.from("character_reference_images")
+    const { data: previous } = version ? await svc.from("character_versions").select("created_at")
+      .eq("character_id", characterId).lt("created_at", version.created_at)
+      .order("created_at", { ascending: false }).limit(1).maybeSingle() : { data: null };
+    let refsQuery = svc.from("character_reference_images")
       .select("asset_id,qc_status,is_primary,kind").eq("character_id", characterId)
-      .in("qc_status", version ? ["approved", "pending"] : ["approved"])
+      .in("qc_status", ["approved"]);
+    // A new approved training version must never inherit old approved reference photos.
+    if (previous?.created_at) refsQuery = refsQuery.gt("uploaded_at", previous.created_at);
+    const { data: refs } = await refsQuery
       .order("is_primary", { ascending: false }).order("uploaded_at", { ascending: true })
       .limit(50);
-    // Anchor the identity with a portrait, then add distinct approved views.
-    const approved = (refs ?? []).filter((r) => r.qc_status === "approved");
-    const pool = approved.length > 0 ? approved : (refs ?? []).filter((r) => r.qc_status === "pending");
+    // Face and body references from the same training set establish the character.
+    const pool = refs ?? [];
     const selected: typeof pool = [];
     const add = (ref: (typeof pool)[number] | undefined) => {
       if (ref && !selected.some((item) => item.asset_id === ref.asset_id)) selected.push(ref);
     };
     add(pool.find((r) => r.kind === "face" && r.is_primary) ?? pool.find((r) => r.kind === "face"));
-    const faces = pool.filter((r) => r.kind === "face" && !selected.some((item) => item.asset_id === r.asset_id));
-    add(faces[Math.floor(faces.length / 2)]);
+    add(pool.find((r) => r.kind === "full_body"));
     add(pool.find((r) => r.kind === "half_body"));
-    if (selected.length < 3) add(faces[faces.length - 1]);
-    if (selected.length < 3) add(pool.find((r) => r.kind === "full_body"));
+    if (selected.length < 3) add(pool.find((r) => r.kind === "face" && !selected.some((item) => item.asset_id === r.asset_id)));
     if (selected.length === 0) return [];
     return resolveImages(selected.slice(0, 3).map((r) => r.asset_id));
   };
@@ -270,7 +273,7 @@ export async function prepareValidatedJobInput(input: {
     payload.imageUrl = baseUrl;
     payload.swapImageUrl = finalSwap;
     if (characterEdit) {
-      payload.characterImageUrls = [baseUrl, ...characterFaces];
+      payload.characterImageUrls = [characterFaces[0], baseUrl, ...characterFaces.slice(1)];
       payload.editModel = editModel;
     }
     delete payload.sourceAssetId; delete payload.imageAssetIds; delete payload.swapAssetId; delete payload.useCharacterReference;
