@@ -3,7 +3,7 @@ import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { browserClient } from "@/lib/supabase/client";
 
-type Account = { id: string; character_id: string | null; model_name: string; platform: string; login_email: string; account_url: string | null; notes: string | null };
+type Account = { id: string; character_id: string | null; model_name: string; platform: string; login_email: string | null; account_url: string | null; notes: string | null };
 type Character = { id: string; name: string; status: string; active_version_id: string | null; birth_date: string | null };
 type Slide = { index: number; job_id: string; status: string; output_url: string | null; source_id: string | null; source_url: string | null; review_status: string | null; favorite: boolean; error: unknown };
 type Item = { id: string; character_id: string; platform: string; local_date: string; post_hour: number; due_at: string; aspect_ratio: string; status: string; trend_title: string | null; trend_url: string | null; copy: { slides?: string[]; caption?: string }; image_jobs: string[]; slides: Slide[]; error: string | null };
@@ -138,7 +138,8 @@ export default function ModelStudio() {
           {character && <Link href={`/characters/${character.id}`}>Karakter megnyitása</Link>}
           {list.map(a => <div key={a.id} style={{ borderTop: "1px solid var(--border)", marginTop: 12, paddingTop: 12 }}>
             <strong>{a.platform === "fanvue" ? "Fanvue" : a.platform === "tiktok" ? "TikTok" : "Telegram"}</strong>
-            <p style={{ overflowWrap: "anywhere", margin: "6px 0" }}>{a.login_email}</p>
+            {a.login_email && <p style={{ overflowWrap: "anywhere", margin: "6px 0" }}>{a.login_email}</p>}
+            {a.account_url && <p style={{ overflowWrap: "anywhere", margin: "6px 0" }}><a href={a.account_url} target="_blank" rel="noopener noreferrer">Profil megnyitása ↗</a></p>}
             <input aria-label={`${name} ${a.platform} profil URL`} placeholder="Profil URL" value={a.account_url ?? ""}
               onChange={e => setAccounts(prev => prev.map(x => x.id === a.id ? { ...x, account_url: e.target.value } : x))} />
             <input aria-label={`${name} ${a.platform} megjegyzés`} placeholder="Megjegyzés" value={a.notes ?? ""}
