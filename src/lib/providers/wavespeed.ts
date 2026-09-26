@@ -6,7 +6,7 @@ const EDIT_MODELS = {
   "seedream-v4.5": "bytedance/seedream-v4.5/edit",
   "nano-banana": "google/nano-banana/edit",
 } as const;
-const CHARACTER_EDIT_PROMPT = "Recreate the photograph in image 2 with the adult woman from image 1. Preserve the scene, pose, framing, clothing, lighting and visible objects from image 2. Use image 1 for her recognizable face, hair and eyes; images 3 and 4, if present, are additional views of her natural body proportions. Keep the result candid and photorealistic, with natural skin texture and anatomically correct hands. Include a phone only if one is visible in image 2, in the same place and scale. Do not add objects, people, text, watermarks or tattoos.";
+const CHARACTER_EDIT_PROMPT = "refer to image 2 to make the same picture but use the face and hair of image 1. If image 2 contains a phone, make that phone an astro gray iPhone 14 Pro Max in the same position. If image 2 has no phone, do not add one.";
 
 export class WaveSpeedAdapter implements ProviderAdapter {
   readonly name = "wavespeed";
@@ -65,11 +65,8 @@ export class WaveSpeedAdapter implements ProviderAdapter {
     if (Array.isArray(characterImages) && characterImages.length >= 2
         && characterImages.length <= 4 && characterImages.every((url) => typeof url === "string" && url.startsWith("https://"))) {
       const model = p.payload.editModel === "nano-banana" ? EDIT_MODELS["nano-banana"] : EDIT_MODELS["seedream-v4.5"];
-      const appearance = p.payload.characterName === "Laura"
-        ? " The identity in image 1 has short straight blonde bob hair ending near the shoulders. Never give Laura long hair or extensions."
-        : "";
       const data = await this.request(`${API}/${model}`, {
-        images: characterImages, prompt: CHARACTER_EDIT_PROMPT + appearance,
+        images: characterImages, prompt: CHARACTER_EDIT_PROMPT,
         ...(p.payload.editModel === "nano-banana" ? { aspect_ratio: "9:16" } : { size: "1152*2048" }),
         ...(p.payload.editModel === "nano-banana" ? { output_format: "png" } : {}),
       });
