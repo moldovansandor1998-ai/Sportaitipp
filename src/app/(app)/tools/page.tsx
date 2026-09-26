@@ -201,8 +201,8 @@ export default function ToolsPage() {
     } finally { setBusyKey(null); }
   }
 
-  async function startBulkEdits() {
-    if (bulkBusyRef.current || !bulkFiles.length || !toolChar || !cfg?.faceSwapConfigured) return;
+  async function startBulkEdits(allModels = false) {
+    if (bulkBusyRef.current || !bulkFiles.length || (!allModels && !toolChar) || (allModels && !characters.length) || !cfg?.faceSwapConfigured) return;
     bulkBusyRef.current = true;
     setBusyKey("bulkSwap");
     setBulkStatus(bulkFiles.map((file) => ({ name: file.name, state: "várakozik" })));
@@ -229,11 +229,12 @@ export default function ToolsPage() {
       if (uploadedFiles.length) {
         const response = await fetch("/api/jobs/batch", {
           method: "POST", headers: { authorization: `Bearer ${accessToken}`, "content-type": "application/json" },
-          body: JSON.stringify({ characterId: toolChar, editModel: characterEditModel, files: uploadedFiles }),
+          body: JSON.stringify({ ...(allModels ? { characterIds: characters.map((c) => c.id) } : { characterId: toolChar }), editModel: characterEditModel, files: uploadedFiles }),
         });
         if (!response.ok) throw new Error("A képek feltöltődtek, de a háttérfeldolgozás indítása nem sikerült. Ne töltsd fel újra; jelezd a hibát.");
-        setBulkStatus((current) => current.map((row) => row.state === "feltöltve" ? { ...row, state: "sorban" } : row));
-        setMsg((current) => ({ ...current, bulkSwap: `${uploadedFiles.length} kép sorba állítva. Most már elhagyhatod vagy frissítheted az oldalt.` }));
+        setBulkStatus(allModels ? characters.flatMap((c) => uploadedFiles.map((f) => ({ name: `${c.name} · ${f.name}`, state: "sorban" })))
+          : uploadedFiles.map((f) => ({ name: f.name, state: "sorban" })));
+        setMsg((current) => ({ ...current, bulkSwap: `${uploadedFiles.length} forráskép × ${allModels ? characters.length : 1} modell = ${uploadedFiles.length * (allModels ? characters.length : 1)} kép sorba állítva. Most már elhagyhatod vagy frissítheted az oldalt.` }));
         setBulkFiles([]);
         const picker = document.getElementById("character-source-images") as HTMLInputElement | null;
         if (picker) picker.value = "";
@@ -391,6 +392,8 @@ export default function ToolsPage() {
           <p>{bulkFiles.length} kép kiválasztva</p>
           <button disabled={busyKey !== null || !toolChar || !cfg?.faceSwapConfigured}
             onClick={() => void startBulkEdits()}>Mind a {bulkFiles.length} kép elkészítése</button>
+          <button className="ghost" style={{ marginLeft: 8 }} disabled={busyKey !== null || !characters.length || !cfg?.faceSwapConfigured}
+            onClick={() => void startBulkEdits(true)}>Készítés az összes modellre ({bulkFiles.length * characters.length} kép)</button>
         </div>}
         <div style={{ display: "flex", gap: 8, marginBottom: 10, flexWrap: "wrap" }}>
           <input aria-label="Pinterest keresés" placeholder="Keresés Pinterest képek között…" value={pinterestQuery}
