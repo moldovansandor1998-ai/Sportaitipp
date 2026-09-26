@@ -68,12 +68,16 @@ export async function prepareContent(now = new Date(), owner?: string, maxItems 
       if (item.platform === "fanvue_paid") throw new Error("PAID_IMAGE_PROVIDER_NOT_VERIFIED");
       if (!contentAiConfigured()) throw new Error("CONTENT_AI_NOT_CONFIGURED");
       const { data: character } = await sb.from("characters").select("name").eq("id", item.character_id).single();
-      const copy = Copy.parse(await generateContentJson<z.infer<typeof Copy>>(
-        "Write Hungarian social media copy as JSON with exactly three short slide texts, a caption and an English photorealistic scene description. Do not claim a live trend, ranking or source you have not checked. Avoid text embedded in the photo. The subject is an adult fictional character; keep public imagery suitable for social platforms.",
-        JSON.stringify({ model: character?.name, platform: item.platform, postingHour: item.post_hour,
-          inspiration: "A supplied example uses a natural mirror selfie and a three-slide Hungarian relationship story. Produce an original variation; do not copy it.",
-          format: item.aspect_ratio }),
-      ));
+      const instruction = "Return ONLY this exact JSON object: {\"slides\":[\"Hungarian slide 1\",\"Hungarian slide 2\",\"Hungarian slide 3\"],\"caption\":\"Hungarian caption\",\"scene\":\"English photorealistic image scene\"}. All five values are required. Do not claim a live trend, ranking or source you have not checked. No text embedded in the image. The subject is an adult fictional character; keep public imagery suitable for social platforms.";
+      const context = JSON.stringify({ model: character?.name, platform: item.platform, postingHour: item.post_hour,
+        inspiration: "A supplied example uses a natural mirror selfie and a three-slide Hungarian relationship story. Produce an original variation; do not copy it.",
+        format: item.aspect_ratio });
+      let copy: z.infer<typeof Copy>;
+      const first = await generateContentJson<unknown>(instruction, context);
+      const parsed = Copy.safeParse(first);
+      if (parsed.success) copy = parsed.data;
+      else copy = Copy.parse(await generateContentJson<unknown>(instruction,
+        `${context}\nThe previous response omitted required fields. Return exactly slides (array of three strings), caption (string), scene (string).`));
       // Paid content needs its own verified adult-capable image workflow. Never silently
       // substitute a public image while reporting the paid set as ready.
       const payload = { prompt: `${copy.scene}. Adult woman, consistent face and body, natural anatomy, candid photography, no typography or watermark.`,
