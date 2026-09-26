@@ -235,6 +235,8 @@ export default function ToolsPage() {
         setBulkStatus((current) => current.map((row) => row.state === "feltöltve" ? { ...row, state: "sorban" } : row));
         setMsg((current) => ({ ...current, bulkSwap: `${uploadedFiles.length} kép sorba állítva. Most már elhagyhatod vagy frissítheted az oldalt.` }));
         setBulkFiles([]);
+        const picker = document.getElementById("character-source-images") as HTMLInputElement | null;
+        if (picker) picker.value = "";
       }
     } catch (error) {
       setMsg((current) => ({ ...current, bulkSwap: error instanceof Error ? error.message : "Hiba történt" }));
@@ -360,7 +362,7 @@ export default function ToolsPage() {
       </details>
 
       <div className="card" style={{ marginTop: 12 }}>
-        <h3 style={{ marginTop: 0 }}>Petra arca a feltöltött képen</h3>
+        <h3 style={{ marginTop: 0 }}>{characters.find((c) => c.id === toolChar)?.name ?? "Karakter"} arca a feltöltött képen</h3>
         <p className="muted">A kiválasztott karakter arca és haja automatikusan kerül a képre. A rendszer a pózt és a hátteret megtartja; a látható telefont szürke iPhone 14 Pro Maxra állítja, és nem hagy tetoválást vagy vízjelet a kész képen.</p>
         <label>Szerkesztő modell <select value={characterEditModel} onChange={(e) => setCharacterEditModel(e.target.value as "seedream-v4.5" | "nano-banana")}>
           <option value="seedream-v4.5">Seedream 4.5 Edit</option>
@@ -374,7 +376,6 @@ export default function ToolsPage() {
           multiple disabled={busyKey !== null} aria-describedby="character-source-hint"
           onChange={(event) => {
             const selected = Array.from(event.currentTarget.files ?? []);
-            event.currentTarget.value = "";
             if (selected.length > 20) {
               setMsg((current) => ({ ...current, bulkSwap: "Egyszerre legfeljebb 20 képet választhatsz." }));
               return;
@@ -417,7 +418,7 @@ export default function ToolsPage() {
           <button disabled={busyKey !== null || (!swapAsset && !swapPinUrl) || !toolChar || !cfg?.faceSwapConfigured}
             onClick={() => run("fullSwap", "character_swap", {
               ...(swapPinUrl ? { imageUrl: swapPinUrl } : { sourceAssetId: swapAsset }), useCharacterReference: true, editModel: characterEditModel,
-            }, { characterId: toolChar })}>Petra arcának behelyezése</button>
+            }, { characterId: toolChar })}>{characters.find((c) => c.id === toolChar)?.name ?? "Karakter"} arcának behelyezése</button>
           <Badge k="fullSwap" /><Price k="fullSwap" />
         </div>
         <Results k="fullSwap" kind="image" />
