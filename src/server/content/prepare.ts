@@ -43,7 +43,7 @@ export async function prepareContent(now = new Date(), owner?: string, maxItems 
       const { data, error } = await sb.from("model_content_items").upsert({
         owner_id: character.owner_id, character_id: character.id, platform,
         local_date: slot.date, post_hour: slot.hour, due_at: slot.due, prepare_at: slot.prepare,
-        aspect_ratio: platform === "tiktok" ? "9:16" : "flexible",
+        aspect_ratio: "9:16",
       }, { onConflict: "character_id,platform,local_date,post_hour", ignoreDuplicates: true }).select("id");
       if (error) throw error;
       created += data?.length ?? 0;
