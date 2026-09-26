@@ -65,8 +65,11 @@ export class WaveSpeedAdapter implements ProviderAdapter {
     if (Array.isArray(characterImages) && characterImages.length >= 2
         && characterImages.length <= 4 && characterImages.every((url) => typeof url === "string" && url.startsWith("https://"))) {
       const model = p.payload.editModel === "nano-banana" ? EDIT_MODELS["nano-banana"] : EDIT_MODELS["seedream-v4.5"];
+      const appearance = p.payload.characterName === "Laura"
+        ? " The identity in image 1 has short straight blonde bob hair ending near the shoulders. Never give Laura long hair or extensions."
+        : "";
       const data = await this.request(`${API}/${model}`, {
-        images: characterImages, prompt: CHARACTER_EDIT_PROMPT,
+        images: characterImages, prompt: CHARACTER_EDIT_PROMPT + appearance,
         ...(p.payload.editModel === "nano-banana" ? { output_format: "png" } : {}),
       });
       if (typeof data.id !== "string") throw new ProviderError("WaveSpeed did not return a task ID", false);

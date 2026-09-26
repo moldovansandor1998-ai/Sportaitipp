@@ -50,6 +50,7 @@ export async function prepareValidatedJobInput(input: {
   // A kliens által küldött LoRA-adatok KIZÁRÓDNEK – csak sikeres szerveroldali feloldás után kerülnek vissza
   delete payload.loraPath;
   delete payload.activeVersionId;
+  delete payload.characterName;
   if (type !== "character_training") delete payload.triggerWord;
 
   // 1b) projekt-ownership (estimate-ben is – módosítás nélkül)
@@ -275,6 +276,9 @@ export async function prepareValidatedJobInput(input: {
     payload.imageUrl = baseUrl;
     payload.swapImageUrl = finalSwap;
     if (characterEdit) {
+      const { data: identity } = await svc.from("characters").select("name")
+        .eq("id", characterId!).eq("owner_id", input.userId).single();
+      payload.characterName = identity?.name ?? "";
       payload.characterImageUrls = [characterFaces[0], baseUrl, ...characterFaces.slice(1)];
       payload.editModel = editModel;
     }
