@@ -63,12 +63,20 @@ export default function ModelStudio() {
     let saved = 0;
     const failures: string[] = [];
     for (const file of Array.from(files)) {
-      const form = new FormData(); form.set("pool", pool); form.set("file", file);
       try {
-        const response = await fetch("/api/model-studio/sources", { method: "POST",
-          headers: { authorization: `Bearer ${token}` }, body: form });
+        const signResponse = await fetch("/api/model-studio/sources/sign", { method: "POST",
+          headers: { authorization: `Bearer ${token}`, "content-type": "application/json" },
+          body: JSON.stringify({ pool, contentType: file.type, size: file.size }) });
+        if (!signResponse.ok) { failures.push(`${file.name}: ${(await signResponse.json()).error ?? "aláírási hiba"}`); continue; }
+        const { objectPath, token: uploadToken } = await signResponse.json();
+        const { error: uploadError } = await browserClient().storage.from("assets")
+          .uploadToSignedUrl(objectPath, uploadToken, file, { contentType: file.type });
+        if (uploadError) { failures.push(`${file.name}: ${uploadError.message}`); continue; }
+        const response = await fetch("/api/model-studio/sources/finalize", { method: "POST",
+          headers: { authorization: `Bearer ${token}`, "content-type": "application/json" },
+          body: JSON.stringify({ pool, objectPath }) });
         if (response.ok) saved++;
-        else failures.push(`${file.name}: ${(await response.json()).error ?? "hiba"}`);
+        else failures.push(`${file.name}: ${(await response.json()).error ?? "lezárási hiba"}`);
       } catch { failures.push(`${file.name}: hálózati hiba`); }
     }
     setUploadResult(`${saved} kép feltöltve.${failures.length ? ` ${failures.join("; ")}` : ""}`);
