@@ -15,6 +15,7 @@ import { ProviderError } from "@/lib/providers/types";
 import { createJobWithHold } from "@/lib/credits/rpc";
 import { prepareValidatedJobInput } from "@/server/jobs/prepareJob";
 import { scheduleKick } from "@/server/jobs/schedule";
+import { prepareContent, refreshContentJobs } from "@/server/content/prepare";
 
 export async function POST(req: NextRequest) {
   const verdict = isCronAuthorized(req.headers.get("authorization"), process.env.CRON_SECRET);
@@ -26,6 +27,16 @@ export async function POST(req: NextRequest) {
   }
 
   const sb = serviceClient();
+
+  // Runs in Budapest's local 11/15/19 windows, including DST transitions.
+  // Failures must not stop the existing generation queue.
+  let content: unknown = null;
+  try {
+    content = await prepareContent(new Date(), undefined, 1);
+    await refreshContentJobs();
+  } catch (e) {
+    console.error(JSON.stringify({ scope: "cron.content", error: String(e) }));
+  }
 
   // Tartós tömeges sor: a böngészőnek a beküldés után már nem kell nyitva lennie.
   let bulkStarted = 0;
@@ -137,7 +148,7 @@ export async function POST(req: NextRequest) {
       if (error instanceof ProviderError && !error.retryable) await failJob(job, error.message);
     }
   }
-  return NextResponse.json({ reaped: reaped ?? 0, processed: claimed.length, resumed, bulkStarted, checked });
+  return NextResponse.json({ reaped: reaped ?? 0, processed: claimed.length, resumed, bulkStarted, checked, content });
 }
 
 // Vercel Cron GET kérést küld, azonos Bearer ellenőrzéssel.

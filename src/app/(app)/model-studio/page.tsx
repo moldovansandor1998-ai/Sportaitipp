@@ -13,6 +13,8 @@ export default function ModelStudio() {
   const [items, setItems] = useState<Item[]>([]);
   const [error, setError] = useState("");
   const [saving, setSaving] = useState<string | null>(null);
+  const [previewing, setPreviewing] = useState(false);
+  const [previewResult, setPreviewResult] = useState("");
   const load = useCallback(async () => {
     const token = (await browserClient().auth.getSession()).data.session?.access_token;
     const response = await fetch("/api/model-studio", { headers: { authorization: `Bearer ${token}` } });
@@ -31,6 +33,19 @@ export default function ModelStudio() {
     });
     if (!response.ok) setError("A fiókadat mentése sikertelen.");
     setSaving(null);
+  }
+
+  async function previewEvening() {
+    setPreviewing(true); setError("");
+    const token = (await browserClient().auth.getSession()).data.session?.access_token;
+    const response = await fetch("/api/model-studio/preview", { method: "POST", headers: { authorization: `Bearer ${token}` } });
+    if (!response.ok) setError("A 19:00-s próba nem indult el.");
+    else {
+      const result = await response.json();
+      setPreviewResult(`19:00-s próba: ${result.created} új poszt, ${result.processed} képfeladat sorba állítva. A továbbiakat a percenkénti feldolgozó indítja.`);
+      await load();
+    }
+    setPreviewing(false);
   }
 
   return <main style={{ maxWidth: 1050 }}>
@@ -60,6 +75,8 @@ export default function ModelStudio() {
     <section className="card" style={{ marginTop: 16 }}>
       <h2>Posztok és képcsomagok</h2>
       <p className="muted">Budapesti idő: TikTok 12, 16, 20 óra; a képek 11, 15, 19 órára készülnek. TikTok 9:16, Fanvue és Telegram szabad képarány.</p>
+      <button disabled={previewing} onClick={() => void previewEvening()}>{previewing ? "Előkészítés…" : "19:00-s előkészítés kipróbálása"}</button>
+      {previewResult && <p role="status">{previewResult}</p>}
       {items.length === 0 && <p>Még nincs előkészített tartalom.</p>}
       {items.map(item => <article key={item.id} style={{ borderTop: "1px solid var(--border)", padding: "12px 0" }}>
         <strong>{characters.find(c => c.id === item.character_id)?.name ?? "Modell"} · {item.platform} · {item.local_date} {item.post_hour}:00</strong>
