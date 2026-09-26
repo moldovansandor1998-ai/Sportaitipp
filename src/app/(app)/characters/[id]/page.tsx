@@ -214,7 +214,9 @@ export default function CharacterDetailPage({ params }: { params: Promise<{ id: 
         body: JSON.stringify({ stage, versionId, confirmed: true }),
       });
       const result = await res.json();
-      if (!res.ok) throw new Error(result.detail ? `${result.error}: ${result.detail}` : result.error ?? "Az ellenőrzés nem sikerült");
+      if (!res.ok) throw new Error(result.referenceId
+        ? `A ${refs.findIndex((r) => r.id === result.referenceId) + 1}. referenciafájl nem olvasható (${result.error}). Távolítsd el és töltsd fel újra.`
+        : result.detail ? `${result.error}: ${result.detail}` : result.error ?? "Az ellenőrzés nem sikerült");
       await load();
     } catch (e) { setError(e instanceof Error ? e.message : "Ellenőrzési hiba"); }
     finally { setBusy(false); }
@@ -247,7 +249,9 @@ export default function CharacterDetailPage({ params }: { params: Promise<{ id: 
         headers: { authorization: `Bearer ${session?.access_token}` },
       });
       const body = await res.json();
-      if (!res.ok) throw new Error(body.error ?? "training-prep hiba");
+      if (!res.ok) throw new Error(body.referenceId
+        ? `A ${refs.findIndex((r) => r.id === body.referenceId) + 1}. referenciafájl nem olvasható (${body.error}). Távolítsd el és töltsd fel újra.`
+        : body.error ?? "training-prep hiba");
       await startJob("character_training", body.payload);
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : "Tréning-hiba");
