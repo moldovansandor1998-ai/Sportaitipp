@@ -59,7 +59,17 @@ export default function ToolsPage() {
   const init = useCallback(async () => {
     const { data: { user } } = await getSb().auth.getUser();
     if (!user) return;
-    const batchResponse = await fetch("/api/jobs/batch", { headers: { authorization: `Bearer ${await token()}` } });
+    const accessToken = await token();
+    const [batchResponse, res, lastVideoResult, charsResult, c, latestEditsResult] = await Promise.all([
+      fetch("/api/jobs/batch", { headers: { authorization: `Bearer ${accessToken}` } }),
+      fetch("/api/gallery", { headers: { authorization: `Bearer ${accessToken}` } }),
+      getSb().from("assets").select("id").eq("owner_id", user.id).eq("media_type", "video")
+        .eq("source", "upload").order("created_at", { ascending: false }).limit(1).maybeSingle(),
+      getSb().from("characters").select("id,name").eq("owner_id", user.id).not("active_version_id", "is", null),
+      fetch("/api/config/provider"),
+      getSb().from("generation_jobs").select("id,status,error").eq("owner_id", user.id).eq("type", "character_swap")
+        .not("character_id", "is", null).order("created_at", { ascending: false }).limit(50),
+    ]);
     if (batchResponse.ok) {
       const batch = await batchResponse.json() as { items: Array<{ filename: string; status: string; job_id: string | null; jobStatus: string | null; error: string | null }> };
       setBulkStatus(batch.items.map((item) => ({
@@ -67,24 +77,18 @@ export default function ToolsPage() {
         state: item.jobStatus ?? (item.status === "pending" || item.status === "claimed" ? "sorban" : item.error ?? item.status),
       })));
     }
-    const res = await fetch("/api/gallery", { headers: { authorization: `Bearer ${await token()}` } });
     if (res.ok) {
       const items = ((await res.json()) as { items: GalItem[] }).items.filter((i) => i.url);
       setGallery(items);
     }
-    const { data: lastVideo } = await getSb().from("assets").select("id")
-      .eq("owner_id", user.id).eq("media_type", "video").eq("source", "upload")
-      .order("created_at", { ascending: false }).limit(1).maybeSingle();
+    const { data: lastVideo } = lastVideoResult;
     if (lastVideo?.id) setV2vVideo((current) => current || lastVideo.id);
-    const { data: chars } = await getSb().from("characters").select("id,name").eq("owner_id", user.id).not("active_version_id", "is", null);
+    const { data: chars } = charsResult;
     setCharacters((chars ?? []) as unknown as CharacterRow[]);
     if (chars?.length === 1) setToolChar((current) => current || chars[0].id);
-    const c = await fetch("/api/config/provider");
     if (c.ok) { const j = await c.json() as Cfg; setCfg(j); if (j.i2vModels[0]) setVModel(j.i2vModels[0].id); }
     // A karakteres képszerkesztés állapota oldalváltás után is visszatölthető.
-    const { data: latestEdits } = await getSb().from("generation_jobs")
-      .select("id,status,error").eq("owner_id", user.id).eq("type", "character_swap")
-      .not("character_id", "is", null).order("created_at", { ascending: false }).limit(50);
+    const { data: latestEdits } = latestEditsResult;
     const latestEdit = latestEdits?.[0] as JobRow | undefined;
     if (latestEdit) {
       setJobs((current) => ({ ...current, fullSwap: latestEdit }));
