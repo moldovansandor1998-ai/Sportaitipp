@@ -32,7 +32,7 @@ export async function POST(req: NextRequest) {
   // Failures must not stop the existing generation queue.
   let content: unknown = null;
   try {
-    content = await prepareContent(new Date(), undefined, 1);
+    content = await prepareContent(new Date(), undefined, 3);
     await refreshContentJobs();
   } catch (e) {
     console.error(JSON.stringify({ scope: "cron.content", error: String(e) }));
