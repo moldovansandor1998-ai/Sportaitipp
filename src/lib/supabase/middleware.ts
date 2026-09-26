@@ -21,12 +21,15 @@ export async function updateSession(request: NextRequest) {
     },
   );
 
-  const { data: { user } } = await supabase.auth.getUser();
+  // getClaims verifies the signed session locally (refreshing it when needed),
+  // avoiding a remote Auth user lookup on every page and API request.
+  const { data } = await supabase.auth.getClaims();
+  const userId = typeof data?.claims?.sub === "string" ? data.claims.sub : null;
   const path = request.nextUrl.pathname;
   const needsAuth = PROTECTED_PREFIXES.some((p) => path.startsWith(p));
 
-  if (user) {
-    const { data: profile } = await supabase.from("profiles").select("banned_until").eq("id", user.id).single();
+  if (userId) {
+    const { data: profile } = await supabase.from("profiles").select("banned_until").eq("id", userId).single();
     const bannedUntil = (profile as { banned_until: string | null } | null)?.banned_until;
     if (bannedUntil && new Date(bannedUntil).getTime() > Date.now()) {
       if (path.startsWith("/api/")) {
@@ -39,13 +42,13 @@ export async function updateSession(request: NextRequest) {
     }
   }
 
-  if (needsAuth && !user) {
+  if (needsAuth && !userId) {
     const url = request.nextUrl.clone();
     url.pathname = "/login";
     url.searchParams.set("next", path);
     return NextResponse.redirect(url);
   }
-  if ((path === "/login" || path === "/register") && user) {
+  if ((path === "/login" || path === "/register") && userId) {
     const url = request.nextUrl.clone();
     url.pathname = "/dashboard";
     return NextResponse.redirect(url);
