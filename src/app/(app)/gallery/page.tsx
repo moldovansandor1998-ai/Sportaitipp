@@ -28,6 +28,7 @@ export default function GalleryPage() {
   const [usageError, setUsageError] = useState("");
   const [deleting, setDeleting] = useState(false);
   const [savingUsage, setSavingUsage] = useState<string | null>(null);
+  const [movingCategory, setMovingCategory] = useState<string | null>(null);
   const [downloading, setDownloading] = useState(false);
   const [downloadStatus, setDownloadStatus] = useState("");
   const [page, setPage] = useState(0);
@@ -173,6 +174,21 @@ export default function GalleryPage() {
     setSavingUsage(null);
     await load();
   }
+  async function moveCategory(id: string) {
+    setMovingCategory(id); setUsageError("");
+    try {
+      const destination = contentCategory === "fanvue" ? "tiktok" : "fanvue";
+      const response = await fetch(`/api/gallery/${id}/category`, {
+        method: "PATCH", headers: { authorization: `Bearer ${await token()}`, "content-type": "application/json" },
+        body: JSON.stringify({ category: destination }),
+      });
+      if (!response.ok) throw new Error("A kép áthelyezése nem sikerült.");
+      setItems(current => current?.filter(item => item.galleryItemId !== id) ?? null);
+      setSelected(current => { const next = new Set(current); next.delete(id); return next; });
+      setTotal(current => Math.max(0, current - 1));
+    } catch { setUsageError("A kép áthelyezése nem sikerült. Próbáld újra."); }
+    finally { setMovingCategory(null); }
+  }
   function toggle(id: string) {
     setSelected((s) => { const n = new Set(s); if (n.has(id)) n.delete(id); else n.add(id); return n; });
   }
@@ -291,6 +307,8 @@ export default function GalleryPage() {
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 8 }}>
                 <span className="badge">{characters.find((c) => c.id === it.characterId)?.name ?? "Egyéb"} · {it.contentCategory === "fanvue" ? "Fanvue" : "TikTok"} · {it.mediaType} · {it.qcStatus}{selected.has(it.galleryItemId) && " ✓"}</span>
                 <span style={{ display: "flex", gap: 6 }}>
+                  {contentCategory === "fanvue" && <button className="ghost" style={{ padding: "4px 10px" }} disabled={movingCategory !== null}
+                    onClick={() => void moveCategory(it.galleryItemId)}>{movingCategory === it.galleryItemId ? "Áthelyezés…" : "→ TikTok"}</button>}
                   <button className="ghost" style={{ padding: "4px 10px" }} disabled={savingUsage !== null}
                     onClick={() => void setUsed([it.galleryItemId], view === "available")}>{view === "available" ? "Felhasználva" : "Vissza"}</button>
                   <a href={it.url ?? "#"} download><button className="ghost" style={{ padding: "4px 10px" }}>Letöltés</button></a>
