@@ -278,7 +278,7 @@ export default function ToolsPage() {
       if (!recovered.ok) throw new Error("A korábbi feltöltések lekérése nem sikerült.");
       const { items } = await recovered.json() as { items: Array<{ assetId: string; name: string }> };
       if (!items.length) {
-        setMsg((current) => ({ ...current, bulkSwap: "Nincs sorba nem állított kép az elmúlt 8 órából." }));
+        setMsg((current) => ({ ...current, bulkSwap: "Nincs sorba nem állított kép az elmúlt 48 órából." }));
         return;
       }
       let queued = 0;
