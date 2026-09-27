@@ -1,4 +1,5 @@
 import { ProviderAdapter, ProviderError, type Estimate, type JobType, type NormalizedOutput, type SubmitParams, type SubmitResult } from "./types";
+import sharp from "sharp";
 
 const API = "https://api.wavespeed.ai/api/v3";
 const MODEL = "wavespeed-ai/image-face-swap-pro";
@@ -7,6 +8,30 @@ const EDIT_MODELS = {
   "nano-banana": "google/nano-banana/edit",
 } as const;
 const CHARACTER_EDIT_PROMPT = "Refer to image 2 to make the same photograph, but use the face, hair and eyes of the adult woman in image 1. Images 3 and 4, when present, show the same woman's body proportions and further identity views. Image 1 is the identity anchor; image 2 alone determines the pose, clothing, camera angle, setting and objects. Preserve image 1's exact hair length, color, face shape, eye shape and natural skin detail. Keep her consistent natural body proportions from the identity references, with exactly two arms, two hands and five fingers on each hand. Preserve image 2's composition. Photorealistic candid camera image, not illustration or cartoon. Copy no objects or accessories from images 1, 3 or 4. No text, watermark, tattoos, extra limbs, extra hands, plastic skin or altered face. Do not add other people.";
+
+async function sourceRatio(url: string): Promise<number> {
+  const response = await fetch(url, { signal: AbortSignal.timeout(20_000) });
+  if (!response.ok) throw new ProviderError("A forráskép mérete nem olvasható.", true);
+  const metadata = await sharp(await response.arrayBuffer()).metadata();
+  if (!metadata.width || !metadata.height) throw new ProviderError("A forráskép érvénytelen.", false);
+  return metadata.width / metadata.height;
+}
+
+function closestRatio(ratio: number): { ratio: string; width: number; height: number } {
+  const options = [
+    { ratio: "9:16", width: 1152, height: 2048 },
+    { ratio: "2:3", width: 1152, height: 1728 },
+    { ratio: "3:4", width: 1216, height: 1600 },
+    { ratio: "4:5", width: 1280, height: 1600 },
+    { ratio: "1:1", width: 1440, height: 1440 },
+    { ratio: "5:4", width: 1600, height: 1280 },
+    { ratio: "4:3", width: 1600, height: 1216 },
+    { ratio: "3:2", width: 1728, height: 1152 },
+    { ratio: "16:9", width: 2048, height: 1152 },
+  ];
+  return options.reduce((best, option) =>
+    Math.abs(Math.log(option.width / option.height / ratio)) < Math.abs(Math.log(best.width / best.height / ratio)) ? option : best);
+}
 
 export class WaveSpeedAdapter implements ProviderAdapter {
   readonly name = "wavespeed";
@@ -65,9 +90,11 @@ export class WaveSpeedAdapter implements ProviderAdapter {
     if (Array.isArray(characterImages) && characterImages.length >= 2
         && characterImages.length <= 4 && characterImages.every((url) => typeof url === "string" && url.startsWith("https://"))) {
       const model = p.payload.editModel === "nano-banana" ? EDIT_MODELS["nano-banana"] : EDIT_MODELS["seedream-v4.5"];
+      const fanvue = p.payload.outputCategory === "fanvue";
+      const dimensions = fanvue ? closestRatio(await sourceRatio(characterImages[1])) : closestRatio(9 / 16);
       const data = await this.request(`${API}/${model}`, {
         images: characterImages, prompt: CHARACTER_EDIT_PROMPT,
-        ...(p.payload.editModel === "nano-banana" ? { aspect_ratio: "9:16" } : { size: "1152*2048" }),
+        ...(p.payload.editModel === "nano-banana" ? { aspect_ratio: dimensions.ratio } : { size: `${dimensions.width}*${dimensions.height}` }),
         ...(p.payload.editModel === "nano-banana" ? { output_format: "png" } : {}),
       });
       if (typeof data.id !== "string") throw new ProviderError("WaveSpeed did not return a task ID", false);
