@@ -76,4 +76,14 @@ describe("provider router", () => {
     const r = await router.submit("image_generation", params);
     expect(r.adapter.name).toBe("b");
   });
+  it("a galériakép szerkesztését kizárólag a WaveSpeed kezeli", async () => {
+    const fal = { ...fakeAdapter("fal", "ok"), supports: ["image_edit" as JobType] };
+    const wavespeed = { ...fakeAdapter("wavespeed", "ok"), supports: ["image_edit" as JobType] };
+    const router = new ProviderRouter([fal, wavespeed], () => "fal");
+    expect(router.candidates("image_edit", { galleryEdit: true }).map(a => a.name)).toEqual(["wavespeed"]);
+    expect(router.candidates("image_edit", { prompt: "existing edit" }).map(a => a.name)).toEqual(["fal"]);
+    const result = await router.submit("image_edit", { ...params, jobType: "image_edit", payload: { galleryEdit: true } });
+    expect(result.adapter.name).toBe("wavespeed");
+  });
+
 });
