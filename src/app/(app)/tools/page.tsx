@@ -243,7 +243,7 @@ export default function ToolsPage() {
         } catch (error) {
           update(i, { state: `hiba: ${error instanceof Error ? error.message : "ismeretlen hiba"}` });
         }
-        if (uploadedFiles.length - queuedSources >= 20) await enqueue(uploadedFiles.slice(queuedSources, queuedSources + 20));
+        if (uploadedFiles.length - queuedSources >= 5) await enqueue(uploadedFiles.slice(queuedSources, queuedSources + 5));
       }
       if (uploadedFiles.length) {
         if (uploadedFiles.length > queuedSources) await enqueue(uploadedFiles.slice(queuedSources));
