@@ -11,7 +11,7 @@ export async function GET(req: NextRequest) {
   const { data: { user } } = await auth.auth.getUser(req.headers.get("authorization")?.replace(/^Bearer\s+/i, "") ?? "");
   if (!user) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   const svc = serviceClient();
-  const since = new Date(Date.now() - 8 * 60 * 60 * 1000).toISOString();
+  const since = new Date(Date.now() - 48 * 60 * 60 * 1000).toISOString();
   const { data: assets, error: assetError } = await svc.from("assets")
     .select("id,sha256,created_at").eq("owner_id", user.id)
     .eq("source", "upload").eq("media_type", "image")
