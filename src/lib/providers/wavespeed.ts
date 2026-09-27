@@ -35,7 +35,7 @@ function closestRatio(ratio: number): { ratio: string; width: number; height: nu
 
 export class WaveSpeedAdapter implements ProviderAdapter {
   readonly name = "wavespeed";
-  readonly supports: JobType[] = ["character_swap", "video_character_swap", "character_motion_video"];
+  readonly supports: JobType[] = ["character_swap", "video_character_swap", "character_motion_video", "image_edit"];
 
   private async request(url: string, body?: Record<string, unknown>): Promise<Record<string, unknown>> {
     const res = await fetch(url, {
@@ -61,6 +61,19 @@ export class WaveSpeedAdapter implements ProviderAdapter {
   }
 
   async submit(p: SubmitParams): Promise<SubmitResult> {
+    if (p.jobType === "image_edit") {
+      if (p.payload.galleryEdit !== true || !Array.isArray(p.payload.imageUrls) || p.payload.imageUrls.length !== 1
+          || typeof p.payload.imageUrls[0] !== "string" || typeof p.payload.prompt !== "string")
+        throw new ProviderError("A galériakép és a módosítás leírása kötelező.", false);
+      const dimensions = closestRatio(await sourceRatio(p.payload.imageUrls[0]));
+      const endpoint = EDIT_MODELS["seedream-v4.5"];
+      const data = await this.request(`${API}/${endpoint}`, {
+        images: p.payload.imageUrls, prompt: p.payload.prompt,
+        size: `${dimensions.width}*${dimensions.height}`,
+      });
+      if (typeof data.id !== "string") throw new ProviderError("WaveSpeed did not return a task ID", false);
+      return { providerJobId: data.id, providerMeta: { endpoint } };
+    }
     if (p.jobType === "character_motion_video") {
       const video = p.payload.videoUrl, image = p.payload.characterImageUrl;
       if (typeof video !== "string" || typeof image !== "string")

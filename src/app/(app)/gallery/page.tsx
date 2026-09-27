@@ -29,6 +29,10 @@ export default function GalleryPage() {
   const [deleting, setDeleting] = useState(false);
   const [savingUsage, setSavingUsage] = useState<string | null>(null);
   const [movingCategory, setMovingCategory] = useState<string | null>(null);
+  const [editingItem, setEditingItem] = useState<Item | null>(null);
+  const [editPrompt, setEditPrompt] = useState("");
+  const [editBusy, setEditBusy] = useState(false);
+  const [editStatus, setEditStatus] = useState("");
   const [downloading, setDownloading] = useState(false);
   const [downloadStatus, setDownloadStatus] = useState("");
   const [page, setPage] = useState(0);
@@ -64,7 +68,7 @@ export default function GalleryPage() {
     const { data: { user } } = await getSb().auth.getUser();
     if (!user) return;
     let pendingQuery = getSb().from("generation_jobs")
-      .select("id").eq("owner_id", user.id).eq("type", "character_swap").eq("status", "processing")
+      .select("id").eq("owner_id", user.id).in("type", ["character_swap", "image_edit"]).in("status", ["queued", "submitted", "processing", "finalizing"])
       .order("created_at", { ascending: false }).limit(50);
     if (characterFilter === "unassigned") pendingQuery = pendingQuery.is("character_id", null);
     else if (characterFilter !== "all") pendingQuery = pendingQuery.eq("character_id", characterFilter);
@@ -189,6 +193,30 @@ export default function GalleryPage() {
     } catch { setUsageError("A kép áthelyezése nem sikerült. Próbáld újra."); }
     finally { setMovingCategory(null); }
   }
+  async function editImage() {
+    if (!editingItem || !editPrompt.trim() || editBusy) return;
+    setEditBusy(true); setEditStatus("");
+    try {
+      const response = await fetch("/api/jobs", {
+        method: "POST",
+        headers: { authorization: `Bearer ${await token()}`, "content-type": "application/json" },
+        body: JSON.stringify({
+          type: "image_edit", characterId: editingItem.characterId ?? undefined,
+          payload: { galleryEdit: true, galleryItemId: editingItem.galleryItemId,
+            imageAssetIds: [editingItem.assetId], prompt: editPrompt.trim() },
+        }),
+      });
+      if (!response.ok) {
+        const body = await response.json().catch(() => ({}));
+        throw new Error(body.error === "INSUFFICIENT_CREDITS" ? "Nincs elég kredit a szerkesztéshez." : "A képszerkesztés indítása nem sikerült.");
+      }
+      setEditingItem(null); setEditPrompt("");
+      setEditStatus("A szerkesztés elindult. Az eredeti kép megmarad; az új kép elkészülte után ebben a galériában jelenik meg.");
+      await load();
+    } catch (error) {
+      setEditStatus(error instanceof Error ? error.message : "A képszerkesztés nem sikerült.");
+    } finally { setEditBusy(false); }
+  }
   function toggle(id: string) {
     setSelected((s) => { const n = new Set(s); if (n.has(id)) n.delete(id); else n.add(id); return n; });
   }
@@ -281,6 +309,21 @@ export default function GalleryPage() {
           onClick={() => void setUsed([...selected], view === "available")}>{view === "available" ? "Felhasználva jelölés" : "Vissza a használatlanokhoz"} ({selected.size})</button>}
       </div>
       {usageError && <p className="error" role="alert">{usageError}</p>}
+      {editStatus && <p role="status">{editStatus}</p>}
+      {editingItem && (
+        <div className="card" role="dialog" aria-modal="true" aria-label="Kép módosítása" style={{ marginTop: 16 }}>
+          <h2>Kép módosítása</h2>
+          {editingItem.url && <Image src={editingItem.url} alt="Szerkesztendő kép" width={240} height={360} style={{ width: "auto", maxWidth: "100%", height: 240, objectFit: "contain" }} />}
+          <label htmlFor="gallery-edit-prompt">Mit változtassak a képen? Írd le magyarul.</label>
+          <textarea id="gallery-edit-prompt" rows={3} maxLength={1500} value={editPrompt}
+            onChange={(e) => setEditPrompt(e.target.value)} placeholder="Például: a ruha legyen piros, minden más maradjon ugyanaz" />
+          <div style={{ display: "flex", gap: 8, marginTop: 8 }}>
+            <button disabled={editBusy || !editPrompt.trim()} onClick={() => void editImage()}>{editBusy ? "Indítás…" : "Új kép készítése"}</button>
+            <button className="ghost" disabled={editBusy} onClick={() => { setEditingItem(null); setEditPrompt(""); }}>Mégsem</button>
+          </div>
+          <p className="muted">Az eredeti kép megmarad. Az új kép ugyanahhoz a modellhez és galériához kerül.</p>
+        </div>
+      )}
       {downloadStatus && <p role="status">{downloadStatus}</p>}
       <p className="muted">{view === "available" ? "Az itt felhasználva jelölt képek átkerülnek a Felhasznált képek nézetbe." : "A felhasznált képek megmaradnak, innen letölthetők és visszaállíthatók."}</p>
       <p className="muted">{total} elem · {page + 1}. oldal{selected.size > 0 && ` · ${selected.size} kiválasztva`}</p>
@@ -300,15 +343,19 @@ export default function GalleryPage() {
               {it.url && it.mediaType === "image" ? (
                 <Image src={it.url} alt="" width={480} height={853} sizes="(max-width: 640px) 100vw, (max-width: 1100px) 50vw, 25vw"
                   style={{ width: "100%", height: "auto", borderRadius: 8, cursor: "pointer" }}
-                  onClick={() => toggle(it.galleryItemId)} />
+                  onClick={() => { setEditingItem(it); setEditPrompt(""); setEditStatus(""); }} />
               ) : it.url && it.mediaType === "video" ? (
                 <video src={it.url} controls style={{ width: "100%", borderRadius: 8 }} onClick={() => toggle(it.galleryItemId)} />
               ) : <div className="skeleton" />}
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 8 }}>
                 <span className="badge">{characters.find((c) => c.id === it.characterId)?.name ?? "Egyéb"} · {it.contentCategory === "fanvue" ? "Fanvue" : "TikTok"} · {it.mediaType} · {it.qcStatus}{selected.has(it.galleryItemId) && " ✓"}</span>
                 <span style={{ display: "flex", gap: 6 }}>
-                  {contentCategory === "fanvue" && <button className="ghost" style={{ padding: "4px 10px" }} disabled={movingCategory !== null}
-                    onClick={() => void moveCategory(it.galleryItemId)}>{movingCategory === it.galleryItemId ? "Áthelyezés…" : "→ TikTok"}</button>}
+                  <button className="ghost" style={{ padding: "4px 10px" }} disabled={movingCategory !== null}
+                    onClick={() => void moveCategory(it.galleryItemId)}>{movingCategory === it.galleryItemId ? "Áthelyezés…" : contentCategory === "fanvue" ? "→ TikTok" : "→ Fanvue"}</button>
+                  {it.mediaType === "image" && <button className="ghost" style={{ padding: "4px 10px" }}
+                    onClick={() => { setEditingItem(it); setEditPrompt(""); setEditStatus(""); }}>Módosítás</button>}
+                  <button className="ghost" style={{ padding: "4px 10px" }} onClick={() => toggle(it.galleryItemId)}
+                    aria-label={selected.has(it.galleryItemId) ? "Kijelölés megszüntetése" : "Kép kijelölése"}>{selected.has(it.galleryItemId) ? "✓" : "Kijelölés"}</button>
                   <button className="ghost" style={{ padding: "4px 10px" }} disabled={savingUsage !== null}
                     onClick={() => void setUsed([it.galleryItemId], view === "available")}>{view === "available" ? "Felhasználva" : "Vissza"}</button>
                   <a href={it.url ?? "#"} download><button className="ghost" style={{ padding: "4px 10px" }}>Letöltés</button></a>
