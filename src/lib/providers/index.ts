@@ -40,8 +40,8 @@ export function buildRouter(extra: ProviderAdapter[] = []): ProviderRouter {
   return new ProviderRouter(adapters, primaryFor, { timeoutMs: 120_000, breakerThreshold: 3 });
 }
 
-export function assertProviderConfigured(router: ProviderRouter, jobType: JobType): void {
-  if (router.candidates(jobType).length === 0) {
+export function assertProviderConfigured(router: ProviderRouter, jobType: JobType, payload?: Record<string, unknown>): void {
+  if (router.candidates(jobType, payload).length === 0) {
     throw new ProviderError(`NO_PROVIDER_CONFIGURED for ${jobType}`, false, undefined, "unknown");
   }
 }

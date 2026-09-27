@@ -38,6 +38,8 @@ export async function prepareValidatedJobInput(input: {
 
   // This path produced changed compositions and an all-black output in production.
   // Reject before holding credits until a pose-preserving replacement is verified.
+  if (type === "image_edit" && payload.galleryEdit === true && !process.env.WAVESPEED_API_KEY)
+    return { type, payload: {}, error: "PROVIDER_MODEL_INVALID", status: 503 };
   if (type === "image_edit" && payload.useTrainedCharacter === true) {
     return { type, payload: {}, error: "TRAINED_EDIT_UNAVAILABLE", status: 409 };
   }
@@ -72,7 +74,7 @@ export async function prepareValidatedJobInput(input: {
 
   // 3) karakterkötelezettség + LoRA-injektálás (kliens loraPath SOSEM számít)
   const needsCharacter = ["image_generation", "image_edit", "test_image", "video_from_image"].includes(type)
-    && !(type === "image_edit" && payload.useCharacterReference === true);
+    && !(type === "image_edit" && (payload.useCharacterReference === true || payload.galleryEdit === true));
   if (type === "image_generation" && !characterId) {
     return { type, payload, error: "CHARACTER_REQUIRED", status: 400 };
   }
@@ -84,6 +86,29 @@ export async function prepareValidatedJobInput(input: {
       return { type, payload, error: "CHARACTER_NOT_OWNED", status: 403 };
     }
     finalCharacterId = characterId;
+  }
+  if (type === "image_edit" && payload.galleryEdit === true) {
+    if (typeof payload.galleryItemId !== "string" || !/^[0-9a-f-]{36}$/i.test(payload.galleryItemId)
+        || typeof payload.prompt !== "string" || !payload.prompt.trim() || payload.prompt.length > 1500
+        || payload.useCharacterReference === true || payload.useTrainedCharacter === true) {
+      return { type, payload: {}, error: "validation", status: 400 };
+    }
+    const { data: galleryItem } = await svc.from("gallery_items")
+      .select("asset_id,character_id,content_category,job_id")
+      .eq("id", payload.galleryItemId).eq("owner_id", input.userId).is("deleted_at", null).maybeSingle();
+    if (!galleryItem?.job_id || galleryItem.character_id !== (characterId ?? null))
+      return { type, payload: {}, error: "IMAGE_INPUT_REQUIRED", status: 404 };
+    const { data: sourceAsset } = await svc.from("assets")
+      .select("media_type,source").eq("id", galleryItem.asset_id).eq("owner_id", input.userId).maybeSingle();
+    if (sourceAsset?.media_type !== "image" || sourceAsset.source !== "generation")
+      return { type, payload: {}, error: "IMAGE_INPUT_REQUIRED", status: 400 };
+    payload.imageAssetIds = [galleryItem.asset_id];
+    payload.outputCategory = galleryItem.content_category;
+    const request = payload.prompt.trim();
+    payload.prompt = `Edit the provided photo. The requested change is written in Hungarian: ${request}. `
+      + "Apply only the requested change. Keep the same adult person, face, hair, body proportions, pose, framing, "
+      + "background, clothing and lighting unless the request explicitly changes one of them. "
+      + "Preserve the photorealistic appearance and all other details. Do not add another person or text.";
   }
   if (type === "image_edit" && payload.useTrainedCharacter === true && !characterId) {
     return { type, payload, error: "CHARACTER_REQUIRED", status: 400 };
@@ -235,6 +260,7 @@ export async function prepareValidatedJobInput(input: {
     if (payload.useTrainedCharacter === true) payload.imageUrl = urls[0];
     delete payload.useCharacterReference;
     delete payload.imageAssetIds; delete payload.externalImageUrl;
+    delete payload.galleryItemId;
   }
   // általános képfeloldó (sourceAssetId/imageAssetIds/imageUrl) – a fenti típusokhoz
   const resolveOneImage = async (p: Record<string, unknown>): Promise<string | null> => {

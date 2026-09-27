@@ -29,7 +29,7 @@ export async function POST(req: NextRequest) {
 
   const router = buildRouter();
   try {
-    assertProviderConfigured(router, type as never);
+    assertProviderConfigured(router, type as never, prepared.payload);
   } catch {
     return NextResponse.json({ error: "NO_PROVIDER_CONFIGURED" }, { status: 503 });
   }

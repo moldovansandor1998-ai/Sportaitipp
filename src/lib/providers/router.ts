@@ -43,10 +43,13 @@ export class ProviderRouter {
   }
 
   /** Képesség + breaker alapján rendezett adapterlista – mellékhatás nélkül. */
-  candidates(jobType: JobType): ProviderAdapter[] {
+  candidates(jobType: JobType, payload?: Record<string, unknown>): ProviderAdapter[] {
+    // Gallery edits use the source-preserving WaveSpeed model exclusively.
+    // Other image edits keep their existing provider order.
+    const galleryEdit = jobType === "image_edit" && payload?.galleryEdit === true;
     const primaryName = this.primaryFor(jobType);
     const keyed = this.adapters
-      .filter((a) => a.supports.includes(jobType))
+      .filter((a) => a.supports.includes(jobType) && (jobType !== "image_edit" || (galleryEdit ? a.name === "wavespeed" : a.name !== "wavespeed")))
       .map((a) => ({ a, open: this.isOpen(a.name) ? 1 : 0, primary: a.name === primaryName ? 0 : 1 }));
     keyed.sort((x, y) => x.open - y.open || x.primary - y.primary);
     return keyed.map((k) => k.a);
@@ -57,7 +60,7 @@ export class ProviderRouter {
   }
 
   async estimate(jobType: JobType, payload: Record<string, unknown>) {
-    const [first] = this.candidates(jobType);
+    const [first] = this.candidates(jobType, payload);
     if (!first) throw new Error(`no provider supports ${jobType}`);
     return first.estimate(jobType, payload);
   }
@@ -76,7 +79,7 @@ export class ProviderRouter {
   }
 
   async submit(jobType: JobType, params: Parameters<ProviderAdapter["submit"]>[0]) {
-    const candidates = this.candidates(jobType);
+    const candidates = this.candidates(jobType, params.payload);
     if (candidates.length === 0) throw new Error(`no provider supports ${jobType}`);
     let lastError: unknown = null;
     for (const adapter of candidates) {
