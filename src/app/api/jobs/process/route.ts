@@ -28,36 +28,6 @@ export async function POST(req: NextRequest) {
 
   const sb = serviceClient();
 
-  // One-time cleanup of the interrupted upload from 2026-09-26.
-  // Remove storage bytes and asset rows only if no generation or gallery item claimed them.
-  try {
-    const { data: staleUploads, error: staleError } = await sb.from("assets")
-      .select("id,object_path").eq("source", "upload").eq("media_type", "image")
-      .gte("created_at", "2026-09-26T19:20:00Z")
-      .lt("created_at", "2026-09-26T20:00:00Z")
-      .order("created_at", { ascending: true }).limit(50);
-    if (staleError) throw staleError;
-    const ids = (staleUploads ?? []).map((asset) => asset.id);
-    if (ids.length) {
-      const [{ data: bulk, error: bulkError }, { data: gallery, error: galleryError }] = await Promise.all([
-        sb.from("bulk_generation_items").select("asset_id").in("asset_id", ids),
-        sb.from("gallery_items").select("asset_id").in("asset_id", ids),
-      ]);
-      if (bulkError || galleryError) throw bulkError ?? galleryError;
-      const linked = new Set([...(bulk ?? []).map((item) => item.asset_id), ...(gallery ?? []).map((item) => item.asset_id)]);
-      const removable = (staleUploads ?? []).filter((asset) => !linked.has(asset.id));
-      if (removable.length) {
-        const { error: removeError } = await sb.storage.from("assets").remove(removable.map((asset) => asset.object_path));
-        if (removeError) throw removeError;
-        const { error: deleteError } = await sb.from("assets").delete().in("id", removable.map((asset) => asset.id));
-        if (deleteError) throw deleteError;
-        console.info(JSON.stringify({ scope: "cron.interrupted_upload_cleanup", removed: removable.length }));
-      }
-    }
-  } catch (error) {
-    console.error(JSON.stringify({ scope: "cron.interrupted_upload_cleanup", error: String(error) }));
-  }
-
   // Runs in Budapest's local 11/15/19 windows, including DST transitions.
   // Failures must not stop the existing generation queue.
   let content: unknown = null;
