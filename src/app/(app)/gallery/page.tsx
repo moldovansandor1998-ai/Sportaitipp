@@ -343,7 +343,7 @@ export default function GalleryPage() {
               {it.url && it.mediaType === "image" ? (
                 <Image src={it.url} alt="" width={480} height={853} sizes="(max-width: 640px) 100vw, (max-width: 1100px) 50vw, 25vw"
                   style={{ width: "100%", height: "auto", borderRadius: 8, cursor: "pointer" }}
-                  onClick={() => { setEditingItem(it); setEditPrompt(""); setEditStatus(""); }} />
+                  onClick={() => toggle(it.galleryItemId)} />
               ) : it.url && it.mediaType === "video" ? (
                 <video src={it.url} controls style={{ width: "100%", borderRadius: 8 }} onClick={() => toggle(it.galleryItemId)} />
               ) : <div className="skeleton" />}
