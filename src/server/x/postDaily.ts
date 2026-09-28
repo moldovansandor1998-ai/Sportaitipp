@@ -5,7 +5,7 @@ import { decrypt, encrypt, refreshToken, xConfigured, xUploadAndPost } from "./c
 
 type Connection = { id: string; owner_id: string; character_id: string; x_username: string;
   encrypted_access_token: string; encrypted_refresh_token: string; token_expires_at: string;
-  timezone: string; morning_minute: number; evening_minute: number };
+  timezone: string };
 
 function localTime(now: Date, timezone: string) {
   const parts = new Intl.DateTimeFormat("en-US", { timeZone: timezone, year: "numeric",
@@ -15,26 +15,26 @@ function localTime(now: Date, timezone: string) {
     minute: Number(part("hour")) * 60 + Number(part("minute")) };
 }
 
-const morning = [
-  "Ma vajon milyen napunk lesz? ☀️", "Reggeli fények és egy új kezdet. 🌷",
-  "Kávé mellé egy mosoly? ☕", "Ma is jöhet valami váratlanul jó. ✨",
-  "Induljon szépen ez a nap! 🤍", "Egy kis reggeli pillanat tőlem. ☀️",
-  "Új nap, új történet. Te mivel kezded? 🌸", "Ma egy kicsit lassabban indulok. ☕",
-  "Jó reggelt! Mi a mai terved? 💫", "Elcsíptem a reggeli fényt. 🌞",
-];
-const evening = [
-  "A nap végére maradt még egy képem. 🌙", "Esti hangulat. Milyen volt a napod? ✨",
-  "Ma ez a pillanat lett a kedvencem. 🤍", "Végre egy nyugodt este. 🌙",
-  "Ma este egy kicsit megállok. Te is? 💫", "Egy kép lefekvés előtt. Jó éjt! 🌙",
-  "Estére mindig más lesz a fény. ✨", "Ma ennyi fért bele. Holnap folytatjuk! 🌷",
-  "Az esti képeknek külön hangulata van. 🤍", "Még egy pillanat a mai napból. 🌙",
-];
+// Budapest local time. The cron runs once a minute; a short grace window
+// handles a delayed invocation without sending two neighboring slots together.
+const schedule = [
+  { slot: "06:13", minute: 373, questions: ["Jó reggelt! Ki kelt már fel? ☀️", "Korán kelő vagy, vagy inkább éjjeli bagoly? ☀️", "Mivel indul nálad a reggel? ☕"] },
+  { slot: "08:37", minute: 517, questions: ["Milyen a mai szettem? 🤍", "Te mit vennél fel ma? ✨", "Ez a szett maradhat? 🤍"] },
+  { slot: "10:23", minute: 623, questions: ["Ki merre jár ma? 🌸", "Honnan nézed most ezt a képet? 📍", "Ma dolgozol vagy pihensz? 💫"] },
+  { slot: "12:03", minute: 723, questions: ["Mit ebédelsz ma? 😋", "Nálad mi lesz ma az ebéd? 🍽️", "Édes vagy sós ebéd után? 🤍"] },
+  { slot: "14:46", minute: 886, questions: ["Hány évesnek tippelsz? Most te jössz. 😉", "Szerinted hány éves vagyok? 🤭", "Mennyi idősnek nézek ki ezen a képen? 💫"] },
+  { slot: "17:06", minute: 1026, questions: ["Jársz edzeni? 💪", "Te mivel kapcsolódsz ki munka után? ✨", "Edzés vagy inkább egy hosszú séta? 🤍"] },
+  { slot: "19:38", minute: 1178, questions: ["Milyen volt a napod? 🌙", "Mi volt ma a legjobb pillanatod? ✨", "Ma este ki merre van? 🌙"] },
+  { slot: "20:49", minute: 1249, questions: ["Ez a kép tetszik? 🖤", "Melyik szín állna nekem a legjobban? 🤍", "Milyen képet látnál tőlem legközelebb? ✨"] },
+  { slot: "22:58", minute: 1378, questions: ["Ki van még fent? 🌙", "Ilyenkor még ébren vagy? 👀", "Éjjeli bagoly vagy? 🌙"] },
+  { slot: "23:29", minute: 1409, questions: ["Mi az utolsó gondolatod lefekvés előtt? 🌙", "Jó éjt, vagy még beszélgetünk? 🤍", "Mit tervezel holnapra? ✨"] },
+] as const;
 
 export async function postDailyX(now = new Date()) {
   if (!xConfigured()) return { posted: 0, skipped: "X_APP_NOT_CONFIGURED" };
   const sb = serviceClient();
   const { data: accounts, error } = await sb.from("x_social_connections")
-    .select("id,owner_id,character_id,x_username,encrypted_access_token,encrypted_refresh_token,token_expires_at,timezone,morning_minute,evening_minute")
+    .select("id,owner_id,character_id,x_username,encrypted_access_token,encrypted_refresh_token,token_expires_at,timezone")
     .eq("enabled", true).limit(20);
   if (error) throw new Error(`X_CONNECTIONS_${error.code}`);
   let posted = 0;
@@ -42,9 +42,9 @@ export async function postDailyX(now = new Date()) {
     let local: ReturnType<typeof localTime>;
     try { local = localTime(now, account.timezone); }
     catch { console.error("x.schedule.invalid_timezone", account.id); continue; }
-    for (const slot of ["morning", "evening"] as const) {
-      const target = slot === "morning" ? account.morning_minute : account.evening_minute;
-      if (local.minute < target || local.minute >= target + 60) continue;
+    for (const item of schedule) {
+      const slot = item.slot;
+      if (local.minute < item.minute || local.minute >= item.minute + 10) continue;
       try {
         const { data: profile, error: profileError } = await sb.from("model_accounts")
           .select("account_url").eq("owner_id", account.owner_id)
@@ -70,7 +70,7 @@ export async function postDailyX(now = new Date()) {
         if (imageError) throw new Error(`X_GALLERY_${imageError.code}`);
         const { data: postedImages, error: historyError } = await sb.from("x_social_posts")
           .select("gallery_item_id").eq("connection_id", account.id)
-          .limit(2000);
+          .order("created_at", { ascending: false }).limit(2000);
         if (historyError) throw new Error(`X_HISTORY_${historyError.code}`);
         const sent = new Set((postedImages ?? []).map(p => p.gallery_item_id));
         const choice = (images ?? []).find(image => !sent.has(image.id)
@@ -110,9 +110,9 @@ export async function postDailyX(now = new Date()) {
             account.token_expires_at = new Date(Date.now() + token.expires_in * 1000).toISOString();
           }
           const name = account.x_username;
-          const captions = slot === "morning" ? morning : evening;
           const seed = Number(local.date.replaceAll("-", "")) + [...name].reduce((sum, ch) => sum + ch.charCodeAt(0), 0);
-          const id = await xUploadAndPost(access, jpeg, `${captions[seed % captions.length]}\n— ${name}\n${fanvueLink}`);
+          const question = item.questions[seed % item.questions.length];
+          const id = await xUploadAndPost(access, jpeg, `${question}\n\n${fanvueLink}`);
           published = true;
           const { error: doneError } = await sb.from("x_social_posts")
             .update({ status: "posted", x_post_id: id }).eq("id", claim.id);
