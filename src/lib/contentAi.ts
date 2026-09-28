@@ -42,6 +42,38 @@ export async function generateContentJson<T>(system: string, prompt: string): Pr
   }
 }
 
+/** Write one short question about visible details in a social photograph. */
+export async function questionForXImage(jpeg: Buffer, modelName: string, slot: string): Promise<string> {
+  const key = openAiKey();
+  if (!key) throw new ContentAiNotConfiguredError();
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 15_000);
+  try {
+    const response = await fetch("https://api.openai.com/v1/chat/completions", {
+      method: "POST",
+      headers: { authorization: `Bearer ${key}`, "content-type": "application/json" },
+      body: JSON.stringify({
+        model: process.env.CONTENT_VISION_MODEL || "gpt-5.6-luna",
+        response_format: { type: "json_object" },
+        messages: [
+          { role: "system", content: "Write ONE natural, short Hungarian question for an X photo post. It must relate to a clear visible detail of the supplied image, such as an animal, outfit, setting or activity. Ask something easy to answer in comments. Do not mention an object or activity that is not visible. Do not claim an age, location, real-life event or relationship. Do not include links, hashtags, or AI disclosure. Return only JSON with a string property question, at most 110 characters." },
+          { role: "user", content: [
+            { type: "text", text: `Model: ${modelName}. Posting slot: ${slot}. Keep the voice friendly and distinct for this model.` },
+            { type: "image_url", image_url: { url: `data:image/jpeg;base64,${jpeg.toString("base64")}`, detail: "low" } },
+          ] },
+        ],
+      }),
+      signal: controller.signal,
+    });
+    if (!response.ok) throw new Error(`X_CAPTION_${response.status}`);
+    const result = await response.json() as { choices?: Array<{ message?: { content?: string } }> };
+    const question = (JSON.parse(result.choices?.[0]?.message?.content ?? "{}") as { question?: unknown }).question;
+    if (typeof question !== "string" || question.length < 8 || question.length > 110 || !question.includes("?")
+      || /https?:\/\/|fanvue\.com|#[\p{L}\p{N}_]+/iu.test(question)) throw new Error("X_CAPTION_INVALID");
+    return question.trim();
+  } finally { clearTimeout(timer); }
+}
+
 /** Visually choose distinct scene photos from the owner's unused public pool. */
 export async function choosePublicScenes(
   candidates: Array<{ id: string; url: string }>, count: number, story: string,
