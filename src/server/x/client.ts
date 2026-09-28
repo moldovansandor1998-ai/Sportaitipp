@@ -78,7 +78,7 @@ export async function xUploadAndPost(accessToken: string, jpeg: Buffer, text: st
   if (!mediaId) throw new Error("X_MEDIA_ID_MISSING");
   const post = await fetch("https://api.x.com/2/tweets", {
     method: "POST", headers: { ...headers, "Content-Type": "application/json" },
-    body: JSON.stringify({ text, media: { media_ids: [mediaId] }, made_with_ai: true }),
+    body: JSON.stringify({ text, media: { media_ids: [mediaId] } }),
     signal: AbortSignal.timeout(25_000),
   });
   if (!post.ok) throw new Error(`X_POST_${post.status}`);
