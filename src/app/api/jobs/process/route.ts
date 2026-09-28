@@ -29,6 +29,12 @@ export async function POST(req: NextRequest) {
 
   const sb = serviceClient();
 
+  // X publishing has its own claim and error handling. Run it before the
+  // generation queue so a failed bulk claim cannot skip a scheduled post.
+  let x: unknown = null;
+  try { x = await postDailyX(); }
+  catch (error) { console.error("cron.x", error instanceof Error ? error.message : "unknown"); }
+
   // Runs in Budapest's local 11/15/19 windows, including DST transitions.
   // Failures must not stop the existing generation queue.
   let content: unknown = null;
@@ -152,9 +158,6 @@ export async function POST(req: NextRequest) {
       if (error instanceof ProviderError && !error.retryable) await failJob(job, error.message);
     }
   }
-  let x: unknown = null;
-  try { x = await postDailyX(); }
-  catch (error) { console.error("cron.x", error instanceof Error ? error.message : "unknown"); }
   return NextResponse.json({ reaped: reaped ?? 0, processed: claimed.length, resumed, bulkStarted, checked, content, x });
 }
 
