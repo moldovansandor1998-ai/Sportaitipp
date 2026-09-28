@@ -18,17 +18,65 @@ function localTime(now: Date, timezone: string) {
 // Budapest local time. The cron runs once a minute; a short grace window
 // handles a delayed invocation without sending two neighboring slots together.
 const schedule = [
-  { slot: "06:13", minute: 373, questions: ["Jó reggelt! Ki kelt már fel? ☀️", "Korán kelő vagy, vagy inkább éjjeli bagoly? ☀️", "Mivel indul nálad a reggel? ☕"] },
-  { slot: "08:37", minute: 517, questions: ["Milyen a mai szettem? 🤍", "Te mit vennél fel ma? ✨", "Ez a szett maradhat? 🤍"] },
-  { slot: "10:23", minute: 623, questions: ["Ki merre jár ma? 🌸", "Honnan nézed most ezt a képet? 📍", "Ma dolgozol vagy pihensz? 💫"] },
-  { slot: "12:03", minute: 723, questions: ["Mit ebédelsz ma? 😋", "Nálad mi lesz ma az ebéd? 🍽️", "Édes vagy sós ebéd után? 🤍"] },
-  { slot: "14:46", minute: 886, questions: ["Hány évesnek tippelsz? Most te jössz. 😉", "Szerinted hány éves vagyok? 🤭", "Mennyi idősnek nézek ki ezen a képen? 💫"] },
-  { slot: "17:06", minute: 1026, questions: ["Jársz edzeni? 💪", "Te mivel kapcsolódsz ki munka után? ✨", "Edzés vagy inkább egy hosszú séta? 🤍"] },
-  { slot: "19:38", minute: 1178, questions: ["Milyen volt a napod? 🌙", "Mi volt ma a legjobb pillanatod? ✨", "Ma este ki merre van? 🌙"] },
-  { slot: "20:49", minute: 1249, questions: ["Ez a kép tetszik? 🖤", "Melyik szín állna nekem a legjobban? 🤍", "Milyen képet látnál tőlem legközelebb? ✨"] },
-  { slot: "22:58", minute: 1378, questions: ["Ki van még fent? 🌙", "Ilyenkor még ébren vagy? 👀", "Éjjeli bagoly vagy? 🌙"] },
-  { slot: "23:29", minute: 1409, questions: ["Mi az utolsó gondolatod lefekvés előtt? 🌙", "Jó éjt, vagy még beszélgetünk? 🤍", "Mit tervezel holnapra? ✨"] },
+  { slot: "06:13", minute: 373 }, { slot: "08:37", minute: 517 },
+  { slot: "10:23", minute: 623 }, { slot: "12:03", minute: 723 },
+  { slot: "14:46", minute: 886 }, { slot: "17:06", minute: 1026 },
+  { slot: "19:38", minute: 1178 }, { slot: "20:49", minute: 1249 },
+  { slot: "22:58", minute: 1378 }, { slot: "23:29", minute: 1409 },
 ] as const;
+
+// Each model has its own wording at every slot. No question string is shared
+// across models; rotate variants by date without claiming a specific age.
+export const questionsByModel: Record<string, readonly (readonly string[])[]> = {
+  Dorika: [
+    ["Felébredtél már, vagy még öt perc szundi? ☀️", "Reggeli kávé vagy még visszabújnál? ☕"],
+    ["Passzol hozzám ez a mai szett? 🤍", "Ezt a ruhát választanád nekem? ✨"],
+    ["Ma merre visz az utad? 📍", "Te melyik városból írsz most? 🌸"],
+    ["Ebédszünetben rám nézel? 😋", "Mi finom készül nálad délben? 🍽️"],
+    ["Szerinted hány évesnek nézek ki? 🤭", "Mennyinek tippelnél első ránézésre? 😉"],
+    ["Te ma edzel, vagy kihagyod? 💪", "Mivel töltöd a délutánod? ✨"],
+    ["Mesélsz egy jó dolgot a mai napodból? 🌙", "Nálad hogy telt a nap? 🤍"],
+    ["Melyik részlet tetszik legjobban a képen? 🖤", "Milyen színben látnál szívesen? 💫"],
+    ["Ki beszélgetne még egy kicsit? 👀", "Rajtam kívül ki nem alszik még? 🌙"],
+    ["Holnap reggel korán kelsz? 🌙", "Mi az első terved holnapra? 🤍"],
+  ],
+  Laura: [
+    ["Te hánykor szoktál felkelni? ☀️", "Reggel edzés vagy lustálkodás? 💪"],
+    ["Hogy áll rajtam ez az összeállítás? 🖤", "Melyik cipőt vennéd fel ehhez? 👟"],
+    ["Most éppen úton vagy valahová? 📍", "Munka, suli vagy szabadnap nálad? ✨"],
+    ["Nálad mi a kedvenc gyors ebéd? 😋", "Ebéd után jöhet egy kávé? ☕"],
+    ["Mit tippelsz, mennyi idős lehetek? 😉", "Ránézésre hány évesnek mondanál? 🤍"],
+    ["Hányszor mozogsz egy héten? 💪", "Edzőterem vagy szabadtéri mozgás? 🏃‍♀️"],
+    ["Mi töltött fel ma a legjobban? 🌆", "Volt ma időd magadra? ✨"],
+    ["Ebből a képből mi fogott meg először? 👀", "Jöhetne még ilyen hangulatú fotó? 🖤"],
+    ["Késő esti edzés vagy már pihenés? 🌙", "Ki van még ébren egy gyors beszélgetésre? 💬"],
+    ["Milyen célod van holnapra? ✨", "Lefekvés előtt még mit csinálsz? 🌙"],
+  ],
+  Petra: [
+    ["Ébresztő! Te már talpon vagy? 🔥", "Ki nyomta ma túl sokszor a szundit? 😉"],
+    ["Őszintén: túl merész ez a szett? 🖤", "Ez a ruha maradjon, vagy váltsak? 🔥"],
+    ["Hol kaplak el ma egy kávéra? ☕", "Te most otthon vagy, vagy úton? 📍"],
+    ["Mit rendeljünk ebédre? 😏", "Csípős vagy édes? Válassz nekem! 🍽️"],
+    ["Meg tudod tippelni a koromat? 👀", "Hány évet adnál nekem ezen a fotón? 😘"],
+    ["Bevállalnál velem egy edzést? 💪", "Délután mozgás vagy inkább lazítás? 🔥"],
+    ["Mi volt ma a legjobb döntésed? ✨", "Este program vagy bekuckózás? 🖤"],
+    ["Ez a fotó jöhet még egyszer más pózban? 😏", "Melyik képet mutassam meg legközelebb? 👀"],
+    ["Még itt vagy velem? 🌙", "Ki válaszolna ilyenkor is? 🔥"],
+    ["Jó éjt kívánjak, vagy még maradsz? 🖤", "Mit álmodnál ma szívesen? 🌙"],
+  ],
+  "Zsófia": [
+    ["Milyen reggelre ébredtél ma? 🌷", "Mi segít neked szépen indítani a napot? ☀️"],
+    ["Szerinted jól választottam ma ruhát? 🤍", "Ez a szín szerinted illik hozzám? 🌸"],
+    ["Nálatok milyen az idő ma? ☁️", "Messziről írsz, vagy a közelből? 📍"],
+    ["Mi a kedvenc ebéded hétköznap? 🍽️", "Te mit ennél most legszívesebben? 😋"],
+    ["Mennyinek saccolnál ezen a képen? 🌸", "Kíváncsi vagyok: hány évesnek gondolsz? 🤍"],
+    ["Mi a kedvenc délutáni programod? ✨", "Séta vagy egy csendes kávézás? ☕"],
+    ["Mi mosolyogtatott meg ma? 🌷", "Milyen apró öröm ért ma téged? 🤍"],
+    ["Melyik hangulat áll nekem jobban? ✨", "Inkább mosolygós vagy komoly képet látnál? 🌸"],
+    ["Nálad mikor kezdődik az esti nyugalom? 🌙", "Te is szeretsz még ilyenkor beszélgetni? 🤍"],
+    ["Mivel zárnád szépen ezt a napot? 🌙", "Mi az, amit holnap nagyon vársz? ✨"],
+  ],
+};
 
 export async function postDailyX(now = new Date()) {
   if (!xConfigured()) return { posted: 0, skipped: "X_APP_NOT_CONFIGURED" };
@@ -46,6 +94,11 @@ export async function postDailyX(now = new Date()) {
       const slot = item.slot;
       if (local.minute < item.minute || local.minute >= item.minute + 10) continue;
       try {
+        const { data: character, error: characterError } = await sb.from("characters")
+          .select("name").eq("id", account.character_id).eq("owner_id", account.owner_id).maybeSingle();
+        if (characterError || !character) throw new Error("X_MODEL_LOOKUP_FAILED");
+        const questions = questionsByModel[character.name]?.[schedule.indexOf(item)];
+        if (!questions?.length) { console.error("x.schedule.questions_missing", account.id); continue; }
         const { data: profile, error: profileError } = await sb.from("model_accounts")
           .select("account_url").eq("owner_id", account.owner_id)
           .eq("character_id", account.character_id).eq("platform", "fanvue")
@@ -111,7 +164,7 @@ export async function postDailyX(now = new Date()) {
           }
           const name = account.x_username;
           const seed = Number(local.date.replaceAll("-", "")) + [...name].reduce((sum, ch) => sum + ch.charCodeAt(0), 0);
-          const question = item.questions[seed % item.questions.length];
+          const question = questions[seed % questions.length];
           const id = await xUploadAndPost(access, jpeg, `${question}\n\n${fanvueLink}`);
           published = true;
           const { error: doneError } = await sb.from("x_social_posts")
