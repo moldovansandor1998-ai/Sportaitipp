@@ -185,7 +185,7 @@ export default function ModelStudio() {
     </div>
     <section className="card" style={{ marginTop: 16 }}>
       <h2>X · napi 10 automatikus képes poszt</h2>
-      <p className="muted">A modell TikTok galériájának már felhasznált képeiből választ. Előbb minden kép sorra kerül, majd a legrégebben közzétett ismétlődik; ugyanaz a kép egy napon csak egyszer jelenik meg. Minden poszt rövid kérdést és az adott modell Fanvue-linkjét tartalmazza. Budapesti idő szerint: 06:13, 08:37, 10:23, 12:03, 14:46, 17:06, 19:38, 20:49, 22:58, 23:29.</p>
+      <p className="muted">A modell TikTok galériájának már felhasznált képeiből választ; ugyanazt a képet X-en soha nem posztolja újra. Minden poszt rövid kérdést és az adott modell Fanvue-linkjét tartalmazza. Budapesti idő szerint: 06:13, 08:37, 10:23, 12:03, 14:46, 17:06, 19:38, 20:49, 22:58, 23:29. Ha elfogynak a még nem posztolt képek, a következő időpont kimarad, amíg új TikTok-képek nem érkeznek.</p>
       {!xConfigured && <p className="error">Az X fejlesztői alkalmazás kulcsai még hiányoznak. Az összekötés addig nem indítható.</p>}
       {typeof window !== "undefined" && new URLSearchParams(window.location.search).get("x") === "failed"
         && <p className="error">Az X összekötése nem sikerült. Ellenőrizd az engedélyezést és próbáld újra.</p>}
