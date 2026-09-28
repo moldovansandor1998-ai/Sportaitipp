@@ -135,10 +135,13 @@ export async function postDailyX(now = new Date()) {
           .order("used_at", { ascending: false }).limit(500);
         if (imageError) throw new Error(`X_GALLERY_${imageError.code}`);
         const { data: postedImages, error: historyError } = await sb.from("x_social_posts")
-          .select("gallery_item_id").eq("connection_id", account.id)
+          .select("gallery_item_id,error").eq("connection_id", account.id)
           .order("created_at", { ascending: false }).limit(2000);
         if (historyError) throw new Error(`X_HISTORY_${historyError.code}`);
-        const sent = new Set((postedImages ?? []).map(p => p.gallery_item_id));
+        // A 402 response confirms X did not publish; release that photo.
+        // Preserve all other claims because a network error may be ambiguous.
+        const sent = new Set((postedImages ?? []).filter(p => p.error !== "X_POST_402")
+          .map(p => p.gallery_item_id));
         const choice = (images ?? []).find(image => !sent.has(image.id)
           && (image.assets as unknown as { media_type?: string } | null)?.media_type === "image");
         if (!choice) continue;
@@ -189,6 +192,8 @@ export async function postDailyX(now = new Date()) {
           console.error("x.post", account.id, message);
           if (!published) await sb.from("x_social_posts")
             .update({ status: "failed", error: message.slice(0, 200) }).eq("id", claim.id);
+          if (message === "X_POST_402") await sb.from("x_social_connections")
+            .update({ enabled: false, updated_at: new Date().toISOString() }).eq("id", account.id);
         }
       } catch (failure) {
         console.error("x.schedule", account.id, failure instanceof Error ? failure.message : "unknown");
