@@ -69,22 +69,12 @@ export async function postDailyX(now = new Date()) {
           .order("used_at", { ascending: false }).limit(500);
         if (imageError) throw new Error(`X_GALLERY_${imageError.code}`);
         const { data: postedImages, error: historyError } = await sb.from("x_social_posts")
-          .select("gallery_item_id,local_date,created_at").eq("connection_id", account.id)
+          .select("gallery_item_id").eq("connection_id", account.id)
           .order("created_at", { ascending: false }).limit(2000);
         if (historyError) throw new Error(`X_HISTORY_${historyError.code}`);
-        const lastUsed = new Map<string, string>();
-        const usedToday = new Set<string>();
-        for (const post of postedImages ?? []) {
-          if (!post.gallery_item_id) continue;
-          if (!lastUsed.has(post.gallery_item_id)) lastUsed.set(post.gallery_item_id, post.created_at);
-          if (post.local_date === local.date) usedToday.add(post.gallery_item_id);
-        }
-        const candidates = (images ?? []).filter(image => !usedToday.has(image.id)
+        const sent = new Set((postedImages ?? []).map(p => p.gallery_item_id));
+        const choice = (images ?? []).find(image => !sent.has(image.id)
           && (image.assets as unknown as { media_type?: string } | null)?.media_type === "image");
-        // Go through the full gallery first, then recycle the least recently
-        // published photo. Never repeat the same photo within one local day.
-        const choice = candidates.find(image => !lastUsed.has(image.id))
-          ?? candidates.sort((a, b) => (lastUsed.get(a.id) ?? "").localeCompare(lastUsed.get(b.id) ?? ""))[0];
         if (!choice) continue;
         const { data: claim, error: claimError } = await sb.from("x_social_posts").insert({
           connection_id: account.id, owner_id: account.owner_id, character_id: account.character_id,
