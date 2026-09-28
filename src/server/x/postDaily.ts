@@ -155,9 +155,34 @@ export async function postDailyX(now = new Date()) {
         // Preserve all other claims because a network error may be ambiguous.
         const sent = new Set((postedImages ?? []).filter(p => p.error !== "X_POST_402")
           .map(p => p.gallery_item_id));
-        const choice = (images ?? []).find(image => !sent.has(image.id)
-          && (image.assets as unknown as { media_type?: string } | null)?.media_type === "image");
-        if (!choice) continue;
+        // Download before claiming the slot. A missing or temporarily unavailable
+        // object must not consume the scheduled post or block the next cron run.
+        let choice: (typeof images)[number] | undefined;
+        let jpeg: Buffer | undefined;
+        for (const image of (images ?? []).filter(image => !sent.has(image.id)
+          && (image.assets as unknown as { media_type?: string } | null)?.media_type === "image").slice(0, 8)) {
+          const asset = image.assets as unknown as { bucket: string; object_path: string };
+          for (let attempt = 0; attempt < 3; attempt++) {
+            try {
+              const { data: file, error: downloadError } = await sb.storage.from(asset.bucket).download(asset.object_path);
+              if (downloadError || !file) throw new Error(downloadError?.message ?? "empty file");
+              jpeg = await sharp(Buffer.from(await file.arrayBuffer()))
+                .rotate().resize({ width: 2000, height: 2000, fit: "inside", withoutEnlargement: true })
+                .jpeg({ quality: 83 }).toBuffer();
+              if (jpeg.length > 5_000_000) jpeg = await sharp(jpeg).resize({ width: 1600, height: 1600,
+                fit: "inside", withoutEnlargement: true }).jpeg({ quality: 70 }).toBuffer();
+              if (jpeg.length > 5_000_000) throw new Error("X_IMAGE_TOO_LARGE");
+              choice = image;
+              break;
+            } catch (downloadError) {
+              console.error("x.image.download", account.id, image.id, attempt + 1,
+                downloadError instanceof Error ? downloadError.message : "unknown");
+              if (attempt < 2) await new Promise(resolve => setTimeout(resolve, 400 * (attempt + 1)));
+            }
+          }
+          if (choice) break;
+        }
+        if (!choice || !jpeg) continue;
         const { data: claim, error: claimError } = await sb.from("x_social_posts").insert({
           connection_id: account.id, owner_id: account.owner_id, character_id: account.character_id,
           gallery_item_id: choice.id, local_date: local.date, slot, status: "sending",
@@ -167,15 +192,6 @@ export async function postDailyX(now = new Date()) {
         if (!claim) continue;
         let published = false;
         try {
-          const asset = choice.assets as unknown as { bucket: string; object_path: string };
-          const { data: file, error: downloadError } = await sb.storage.from(asset.bucket).download(asset.object_path);
-          if (downloadError || !file) throw new Error("X_IMAGE_DOWNLOAD_FAILED");
-          let jpeg = await sharp(Buffer.from(await file.arrayBuffer()))
-            .rotate().resize({ width: 2000, height: 2000, fit: "inside", withoutEnlargement: true })
-            .jpeg({ quality: 83 }).toBuffer();
-          if (jpeg.length > 5_000_000) jpeg = await sharp(jpeg).resize({ width: 1600, height: 1600,
-            fit: "inside", withoutEnlargement: true }).jpeg({ quality: 70 }).toBuffer();
-          if (jpeg.length > 5_000_000) throw new Error("X_IMAGE_TOO_LARGE");
           let access = decrypt(account.encrypted_access_token);
           if (Date.parse(account.token_expires_at) < Date.now() + 120_000) {
             const token = await refreshToken(decrypt(account.encrypted_refresh_token));
