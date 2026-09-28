@@ -194,18 +194,22 @@ export async function postDailyX(now = new Date()) {
           const name = account.x_username;
           const seed = Number(local.date.replaceAll("-", "")) + [...name].reduce((sum, ch) => sum + ch.charCodeAt(0), 0);
           let question: string;
+          let hashtags: string[] = [];
           try {
             const preview = await sharp(jpeg).resize({ width: 640, height: 640, fit: "inside" })
               .jpeg({ quality: 65 }).toBuffer();
-            question = await questionForXImage(preview, character.name, slot);
+            ({ question, hashtags } = await questionForXImage(preview, character.name, slot));
           } catch (captionError) {
             console.error("x.caption.fallback", account.id,
               captionError instanceof Error ? captionError.message : "unknown");
             // These model-specific questions refer to the picture without inventing a scene.
             const visualQuestions = questionsByModel[character.name][7];
             question = visualQuestions[seed % visualQuestions.length];
+            hashtags = ["#hetkoznapok"];
           }
-          const copy = slot === "20:49" ? `${question}\n\n${fanvueLink}` : question;
+          if (!hashtags.length) hashtags = ["#hetkoznapok"];
+          const copy = [question, slot === "20:49" ? fanvueLink : "", hashtags.join(" ")]
+            .filter(Boolean).join("\n\n");
           const id = await xUploadAndPost(access, jpeg, copy);
           published = true;
           const { error: doneError } = await sb.from("x_social_posts")
