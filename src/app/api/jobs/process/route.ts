@@ -16,6 +16,7 @@ import { createJobWithHold } from "@/lib/credits/rpc";
 import { prepareValidatedJobInput } from "@/server/jobs/prepareJob";
 import { scheduleKick } from "@/server/jobs/schedule";
 import { prepareContent, refreshContentJobs } from "@/server/content/prepare";
+import { postDailyX } from "@/server/x/postDaily";
 
 export async function POST(req: NextRequest) {
   const verdict = isCronAuthorized(req.headers.get("authorization"), process.env.CRON_SECRET);
@@ -151,7 +152,10 @@ export async function POST(req: NextRequest) {
       if (error instanceof ProviderError && !error.retryable) await failJob(job, error.message);
     }
   }
-  return NextResponse.json({ reaped: reaped ?? 0, processed: claimed.length, resumed, bulkStarted, checked, content });
+  let x: unknown = null;
+  try { x = await postDailyX(); }
+  catch (error) { console.error("cron.x", error instanceof Error ? error.message : "unknown"); }
+  return NextResponse.json({ reaped: reaped ?? 0, processed: claimed.length, resumed, bulkStarted, checked, content, x });
 }
 
 // Vercel Cron GET kérést küld, azonos Bearer ellenőrzéssel.

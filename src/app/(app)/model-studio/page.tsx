@@ -8,6 +8,9 @@ type Character = { id: string; name: string; status: string; active_version_id: 
 type Slide = { index: number; job_id: string; status: string; output_url: string | null; source_id: string | null; source_url: string | null; review_status: string | null; favorite: boolean; error: unknown };
 type Item = { id: string; character_id: string; platform: string; local_date: string; post_hour: number; due_at: string; aspect_ratio: string; status: string; trend_title: string | null; trend_url: string | null; copy: { slides?: string[]; caption?: string }; image_jobs: string[]; slides: Slide[]; error: string | null };
 type Source = { id: string; pool: "tiktok" | "telegram" | "fanvue_public"; preview_url: string | null; used_at: string | null };
+type XAccount = { character_id: string; x_username: string; enabled: boolean;
+  timezone: string; morning_minute: number; evening_minute: number };
+type XPost = { character_id: string; local_date: string; slot: string; status: string; x_post_id: string | null; error: string | null };
 
 export default function ModelStudio() {
   const [accounts, setAccounts] = useState<Account[]>([]);
@@ -21,16 +24,23 @@ export default function ModelStudio() {
   const [uploading, setUploading] = useState<string | null>(null);
   const [uploadProgress, setUploadProgress] = useState(0);
   const [uploadResult, setUploadResult] = useState("");
+  const [xAccounts, setXAccounts] = useState<XAccount[]>([]);
+  const [xHistory, setXHistory] = useState<XPost[]>([]);
+  const [xConfigured, setXConfigured] = useState(false);
+  const [xBusy, setXBusy] = useState<string | null>(null);
   const load = useCallback(async () => {
     const token = (await browserClient().auth.getSession()).data.session?.access_token;
-    const [response, sourceResponse] = await Promise.all([
+    const [response, sourceResponse, xResponse] = await Promise.all([
       fetch("/api/model-studio", { headers: { authorization: `Bearer ${token}` } }),
       fetch("/api/model-studio/sources", { headers: { authorization: `Bearer ${token}` } }),
+      fetch("/api/x/accounts", { headers: { authorization: `Bearer ${token}` } }),
     ]);
     if (!response.ok) { setError("A modellközpont nem tölthető be."); return; }
     const data = await response.json();
     setAccounts(data.accounts); setCharacters(data.characters); setItems(data.items);
     if (sourceResponse.ok) setSources((await sourceResponse.json()).sources);
+    if (xResponse.ok) { const x = await xResponse.json(); setXAccounts(x.accounts ?? []);
+      setXHistory(x.history ?? []); setXConfigured(x.configured === true); }
   }, []);
   useEffect(() => { void load(); const timer = setInterval(() => { void load(); }, 30000); return () => clearInterval(timer); }, [load]);
 
@@ -43,6 +53,29 @@ export default function ModelStudio() {
     });
     if (!response.ok) setError("A fiókadat mentése sikertelen.");
     setSaving(null);
+  }
+
+  async function connectX(characterId: string) {
+    setXBusy(characterId); setError("");
+    try {
+      const token = (await browserClient().auth.getSession()).data.session?.access_token;
+      const response = await fetch("/api/x/connect", { method: "POST",
+        headers: { authorization: `Bearer ${token}`, "content-type": "application/json" },
+        body: JSON.stringify({ characterId }) });
+      if (!response.ok) throw new Error("Az X összekötése nem indult el.");
+      const result = await response.json();
+      window.location.assign(result.url);
+    } catch { setError("Az X összekötése nem indult el. Ellenőrizd az X API beállításait."); setXBusy(null); }
+  }
+
+  async function setXEnabled(characterId: string, enabled: boolean) {
+    setXBusy(characterId); setError("");
+    const token = (await browserClient().auth.getSession()).data.session?.access_token;
+    const response = await fetch("/api/x/accounts", { method: "PATCH",
+      headers: { authorization: `Bearer ${token}`, "content-type": "application/json" },
+      body: JSON.stringify({ characterId, enabled }) });
+    if (!response.ok) setError("Az X időzítés állapotát nem sikerült menteni.");
+    await load(); setXBusy(null);
   }
 
   async function previewEvening() {
@@ -150,6 +183,30 @@ export default function ModelStudio() {
         </section>;
       })}
     </div>
+    <section className="card" style={{ marginTop: 16 }}>
+      <h2>X · napi két automatikus képes poszt</h2>
+      <p className="muted">A modell TikTok galériájának már felhasznált képeiből választ, egy képet X-en egyszer használ. Minden posztban az adott modell Fanvue-linkje szerepel. Az időpontok magyar idő szerint 08:30 és 20:30.</p>
+      {!xConfigured && <p className="error">Az X fejlesztői alkalmazás kulcsai még hiányoznak. Az összekötés addig nem indítható.</p>}
+      {typeof window !== "undefined" && new URLSearchParams(window.location.search).get("x") === "failed"
+        && <p className="error">Az X összekötése nem sikerült. Ellenőrizd az engedélyezést és próbáld újra.</p>}
+      {characters.filter(c => ["Zsófia", "Petra", "Dorika", "Laura"].includes(c.name)).map(character => {
+        const linked = xAccounts.find(a => a.character_id === character.id);
+        const fanvue = accounts.find(a => a.character_id === character.id && a.platform === "fanvue" && a.account_url);
+        const recent = xHistory.find(p => p.character_id === character.id);
+        return <div key={character.id} style={{ borderTop: "1px solid var(--border)", padding: "12px 0" }}>
+          <strong>{character.name}</strong> · {linked ? `@${linked.x_username}` : "X nincs összekötve"}
+          {!fanvue && <p className="error">Hiányzik a Fanvue-profil linkje. Írd be fent a modell Fanvue-fiókjánál és mentsd el.</p>}
+          <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center", marginTop: 8 }}>
+            <button className="ghost" disabled={!xConfigured || xBusy !== null}
+              onClick={() => void connectX(character.id)}>{linked ? "X újra összekötése" : "X-fiók összekötése"}</button>
+            {linked && <button className="ghost" disabled={xBusy !== null}
+              onClick={() => void setXEnabled(character.id, !linked.enabled)}>{linked.enabled ? "Automatika szüneteltetése" : "Automatika indítása"}</button>}
+            {linked && <span>{linked.enabled ? "Aktív" : "Szünetel"} · 08:30 / 20:30 (Budapest)</span>}
+          </div>
+          {recent && <small>Legutóbbi: {recent.local_date} {recent.slot === "morning" ? "reggel" : "este"} · {recent.status === "posted" ? "közzétéve" : recent.status === "failed" ? `hiba: ${recent.error ?? "ismeretlen"}` : "folyamatban"}</small>}
+        </div>;
+      })}
+    </section>
     <section className="card" style={{ marginTop: 16 }}>
       <h2>Forrásképek tömeges feltöltése</h2>
       <p className="muted">Ezek a képek a jelenetet adják. A modell arcát és haját a saját, jóváhagyott referenciafotói adják. Egy forrásképet csak egyetlen eredményhez használunk fel.</p>
