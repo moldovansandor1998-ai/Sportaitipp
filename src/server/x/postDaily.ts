@@ -29,6 +29,18 @@ const schedule = [
 // Each model has its own wording at every slot. No question string is shared
 // across models; rotate variants by date without claiming a specific age.
 export const questionsByModel: Record<string, readonly (readonly string[])[]> = {
+  Dorina: [
+    ["Te milyen reggellel indítod a napot? ☀️", "Mi ébresztett fel ma először? ✨"],
+    ["Melyik része tetszik a mai szettemnek? 🤎", "Ezt a stílust választanád nekem? 👀"],
+    ["Hová mennél ma szívesen? 📍", "Milyen programot választanál mára? 🌿"],
+    ["Melyik apró részletet vetted észre először? ✨", "Mit néztél meg először ezen a fotón? 🤎"],
+    ["Milyen hangulatot ad neked ez a kép? 🌸", "Egy szóval hogyan írnád le ezt a pillanatot? 💭"],
+    ["Milyen szín áll szerinted a legjobban? 🎨", "Te melyik színt választanád nekem? 🤎"],
+    ["Mi dobta fel ma a délutánodat? 🌼", "Nálad mivel telt a délután? ✨"],
+    ["Mi ragadta meg a figyelmed a képen? 👀", "Melyik részlet maradt meg benned ebből a fotóból? 🌿"],
+    ["Ki tart még velem ma este? 🌙", "Milyen napod volt ma? 💬"],
+    ["Milyen képet látnál szívesen holnap? 🤎", "Mit tervezel a holnapi napra? ✨"],
+  ],
   Dorika: [
     ["Felébredtél már, vagy még öt perc szundi? ☀️", "Reggeli kávé vagy még visszabújnál? ☕"],
     ["Passzol hozzám ez a mai szett? 🤍", "Ezt a ruhát választanád nekem? ✨"],
