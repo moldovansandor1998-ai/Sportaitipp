@@ -181,7 +181,8 @@ export async function postDailyX(now = new Date()) {
           const name = account.x_username;
           const seed = Number(local.date.replaceAll("-", "")) + [...name].reduce((sum, ch) => sum + ch.charCodeAt(0), 0);
           const question = questions[seed % questions.length];
-          const id = await xUploadAndPost(access, jpeg, `${question}\n\n${fanvueLink}`);
+          const copy = slot === "20:49" ? `${question}\n\n${fanvueLink}` : question;
+          const id = await xUploadAndPost(access, jpeg, copy);
           published = true;
           const { error: doneError } = await sb.from("x_social_posts")
             .update({ status: "posted", x_post_id: id }).eq("id", claim.id);
