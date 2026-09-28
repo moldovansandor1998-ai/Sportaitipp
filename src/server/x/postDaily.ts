@@ -5,7 +5,7 @@ import { decrypt, encrypt, refreshToken, xConfigured, xUploadAndPost } from "./c
 
 type Connection = { id: string; owner_id: string; character_id: string; x_username: string;
   encrypted_access_token: string; encrypted_refresh_token: string; token_expires_at: string;
-  timezone: string };
+  timezone: string; test_requested_at: string | null };
 
 function localTime(now: Date, timezone: string) {
   const parts = new Intl.DateTimeFormat("en-US", { timeZone: timezone, year: "numeric",
@@ -82,7 +82,7 @@ export async function postDailyX(now = new Date()) {
   if (!xConfigured()) return { posted: 0, skipped: "X_APP_NOT_CONFIGURED" };
   const sb = serviceClient();
   const { data: accounts, error } = await sb.from("x_social_connections")
-    .select("id,owner_id,character_id,x_username,encrypted_access_token,encrypted_refresh_token,token_expires_at,timezone")
+    .select("id,owner_id,character_id,x_username,encrypted_access_token,encrypted_refresh_token,token_expires_at,timezone,test_requested_at")
     .eq("enabled", true).limit(20);
   if (error) throw new Error(`X_CONNECTIONS_${error.code}`);
   let posted = 0;
@@ -90,14 +90,27 @@ export async function postDailyX(now = new Date()) {
     let local: ReturnType<typeof localTime>;
     try { local = localTime(now, account.timezone); }
     catch { console.error("x.schedule.invalid_timezone", account.id); continue; }
-    for (const item of schedule) {
+    const testPending = account.test_requested_at !== null
+      && Date.now() - Date.parse(account.test_requested_at) >= 0
+      && Date.now() - Date.parse(account.test_requested_at) < 15 * 60_000;
+    const due = [
+      ...schedule.map((item, index) => ({ ...item, index }))
+        .filter(item => local.minute >= item.minute && local.minute < item.minute + 10),
+      ...(testPending ? [{ slot: "test", minute: local.minute, index: 3 }] : []),
+    ];
+    for (const item of due) {
       const slot = item.slot;
-      if (local.minute < item.minute || local.minute >= item.minute + 10) continue;
       try {
+        if (slot === "test") {
+          const { error: clearError } = await sb.from("x_social_connections")
+            .update({ test_requested_at: null }).eq("id", account.id)
+            .eq("test_requested_at", account.test_requested_at);
+          if (clearError) throw new Error("X_TEST_REQUEST_CLEAR_FAILED");
+        }
         const { data: character, error: characterError } = await sb.from("characters")
           .select("name").eq("id", account.character_id).eq("owner_id", account.owner_id).maybeSingle();
         if (characterError || !character) throw new Error("X_MODEL_LOOKUP_FAILED");
-        const questions = questionsByModel[character.name]?.[schedule.indexOf(item)];
+        const questions = questionsByModel[character.name]?.[item.index];
         if (!questions?.length) { console.error("x.schedule.questions_missing", account.id); continue; }
         const { data: profile, error: profileError } = await sb.from("model_accounts")
           .select("account_url").eq("owner_id", account.owner_id)
