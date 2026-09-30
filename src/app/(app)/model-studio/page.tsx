@@ -159,6 +159,13 @@ export default function ModelStudio() {
   return <main style={{ maxWidth: 1050 }}>
     <h1>Modellközpont</h1>
     <p className="muted">Fiókok, aktív karakterek és napi tartalmak egy helyen. A belépési e-mail itt azonosító; jelszót nem tárolunk.</p>
+    <section className="card" style={{ marginBottom: 16 }}>
+      <h2 style={{ marginTop: 0 }}>X-kommentjavaslatok</h2>
+      <p className="muted">Az öt modell magyar posztokhoz készített javaslatai. Itt tudod egyenként jóváhagyni vagy elutasítani őket.</p>
+      <Link href="/x-comments" style={{ display: "inline-block", background: "var(--accent)", color: "#08111c", padding: "12px 16px", borderRadius: 8, fontWeight: 600 }}>
+        Kommentek megnyitása →
+      </Link>
+    </section>
     {error && <p className="error" role="alert">{error}</p>}
     <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(270px,1fr))", gap: 12 }}>
       {[...new Set(accounts.map(a => a.model_name))].map(name => {
@@ -185,7 +192,6 @@ export default function ModelStudio() {
     </div>
     <section className="card" style={{ marginTop: 16 }}>
       <h2>X · napi 10 automatikus képes poszt</h2>
-      <p><Link href="/x-comments">Magyar X-kommentjavaslatok megnyitása →</Link></p>
       <p className="muted">A modell TikTok galériájának már felhasznált képeiből választ; ugyanazt a képet X-en soha nem posztolja újra. Minden poszt a kiválasztott képhez illő kérdést tartalmaz; a Fanvue-link csak a 20:49-es posztba kerül. Budapesti idő szerint: 06:13, 08:37, 10:23, 12:03, 14:46, 17:06, 19:38, 20:49, 22:58, 23:29. Ha elfogynak a még nem posztolt képek, a következő időpont kimarad, amíg új TikTok-képek nem érkeznek.</p>
       {!xConfigured && <p className="error">Az X fejlesztői alkalmazás kulcsai még hiányoznak. Az összekötés addig nem indítható.</p>}
       {typeof window !== "undefined" && new URLSearchParams(window.location.search).get("x") === "failed"
