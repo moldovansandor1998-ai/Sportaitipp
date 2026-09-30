@@ -88,6 +88,7 @@ export async function scanCommentSuggestions(ownerId?: string) {
         '("randi" OR "párkapcsolat" OR "szingli" OR "ismerkedés" OR "csaj" OR "férfi" OR "nők" OR "randizás")',
         '("kávé" OR "hétvége" OR "zene" OR "kutya" OR "nyaralás" OR "film" OR "sorozat" OR "étterem")',
         '("autó" OR "motor" OR "gaming" OR "játék" OR "edzés" OR "fitness" OR "foci" OR "koncert")',
+        '("szerintetek" OR "kedvenc" OR "program" OR "barátok" OR "stílus" OR "humor" OR "utazás" OR "sport")',
       ];
       type SearchBody = { data?: Post[]; includes?: { users?: { id: string; username: string; protected?: boolean }[] } };
       const results = await Promise.allSettled(topics.map(async topic => {
@@ -106,18 +107,21 @@ export async function scanCommentSuggestions(ownerId?: string) {
         console.warn("x.comment.search.partial", failed.reason instanceof Error ? failed.reason.message : "UNKNOWN");
       const authors = new Map(bodies.flatMap(body => body.includes?.users ?? []).map(user => [user.id, user]));
       const unique = new Map(bodies.flatMap(body => body.data ?? []).map(post => [post.id, post]));
-      const posts = [...unique.values()].filter(post => post.lang === "hu" && !post.possibly_sensitive
-        && !seen.has(post.id) && authors.has(post.author_id) && !authors.get(post.author_id)?.protected
+      const unseen = [...unique.values()].filter(post => !seen.has(post.id));
+      const posts = unseen.filter(post => post.lang === "hu" && !post.possibly_sensitive
+        && authors.has(post.author_id) && !authors.get(post.author_id)?.protected
         && Date.parse(post.created_at) >= Date.parse(cutoff)
         && (post.public_metrics?.like_count ?? 0) >= 2
-        && (post.public_metrics?.impression_count !== undefined
-          ? post.public_metrics.impression_count >= 1000
-          : (post.public_metrics?.like_count ?? 0) >= 50)
+        && ((post.public_metrics?.impression_count ?? 0) >= 1000
+          || (post.public_metrics?.like_count ?? 0) >= 10)
         && looksHungarian(post.text)
         && !/(?:^|[^\p{L}])(?:orbán|fidesz|tisz[aá]|parlament|kormány|választás|politika|politikus|párt|hankó|ügyészség|miniszter|tüntetés)(?=$|[^\p{L}])/iu.test(post.text)
         && !/\b(?:pornó|meztelen|baszn|szex|onlyfans)\b/iu.test(post.text))
         .sort((a, b) => score(b) - score(a));
-      console.info("x.comment.scan.filter", { received: unique.size, eligible: posts.length });
+      console.info("x.comment.scan.filter", { received: unique.size, unseen: unseen.length,
+        hungarian: unseen.filter(post => post.lang === "hu" && looksHungarian(post.text)).length,
+        reach: unseen.filter(post => (post.public_metrics?.impression_count ?? 0) >= 1000
+          || (post.public_metrics?.like_count ?? 0) >= 10).length, eligible: posts.length });
       const assignments = new Map(room.map(item => [item.connection.id, [] as Post[]]));
       const remaining = new Map(room.map(item => [item.connection.id, item.capacity]));
       let next = 0;
