@@ -69,12 +69,12 @@ export default function XComments() {
   const item = queue[0];
   return <main style={{ maxWidth: 800 }}>
     <h1>X · magyar kommentjavaslatok</h1>
-    <p className="muted">A rendszer félóránként keres friss, magyar nyelvű, legalább 20 kedvelést kapott posztokat, és minden modellnek külön kommentötletet készít. Egy poszt az öt modellnél összesen egyszer kerül sorra. Komment csak a Jóváhagyás gombbal megy ki.</p>
+    <p className="muted">A rendszer félóránként keres friss, magyar nyelvű posztokat legalább 1000 megtekintéssel; ha az X nem ad megtekintésszámot, legalább 50 kedvelést kér. Minden modellnek külön kommentötletet készít. Egy poszt az öt modellnél összesen egyszer kerül sorra. Komment csak a Jóváhagyás gombbal megy ki.</p>
     <label htmlFor="comment-model">Modell X-fiókja</label>
     <select id="comment-model" value={model} onChange={event => { setModel(event.target.value); setQueue([]); setMessage(""); }}>
       {models.map(entry => <option key={entry.id} value={entry.id}>{entry.name}</option>)}
     </select>
-    <p className="muted">{queue.length} javaslat vár ennél a modellnél. <button className="ghost" onClick={() => void load()}>Lista frissítése</button> <button className="ghost" disabled={busy} onClick={() => void scan()}>Friss posztok keresése</button></p>
+    <p className="muted">{queue.length} javaslat vár ennél a modellnél. <button className="ghost" onClick={() => void load()}>Lista frissítése</button> <button className="ghost" disabled={busy || !model} onClick={() => void scan()}>Friss posztok keresése</button></p>
     {message && <p role="status">{message}</p>}
     {!item && <section className="card"><p>Most nincs új javaslat. A következő keresés legkésőbb fél órán belül fut.</p></section>}
     {item && <section className="card">
