@@ -84,25 +84,39 @@ export async function scanCommentSuggestions(ownerId?: string) {
       if (!room.length) continue;
 
       const token = await accessFor(connections[0]);
-      const url = new URL("https://api.x.com/2/tweets/search/recent");
-      url.search = new URLSearchParams({ query: '("edzés" OR "kávé" OR "hétvége" OR "kirándulás" OR "kutya" OR "zene" OR "étterem" OR "foci") lang:hu min_likes:10 -is:retweet -is:reply',
-        max_results: "100", expansions: "author_id", "tweet.fields": "author_id,created_at,lang,possibly_sensitive,public_metrics",
-        "user.fields": "username,protected" }).toString();
-      const response = await fetch(url, { headers: { Authorization: `Bearer ${token}` }, signal: AbortSignal.timeout(20_000) });
-      if (!response.ok) throw new Error(`X_COMMENT_SEARCH_${response.status}`);
-      const body = await response.json() as { data?: Post[]; includes?: { users?: { id: string; username: string; protected?: boolean }[] } };
-      const authors = new Map((body.includes?.users ?? []).map(user => [user.id, user]));
-      const posts = (body.data ?? []).filter(post => post.lang === "hu" && !post.possibly_sensitive
+      const topics = [
+        '("randi" OR "kapcsolat" OR "szingli" OR "kávé" OR "hétvége" OR "zene" OR "kutya" OR "nyaralás")',
+        '("autó" OR "motor" OR "gaming" OR "játék" OR "film" OR "sorozat" OR "edzés" OR "foci")',
+      ];
+      type SearchBody = { data?: Post[]; includes?: { users?: { id: string; username: string; protected?: boolean }[] } };
+      const results = await Promise.allSettled(topics.map(async topic => {
+        const url = new URL("https://api.x.com/2/tweets/search/recent");
+        url.search = new URLSearchParams({ query: `${topic} lang:hu min_likes:5 -is:retweet -is:reply`,
+          max_results: "100", expansions: "author_id", "tweet.fields": "author_id,created_at,lang,possibly_sensitive,public_metrics",
+          "user.fields": "username,protected" }).toString();
+        const response = await fetch(url, { headers: { Authorization: `Bearer ${token}` }, signal: AbortSignal.timeout(20_000) });
+        if (!response.ok) throw new Error(`X_COMMENT_SEARCH_${response.status}`);
+        return await response.json() as SearchBody;
+      }));
+      const bodies = results.filter((result): result is PromiseFulfilledResult<SearchBody> => result.status === "fulfilled")
+        .map(result => result.value);
+      if (!bodies.length) throw (results[0] as PromiseRejectedResult).reason;
+      for (const failed of results) if (failed.status === "rejected")
+        console.warn("x.comment.search.partial", failed.reason instanceof Error ? failed.reason.message : "UNKNOWN");
+      const authors = new Map(bodies.flatMap(body => body.includes?.users ?? []).map(user => [user.id, user]));
+      const unique = new Map(bodies.flatMap(body => body.data ?? []).map(post => [post.id, post]));
+      const posts = [...unique.values()].filter(post => post.lang === "hu" && !post.possibly_sensitive
         && !seen.has(post.id) && authors.has(post.author_id) && !authors.get(post.author_id)?.protected
         && Date.parse(post.created_at) >= Date.parse(cutoff)
-        && (post.public_metrics?.like_count ?? 0) >= 10
+        && (post.public_metrics?.like_count ?? 0) >= 5
         && (post.public_metrics?.impression_count !== undefined
           ? post.public_metrics.impression_count >= 1000
           : (post.public_metrics?.like_count ?? 0) >= 50)
         && looksHungarian(post.text)
-        && !/\b(?:orbán|fidesz|tisz[aá]|parlament|kormány|választás|politika|politikus|párt)\b/iu.test(post.text))
+        && !/\b(?:orbán|fidesz|tisz[aá]|parlament|kormány|választás|politika|politikus|párt)\b/iu.test(post.text)
+        && !/\b(?:pornó|meztelen|baszn|szex|onlyfans)\b/iu.test(post.text))
         .sort((a, b) => score(b) - score(a));
-      console.info("x.comment.scan.filter", { received: body.data?.length ?? 0, eligible: posts.length });
+      console.info("x.comment.scan.filter", { received: unique.size, eligible: posts.length });
       const assignments = new Map(room.map(item => [item.connection.id, [] as Post[]]));
       const remaining = new Map(room.map(item => [item.connection.id, item.capacity]));
       let next = 0;
