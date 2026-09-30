@@ -55,12 +55,25 @@ export default function XComments() {
     setBusy(false);
   }
 
-  function openReply(item: Suggestion) {
-    const url = `https://x.com/${item.x_author_username}/status/${item.x_post_id}`;
-    window.open(url, "_blank", "noopener,noreferrer");
-    void navigator.clipboard.writeText(item.suggestion).then(() =>
-      setMessage("A szöveget kimásoltam. Az X-en válaszként illeszd be és küldd el a kiválasztott modell fiókjából."),
-      () => setMessage("Az X-poszt megnyílt. Másold ki a javasolt kommentet kézzel, majd küldd el ott."));
+  async function copyComment(item: Suggestion) {
+    // Android in-app browsers often deny the async clipboard API after opening another tab.
+    const field = document.createElement("textarea");
+    field.value = item.suggestion;
+    field.setAttribute("readonly", "");
+    field.style.position = "fixed";
+    field.style.opacity = "0";
+    document.body.appendChild(field);
+    field.focus(); field.select(); field.setSelectionRange(0, field.value.length);
+    let copied = false;
+    try { copied = document.execCommand("copy"); }
+    finally { field.remove(); }
+    if (copied) { setMessage("Komment kimásolva. Nyisd meg az X-posztot, és illeszd be válaszként."); return; }
+    try {
+      await navigator.clipboard.writeText(item.suggestion);
+      setMessage("Komment kimásolva. Nyisd meg az X-posztot, és illeszd be válaszként.");
+    } catch {
+      setMessage("A böngésző nem engedte a másolást. Jelöld ki a fenti komment szövegét, és másold ki kézzel.");
+    }
   }
 
   async function scan() {
@@ -73,7 +86,7 @@ export default function XComments() {
       ? "Az X API-egyenleg nem elegendő a kereséshez."
       : result.errors?.length ? `A keresés hibába ütközött: ${result.errors[0]}`
       : result.created ? `${result.created} új javaslat készült az öt modellhez.`
-      : "Ebben a félórás körben már lefutott a keresés, vagy nincs új megfelelő poszt."
+      : "Ebben az ötperces körben már lefutott a keresés, vagy nincs új megfelelő poszt."
       : "A keresés nem sikerült. Próbáld később.");
     setBusy(false);
   }
@@ -81,14 +94,14 @@ export default function XComments() {
   const item = queue[0];
   return <main style={{ maxWidth: 800 }}>
     <h1>X · magyar kommentjavaslatok</h1>
-    <p className="muted">Félóránként keresünk magyar posztokat több témában. Az X API nem engedi, hogy a fiókok idegen posztokra innen közvetlenül válaszoljanak. A gomb kimásolja a szöveget és megnyitja az eredeti posztot; a választ az X-en, a kiválasztott modell fiókjából küldd el. Egy poszt az öt modellnél összesen egyszer kerül sorra.</p>
+    <p className="muted">Ötpercenként keresünk magyar posztokat több témában. Az X API nem engedi, hogy a fiókok idegen posztokra innen közvetlenül válaszoljanak. Másold ki a kommentet, majd nyisd meg az eredeti posztot; a választ az X-en, a kiválasztott modell fiókjából küldd el. Egy poszt az öt modellnél összesen egyszer kerül sorra.</p>
     <label htmlFor="comment-model">Modell X-fiókja</label>
     <select id="comment-model" value={model} onChange={event => { setModel(event.target.value); setQueue([]); setMessage(""); }}>
       {models.map(entry => <option key={entry.id} value={entry.id}>{entry.name}</option>)}
     </select>
     <p className="muted">{queue.length} javaslat vár ennél a modellnél. <button className="ghost" onClick={() => void load()}>Lista frissítése</button> <button className="ghost" disabled={busy || !model} onClick={() => void scan()}>Friss posztok keresése</button></p>
     {message && <p role="status">{message}</p>}
-    {!item && <section className="card"><p>Most nincs új javaslat. A következő keresés legkésőbb fél órán belül fut.</p></section>}
+    {!item && <section className="card"><p>Most nincs új javaslat. A következő keresés legkésőbb öt percen belül fut.</p></section>}
     {item && <section className="card">
       <h2>Friss poszt · @{item.x_author_username}</h2>
       <p style={{ whiteSpace: "pre-wrap" }}>{item.post_text}</p>
@@ -97,9 +110,11 @@ export default function XComments() {
       <p><a href={`https://x.com/${item.x_author_username}/status/${item.x_post_id}`}
         target="_blank" rel="noopener noreferrer">Eredeti poszt megnyitása ↗</a></p>
       <h3>Javasolt magyar komment</h3>
-      <blockquote style={{ marginLeft: 0, borderLeft: "3px solid var(--border)", paddingLeft: 14 }}>{item.suggestion}</blockquote>
+      <blockquote style={{ marginLeft: 0, borderLeft: "3px solid var(--border)", paddingLeft: 14, userSelect: "text" }}>{item.suggestion}</blockquote>
       <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-        <button disabled={busy} onClick={() => openReply(item)}>Komment másolása · X megnyitása</button>
+        <button disabled={busy} onClick={() => void copyComment(item)}>Komment másolása</button>
+        <a href={`https://x.com/${item.x_author_username}/status/${item.x_post_id}`} target="_blank" rel="noopener noreferrer"
+          style={{ display: "inline-block", background: "var(--panel-2)", color: "var(--text)", border: "1px solid var(--border)", borderRadius: 8, padding: "10px 16px", fontSize: 14, fontWeight: 600 }}>X-poszt megnyitása ↗</a>
         <button className="ghost" disabled={busy} onClick={() => void act(item, "confirm")}>Elküldtem az X-en · következő</button>
         <button className="ghost" disabled={busy} onClick={() => void act(item, "reject")}>Elutasítás · következő</button>
       </div>

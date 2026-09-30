@@ -52,8 +52,8 @@ export async function scanCommentSuggestions(ownerId?: string) {
   const errors: string[] = [];
   for (const [owner, connections] of groups) {
     try {
-      // One search per owner per half hour, even with several connected models.
-      const windowStart = new Date(Math.floor(Date.now() / 1_800_000) * 1_800_000).toISOString();
+      // One search per owner per five-minute window, even with several connected models.
+      const windowStart = new Date(Math.floor(Date.now() / 300_000) * 300_000).toISOString();
       const { error: claimError } = await sb.from("x_comment_scan_runs")
         .insert({ owner_id: owner, window_start: windowStart });
       if (claimError?.code === "23505") continue;
@@ -72,14 +72,14 @@ export async function scanCommentSuggestions(ownerId?: string) {
       if (existingError) throw new Error(`X_COMMENT_HISTORY_${existingError.code}`);
       const seen = new Set((existing ?? []).map(item => item.x_post_id));
       const rotated = [...connections].sort((a, b) => a.character_id.localeCompare(b.character_id));
-      const offset = Math.floor(Date.now() / 1_800_000) % rotated.length;
+      const offset = Math.floor(Date.now() / 300_000) % rotated.length;
       const fairOrder = [...rotated.slice(offset), ...rotated.slice(0, offset)];
       const room = fairOrder.map(connection => {
         const rows = (existing ?? []).filter(item => item.character_id === connection.character_id);
         const queued = rows.filter(item => item.status === "pending").length;
         const posted = rows.filter(item => item.status === "posted" && item.acted_at
           && budapestDate(new Date(item.acted_at)) === today).length;
-        return { connection, capacity: Math.max(0, Math.min(10 - queued, 35 - posted - queued)) };
+        return { connection, capacity: Math.max(0, Math.min(30 - queued, 35 - posted - queued)) };
       }).filter(item => item.capacity > 0);
       if (!room.length) continue;
 
