@@ -2,6 +2,7 @@ import "server-only";
 import { serviceClient } from "@/lib/supabase/server";
 import { generateContentJson } from "@/lib/contentAi";
 import { decrypt, encrypt, refreshToken } from "./client";
+import { looksHungarian } from "./hungarianText";
 
 type Connection = { id: string; owner_id: string; character_id: string; x_username: string;
   encrypted_access_token: string; encrypted_refresh_token: string; token_expires_at: string };
@@ -98,10 +99,25 @@ export async function scanCommentSuggestions(ownerId?: string) {
         && (post.public_metrics?.impression_count !== undefined
           ? post.public_metrics.impression_count >= 1000
           : (post.public_metrics?.like_count ?? 0) >= 50)
-        && post.text.length >= 25)
+        && looksHungarian(post.text))
         .sort((a, b) => score(b) - score(a));
+      const assignments = new Map(room.map(item => [item.connection.id, [] as Post[]]));
+      const remaining = new Map(room.map(item => [item.connection.id, item.capacity]));
+      let next = 0;
+      for (const post of posts) {
+        let attempts = 0;
+        while (attempts < room.length && !remaining.get(room[next].connection.id)) {
+          next = (next + 1) % room.length;
+          attempts++;
+        }
+        if (attempts === room.length) break;
+        const id = room[next].connection.id;
+        assignments.get(id)!.push(post);
+        remaining.set(id, remaining.get(id)! - 1);
+        next = (next + 1) % room.length;
+      }
       for (const item of room) {
-        const picked = posts.splice(0, item.capacity);
+        const picked = assignments.get(item.connection.id)!;
         if (!picked.length) continue;
         const generated = await generateContentJson<{ comments?: { postId: string; text: string }[] }>(
           "You write brief, distinct Hungarian comment suggestions for an adult creator's X account. Each reply must address the specific post, add a real thought, and sound like a human. No generic compliments, ads, links, hashtags, flirting with minors, sexual content, repeated templates, or invented facts. Return JSON: {\"comments\":[{\"postId\":\"...\",\"text\":\"...\"}]}. A person reviews each suggestion before it is posted.",
