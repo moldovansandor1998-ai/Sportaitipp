@@ -85,7 +85,7 @@ export async function scanCommentSuggestions(ownerId?: string) {
 
       const token = await accessFor(connections[0]);
       const url = new URL("https://api.x.com/2/tweets/search/recent");
-      url.search = new URLSearchParams({ query: "lang:hu min_likes:20 -is:retweet -is:reply",
+      url.search = new URLSearchParams({ query: '("hogy" OR "szerintem" OR "magyar" OR "miért" OR "holnap" OR "hétvége" OR "kávé") lang:hu min_likes:10 -is:retweet -is:reply',
         max_results: "100", expansions: "author_id", "tweet.fields": "author_id,created_at,lang,possibly_sensitive,public_metrics",
         "user.fields": "username,protected" }).toString();
       const response = await fetch(url, { headers: { Authorization: `Bearer ${token}` }, signal: AbortSignal.timeout(20_000) });
@@ -95,12 +95,13 @@ export async function scanCommentSuggestions(ownerId?: string) {
       const posts = (body.data ?? []).filter(post => post.lang === "hu" && !post.possibly_sensitive
         && !seen.has(post.id) && authors.has(post.author_id) && !authors.get(post.author_id)?.protected
         && Date.parse(post.created_at) >= Date.parse(cutoff)
-        && (post.public_metrics?.like_count ?? 0) >= 20
+        && (post.public_metrics?.like_count ?? 0) >= 10
         && (post.public_metrics?.impression_count !== undefined
           ? post.public_metrics.impression_count >= 1000
           : (post.public_metrics?.like_count ?? 0) >= 50)
         && looksHungarian(post.text))
         .sort((a, b) => score(b) - score(a));
+      console.info("x.comment.scan.filter", { received: body.data?.length ?? 0, eligible: posts.length });
       const assignments = new Map(room.map(item => [item.connection.id, [] as Post[]]));
       const remaining = new Map(room.map(item => [item.connection.id, item.capacity]));
       let next = 0;
