@@ -8,6 +8,50 @@ type Connection = { id: string; owner_id: string; character_id: string; x_userna
   encrypted_access_token: string; encrypted_refresh_token: string; token_expires_at: string;
   timezone: string; test_requested_at: string | null };
 
+const captionAngles = ["playful observation", "lightly flirtatious statement", "one-word comment prompt",
+  "unexpected detail", "cheeky but tasteful question", "short confident statement",
+  "mood and atmosphere", "gentle tease", "choose the next photo mood", "warm late-night thought"] as const;
+
+const fallbackCaptions = [
+  "Na jó, erre a képre kíváncsi vagyok, mit mondasz. 👀",
+  "A részletek néha többet mondanak, mint egy hosszú bemutatkozás. 😉",
+  "Van egy tippem, mi tűnt fel neked először… de írd meg te. 😏",
+  "Ezt a hangulatot megtartanád, vagy jöjjön valami merészebb? ✨",
+  "Egy szóban milyen ez a kép? Kíváncsi vagyok a válaszodra. 🤍",
+  "Most te jössz: egy bók vagy egy őszinte vélemény? 😌",
+  "Kicsit ártatlan, kicsit huncut. Te melyiknek látod? 😉",
+  "Nem írok hozzá hosszú szöveget. A reakciódat viszont megnézem. 👀",
+  "Szerintem a szemkontaktus néha elég. Te mit szólsz? ✨",
+  "Erre a pillanatra mondanál egy jó címet? 😏",
+  "Ma ezt a hangulatot hoztam. Maradhat? 🤍",
+  "Vajon ugyanazt vetted észre a képen, amit én? 👀",
+  "Ha most itt lennél, mivel indítanád a beszélgetést? 😉",
+  "Hagytam egy kis teret a fantáziádnak. 😌",
+  "Egyszerű pillanat, de szerintem van benne valami. ✨",
+  "Mondj egy számot 1 és 10 között, és nem sértődöm meg. 😏",
+  "Van, amikor a képhez tényleg nem kell magyarázat. 🤍",
+  "Ezt inkább egy mosollyal vagy egy kommenttel fogadnád? 😉",
+  "Kíváncsi vagyok, milyen történetet képzelsz ehhez a fotóhoz. 👀",
+  "Ha ez lenne az első kép, amit rólam látsz, mit gondolnál? ✨",
+];
+
+function captionWords(value: string) {
+  return new Set(value.toLocaleLowerCase("hu-HU").normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9 ]/g, " ")
+    .split(/\s+/).filter(word => word.length > 3));
+}
+
+function tooSimilar(candidate: string, previous: string[]) {
+  const words = captionWords(candidate);
+  const normalized = candidate.toLocaleLowerCase("hu-HU").replace(/[^\p{L}\p{N}]/gu, "");
+  return previous.some(text => {
+    if (text.toLocaleLowerCase("hu-HU").replace(/[^\p{L}\p{N}]/gu, "") === normalized) return true;
+    const other = captionWords(text);
+    const overlap = [...words].filter(word => other.has(word)).length;
+    return overlap >= 3 && overlap / Math.min(words.size || 1, other.size || 1) >= 0.65;
+  });
+}
+
 function localTime(now: Date, timezone: string) {
   const parts = new Intl.DateTimeFormat("en-US", { timeZone: timezone, year: "numeric",
     month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", hourCycle: "h23" }).formatToParts(now);
@@ -209,27 +253,38 @@ export async function postDailyX(now = new Date()) {
           }
           const name = account.x_username;
           const seed = Number(local.date.replaceAll("-", "")) + [...name].reduce((sum, ch) => sum + ch.charCodeAt(0), 0);
-          let question: string;
+          const { data: recentPosts, error: captionsError } = await sb.from("x_social_posts")
+            .select("caption").eq("owner_id", account.owner_id).eq("status", "posted")
+            .not("caption", "is", null).order("created_at", { ascending: false }).limit(80);
+          if (captionsError) throw new Error(`X_CAPTION_HISTORY_${captionsError.code}`);
+          const recentCaptions = (recentPosts ?? []).map(post => post.caption).filter((text): text is string => !!text);
+          let question = "";
           let hashtags: string[] = [];
-          try {
-            const preview = await sharp(jpeg).resize({ width: 640, height: 640, fit: "inside" })
-              .jpeg({ quality: 65 }).toBuffer();
-            ({ question, hashtags } = await questionForXImage(preview, character.name, slot));
-          } catch (captionError) {
-            console.error("x.caption.fallback", account.id,
-              captionError instanceof Error ? captionError.message : "unknown");
-            // These model-specific questions refer to the picture without inventing a scene.
-            const visualQuestions = questionsByModel[character.name][7];
-            question = visualQuestions[seed % visualQuestions.length];
-            hashtags = ["#hetkoznapok"];
+          const preview = await sharp(jpeg).resize({ width: 640, height: 640, fit: "inside" })
+            .jpeg({ quality: 65 }).toBuffer();
+          for (let attempt = 0; attempt < 2; attempt++) {
+            try {
+              const generated = await questionForXImage(preview, character.name, slot, recentCaptions,
+                captionAngles[(seed + item.index + attempt * 3) % captionAngles.length]);
+              if (tooSimilar(generated.question, recentCaptions)) continue;
+              question = generated.question; hashtags = generated.hashtags;
+              break;
+            } catch (captionError) {
+              console.error("x.caption.fallback", account.id,
+                captionError instanceof Error ? captionError.message : "unknown");
+              break;
+            }
           }
-          if (!hashtags.length) hashtags = ["#hetkoznapok"];
+          if (!question) {
+            question = fallbackCaptions.map((_, index) => fallbackCaptions[(seed + item.index + index) % fallbackCaptions.length])
+              .find(text => !tooSimilar(text, recentCaptions)) ?? fallbackCaptions[(seed + item.index) % fallbackCaptions.length];
+          }
           const copy = [question, slot === "20:49" ? fanvueLink : "", hashtags.join(" ")]
             .filter(Boolean).join("\n\n");
           const id = await xUploadAndPost(access, jpeg, copy);
           published = true;
           const { error: doneError } = await sb.from("x_social_posts")
-            .update({ status: "posted", x_post_id: id }).eq("id", claim.id);
+            .update({ status: "posted", x_post_id: id, caption: question }).eq("id", claim.id);
           if (doneError) throw new Error("X_POST_RECORD_FAILED");
           posted++;
         } catch (failure) {
