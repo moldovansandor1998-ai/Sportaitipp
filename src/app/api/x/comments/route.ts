@@ -65,7 +65,19 @@ export async function POST(req: NextRequest) {
       headers: { Authorization: `Bearer ${access}`, "Content-Type": "application/json" },
       body: JSON.stringify({ text: row.suggestion, reply: { in_reply_to_tweet_id: row.x_post_id } }),
       signal: AbortSignal.timeout(25_000) });
-    if (!response.ok) throw new Error(`X_REPLY_${response.status}`);
+    if (!response.ok) {
+      if (response.status === 403) {
+        const body = await response.json().catch(() => ({})) as { detail?: string; errors?: { message?: string }[] };
+        console.warn("x.comment.reply.forbidden", { postId: row.x_post_id,
+          detail: body.detail?.slice(0, 250), errors: body.errors?.map(item => item.message?.slice(0, 250)) });
+        const { error: rejectedError } = await sb.from("x_comment_suggestions")
+          .update({ status: "rejected", error: "X_REPLY_403", acted_at: new Date().toISOString() })
+          .eq("id", id).eq("owner_id", user.id).eq("status", "posting");
+        if (rejectedError) throw new Error("X_REPLY_RECORD_FAILED");
+        return NextResponse.json({ error: "X_REPLY_403", skipped: true }, { status: 403 });
+      }
+      throw new Error(`X_REPLY_${response.status}`);
+    }
     const result = await response.json() as { data?: { id?: string } };
     if (!result.data?.id) throw new Error("X_REPLY_ID_MISSING");
     const { error: doneError } = await sb.from("x_comment_suggestions")
