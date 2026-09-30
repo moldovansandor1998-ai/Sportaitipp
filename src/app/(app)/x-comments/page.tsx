@@ -44,9 +44,13 @@ export default function XComments() {
       setQueue(prev => prev.filter(row => row.id !== item.id));
       setMessage(action === "approve" ? "A komment megjelent az X-en." : "Elutasítva. Jön a következő poszt.");
       await load();
+    } else if (result.skipped || result.error === "ALREADY_HANDLED") {
+      setQueue(prev => prev.filter(row => row.id !== item.id));
+      await load();
+      setMessage(result.skipped ? "Az X nem engedte a választ ehhez a poszthoz. Nem jelent meg komment; jön a következő."
+        : "Ezt a javaslatot már feldolgozták. Betöltöttem a következőt.");
     } else setMessage(result.error === "POST_TOO_OLD" ? "Ez a poszt már túl régi. Utasítsd el, és jön a következő."
       : result.error === "DAILY_LIMIT" ? "Ma már 35 komment jelent meg erről a fiókról."
-      : result.error === "ALREADY_HANDLED" ? "Ezt a javaslatot már feldolgozták."
       : `A komment nem igazoltan jelent meg (${result.error ?? "hiba"}). Ellenőrizd az X-en, mielőtt újra próbálkozol.`);
     setBusy(false);
   }
