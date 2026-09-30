@@ -85,7 +85,7 @@ export async function scanCommentSuggestions(ownerId?: string) {
 
       const token = await accessFor(connections[0]);
       const url = new URL("https://api.x.com/2/tweets/search/recent");
-      url.search = new URLSearchParams({ query: '("hogy" OR "szerintem" OR "magyar" OR "miért" OR "holnap" OR "hétvége" OR "kávé") lang:hu min_likes:10 -is:retweet -is:reply',
+      url.search = new URLSearchParams({ query: '("edzés" OR "kávé" OR "hétvége" OR "kirándulás" OR "kutya" OR "zene" OR "étterem" OR "foci") lang:hu min_likes:10 -is:retweet -is:reply',
         max_results: "100", expansions: "author_id", "tweet.fields": "author_id,created_at,lang,possibly_sensitive,public_metrics",
         "user.fields": "username,protected" }).toString();
       const response = await fetch(url, { headers: { Authorization: `Bearer ${token}` }, signal: AbortSignal.timeout(20_000) });
@@ -99,7 +99,8 @@ export async function scanCommentSuggestions(ownerId?: string) {
         && (post.public_metrics?.impression_count !== undefined
           ? post.public_metrics.impression_count >= 1000
           : (post.public_metrics?.like_count ?? 0) >= 50)
-        && looksHungarian(post.text))
+        && looksHungarian(post.text)
+        && !/\b(?:orbán|fidesz|tisz[aá]|parlament|kormány|választás|politika|politikus|párt)\b/iu.test(post.text))
         .sort((a, b) => score(b) - score(a));
       console.info("x.comment.scan.filter", { received: body.data?.length ?? 0, eligible: posts.length });
       const assignments = new Map(room.map(item => [item.connection.id, [] as Post[]]));
@@ -121,7 +122,7 @@ export async function scanCommentSuggestions(ownerId?: string) {
         const picked = assignments.get(item.connection.id)!;
         if (!picked.length) continue;
         const generated = await generateContentJson<{ comments?: { postId: string; text: string }[] }>(
-          "You write brief, distinct Hungarian comment suggestions for an adult creator's X account. Each reply must address the specific post, add a real thought, and sound like a human. No generic compliments, ads, links, hashtags, flirting with minors, sexual content, repeated templates, or invented facts. Return JSON: {\"comments\":[{\"postId\":\"...\",\"text\":\"...\"}]}. A person reviews each suggestion before it is posted.",
+          "You write brief, distinct Hungarian comment suggestions for an adult creator's X account. Each reply must address the specific post, add a real thought, and sound like a human. Stay on the actual subject: do not introduce unrelated topics, infer missing details, or claim personal experiences. Prefer one short sentence. No generic compliments, ads, links, hashtags, flirting with minors, sexual content, repeated templates, or invented facts. Return JSON: {\"comments\":[{\"postId\":\"...\",\"text\":\"...\"}]}. A person reviews each suggestion before it is posted.",
           JSON.stringify({ model: item.connection.x_username, posts: picked.map(post => ({ postId: post.id, text: post.text.slice(0, 1200) })) }),
         );
         const suggestions = new Map((generated.comments ?? []).map(comment => [comment.postId, comment.text]));
