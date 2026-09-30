@@ -34,7 +34,7 @@ export default function XComments() {
   }, [model, token]);
   useEffect(() => { void load(); const timer = setInterval(() => void load(), 30000); return () => clearInterval(timer); }, [load]);
 
-  async function act(item: Suggestion, action: "approve" | "reject") {
+  async function act(item: Suggestion, action: "confirm" | "reject") {
     setBusy(true); setMessage("");
     const response = await fetch("/api/x/comments", { method: "POST",
       headers: { authorization: `Bearer ${await token()}`, "content-type": "application/json" },
@@ -42,7 +42,7 @@ export default function XComments() {
     const result = await response.json();
     if (response.ok) {
       setQueue(prev => prev.filter(row => row.id !== item.id));
-      setMessage(action === "approve" ? "A komment megjelent az X-en." : "Elutasítva. Jön a következő poszt.");
+      setMessage(action === "confirm" ? "Elküldöttként jelölve. Jön a következő poszt." : "Elutasítva. Jön a következő poszt.");
       await load();
     } else if (result.skipped || result.error === "ALREADY_HANDLED") {
       setQueue(prev => prev.filter(row => row.id !== item.id));
@@ -53,6 +53,14 @@ export default function XComments() {
       : result.error === "DAILY_LIMIT" ? "Ma már 35 komment jelent meg erről a fiókról."
       : `A komment nem igazoltan jelent meg (${result.error ?? "hiba"}). Ellenőrizd az X-en, mielőtt újra próbálkozol.`);
     setBusy(false);
+  }
+
+  function openReply(item: Suggestion) {
+    const url = `https://x.com/${item.x_author_username}/status/${item.x_post_id}`;
+    window.open(url, "_blank", "noopener,noreferrer");
+    void navigator.clipboard.writeText(item.suggestion).then(() =>
+      setMessage("A szöveget kimásoltam. Az X-en válaszként illeszd be és küldd el a kiválasztott modell fiókjából."),
+      () => setMessage("Az X-poszt megnyílt. Másold ki a javasolt kommentet kézzel, majd küldd el ott."));
   }
 
   async function scan() {
@@ -73,7 +81,7 @@ export default function XComments() {
   const item = queue[0];
   return <main style={{ maxWidth: 800 }}>
     <h1>X · magyar kommentjavaslatok</h1>
-    <p className="muted">A rendszer félóránként keres friss, magyar nyelvű posztokat legalább 1000 megtekintéssel; ha az X nem ad megtekintésszámot, legalább 50 kedvelést kér. Minden modellnek külön kommentötletet készít. Egy poszt az öt modellnél összesen egyszer kerül sorra. Komment csak a Jóváhagyás gombbal megy ki.</p>
+    <p className="muted">Félóránként keresünk magyar posztokat több témában. Az X API nem engedi, hogy a fiókok idegen posztokra innen közvetlenül válaszoljanak. A gomb kimásolja a szöveget és megnyitja az eredeti posztot; a választ az X-en, a kiválasztott modell fiókjából küldd el. Egy poszt az öt modellnél összesen egyszer kerül sorra.</p>
     <label htmlFor="comment-model">Modell X-fiókja</label>
     <select id="comment-model" value={model} onChange={event => { setModel(event.target.value); setQueue([]); setMessage(""); }}>
       {models.map(entry => <option key={entry.id} value={entry.id}>{entry.name}</option>)}
@@ -91,7 +99,8 @@ export default function XComments() {
       <h3>Javasolt magyar komment</h3>
       <blockquote style={{ marginLeft: 0, borderLeft: "3px solid var(--border)", paddingLeft: 14 }}>{item.suggestion}</blockquote>
       <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-        <button disabled={busy} onClick={() => void act(item, "approve")}>{busy ? "Feldolgozás…" : "Jóváhagyás és közzététel"}</button>
+        <button disabled={busy} onClick={() => openReply(item)}>Komment másolása · X megnyitása</button>
+        <button className="ghost" disabled={busy} onClick={() => void act(item, "confirm")}>Elküldtem az X-en · következő</button>
         <button className="ghost" disabled={busy} onClick={() => void act(item, "reject")}>Elutasítás · következő</button>
       </div>
     </section>}

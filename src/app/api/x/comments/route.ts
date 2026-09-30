@@ -2,10 +2,10 @@ import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { authed } from "@/lib/apiAuth";
 import { serviceClient } from "@/lib/supabase/server";
-import { accessFor, budapestDate } from "@/server/x/commentSuggestions";
+import { budapestDate } from "@/server/x/commentSuggestions";
 
 export const runtime = "nodejs";
-const Input = z.object({ id: z.string().uuid(), characterId: z.string().uuid(), action: z.enum(["approve", "reject"]) });
+const Input = z.object({ id: z.string().uuid(), characterId: z.string().uuid(), action: z.enum(["confirm", "reject"]) });
 
 export async function GET(req: NextRequest) {
   const user = await authed(req);
@@ -33,7 +33,7 @@ export async function POST(req: NextRequest) {
   const { id, characterId, action } = parsed.data;
   const sb = serviceClient();
   const { data: row } = await sb.from("x_comment_suggestions")
-    .select("id,connection_id,x_post_id,suggestion,status,post_created_at")
+    .select("id,status,post_created_at")
     .eq("id", id).eq("owner_id", user.id).eq("character_id", characterId).maybeSingle();
   if (!row || row.status !== "pending") return NextResponse.json({ error: "ALREADY_HANDLED" }, { status: 409 });
   if (action === "reject") {
@@ -52,42 +52,8 @@ export async function POST(req: NextRequest) {
   if ((today ?? []).filter(item => item.acted_at && budapestDate(new Date(item.acted_at)) === budapestDate()).length >= 35)
     return NextResponse.json({ error: "DAILY_LIMIT" }, { status: 409 });
   const { data: claim, error: claimError } = await sb.from("x_comment_suggestions")
-    .update({ status: "posting", acted_at: new Date().toISOString() })
+    .update({ status: "posted", error: "MANUALLY_CONFIRMED", acted_at: new Date().toISOString() })
     .eq("id", id).eq("owner_id", user.id).eq("status", "pending").select("id").maybeSingle();
   if (claimError || !claim) return NextResponse.json({ error: "ALREADY_HANDLED" }, { status: 409 });
-  try {
-    const { data: connection } = await sb.from("x_social_connections")
-      .select("id,owner_id,character_id,x_username,encrypted_access_token,encrypted_refresh_token,token_expires_at")
-      .eq("id", row.connection_id).eq("owner_id", user.id).eq("character_id", characterId).maybeSingle();
-    if (!connection) throw new Error("X_NOT_CONNECTED");
-    const access = await accessFor(connection);
-    const response = await fetch("https://api.x.com/2/tweets", { method: "POST",
-      headers: { Authorization: `Bearer ${access}`, "Content-Type": "application/json" },
-      body: JSON.stringify({ text: row.suggestion, reply: { in_reply_to_tweet_id: row.x_post_id } }),
-      signal: AbortSignal.timeout(25_000) });
-    if (!response.ok) {
-      if (response.status === 403) {
-        const body = await response.json().catch(() => ({})) as { detail?: string; errors?: { message?: string }[] };
-        console.warn("x.comment.reply.forbidden", { postId: row.x_post_id,
-          detail: body.detail?.slice(0, 250), errors: body.errors?.map(item => item.message?.slice(0, 250)) });
-        const { error: rejectedError } = await sb.from("x_comment_suggestions")
-          .update({ status: "rejected", error: "X_REPLY_403", acted_at: new Date().toISOString() })
-          .eq("id", id).eq("owner_id", user.id).eq("status", "posting");
-        if (rejectedError) throw new Error("X_REPLY_RECORD_FAILED");
-        return NextResponse.json({ error: "X_REPLY_403", skipped: true }, { status: 403 });
-      }
-      throw new Error(`X_REPLY_${response.status}`);
-    }
-    const result = await response.json() as { data?: { id?: string } };
-    if (!result.data?.id) throw new Error("X_REPLY_ID_MISSING");
-    const { error: doneError } = await sb.from("x_comment_suggestions")
-      .update({ status: "posted", x_reply_id: result.data.id, error: null, acted_at: new Date().toISOString() })
-      .eq("id", id).eq("status", "posting");
-    if (doneError) throw new Error("X_REPLY_RECORD_FAILED");
-    return NextResponse.json({ ok: true, replyId: result.data.id });
-  } catch (error) {
-    // The X request may have succeeded despite a timeout. Never retry this row automatically.
-    await sb.from("x_comment_suggestions").update({ error: error instanceof Error ? error.message : "UNKNOWN" }).eq("id", id);
-    return NextResponse.json({ error: error instanceof Error ? error.message : "X_REPLY_FAILED" }, { status: 502 });
-  }
+  return NextResponse.json({ ok: true, manual: true });
 }
