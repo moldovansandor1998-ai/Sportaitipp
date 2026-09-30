@@ -42,8 +42,9 @@ export async function generateContentJson<T>(system: string, prompt: string): Pr
   }
 }
 
-/** Write a short question and choose tags only for visible details in the photograph. */
-export async function questionForXImage(jpeg: Buffer, modelName: string, slot: string): Promise<{ question: string; hashtags: string[] }> {
+/** Write a short, image-grounded caption with a different angle from recent posts. */
+export async function questionForXImage(jpeg: Buffer, modelName: string, slot: string,
+  recentCaptions: string[] = [], angle = "playful observation"): Promise<{ question: string; hashtags: string[] }> {
   const key = openAiKey();
   if (!key) throw new ContentAiNotConfiguredError();
   const controller = new AbortController();
@@ -56,9 +57,9 @@ export async function questionForXImage(jpeg: Buffer, modelName: string, slot: s
         model: process.env.CONTENT_VISION_MODEL || "gpt-5.6-luna",
         response_format: { type: "json_object" },
         messages: [
-          { role: "system", content: "Write ONE natural, short Hungarian question for an X photo post. It must relate to a clear visible detail of the supplied image, such as an animal, outfit, setting or activity. Ask something easy to answer in comments. Do not mention an object or activity that is not visible. Do not claim an age, location, real-life event or relationship. The question must have no links, hashtags, or AI disclosure. Return JSON with question (at most 110 characters) and hashtags (one or two common, relevant Hungarian or international hashtags from this list only: #selfie #outfit #divat #stilus #edzes #fitness #kutya #kave #termeszet #utazas #smink #haj #mosoly #hetkoznapok). Choose tags only for things clearly visible in the image; if none fit, return an empty array. Never claim a tag is currently trending." },
+          { role: "system", content: "Write ONE short, natural Hungarian X caption in the first person for an adult creator. Be lightly cheeky, witty and inviting, without explicit sexual content. Ground it in something clearly visible in the photo (setting, pose, mood, clothing, animal or activity), but do not repeatedly ask people to choose between garments or colors. Vary the form: some captions are playful statements, some invite an answer or a one-word comment, some ask a fresh easy question. A question mark is NOT required. Avoid generic daily check-ins, age guesses, invented events, locations, relationships, and anything not visible. Do not copy or closely paraphrase a recent caption, even from another model. No links, hashtags, or AI disclosure inside the caption. Return JSON with question (caption, 8–140 characters) and hashtags (zero to two common, relevant tags from: #selfie #outfit #divat #stilus #edzes #fitness #kutya #kave #termeszet #utazas #smink #haj #mosoly #hetkoznapok). Choose tags only for visible content; never claim a tag is trending." },
           { role: "user", content: [
-            { type: "text", text: `Model: ${modelName}. Posting slot: ${slot}. Keep the voice friendly and distinct for this model.` },
+            { type: "text", text: `Model: ${modelName}. Posting slot: ${slot}. Creative angle for this post: ${angle}. Recent captions to avoid in wording AND idea: ${JSON.stringify(recentCaptions.slice(0, 35))}. Keep the voice distinct for this model.` },
             { type: "image_url", image_url: { url: `data:image/jpeg;base64,${jpeg.toString("base64")}`, detail: "low" } },
           ] },
         ],
@@ -69,7 +70,7 @@ export async function questionForXImage(jpeg: Buffer, modelName: string, slot: s
     const result = await response.json() as { choices?: Array<{ message?: { content?: string } }> };
     const parsed = JSON.parse(result.choices?.[0]?.message?.content ?? "{}") as { question?: unknown; hashtags?: unknown };
     const question = parsed.question;
-    if (typeof question !== "string" || question.length < 8 || question.length > 110 || !question.includes("?")
+    if (typeof question !== "string" || question.length < 8 || question.length > 140
       || /https?:\/\/|fanvue\.com|#[\p{L}\p{N}_]+/iu.test(question)) throw new Error("X_CAPTION_INVALID");
     const allowed = new Set(["#selfie", "#outfit", "#divat", "#stilus", "#edzes", "#fitness", "#kutya",
       "#kave", "#termeszet", "#utazas", "#smink", "#haj", "#mosoly", "#hetkoznapok"]);
