@@ -85,13 +85,14 @@ export async function scanCommentSuggestions(ownerId?: string) {
 
       const token = await accessFor(connections[0]);
       const topics = [
-        '("randi" OR "kapcsolat" OR "szingli" OR "kávé" OR "hétvége" OR "zene" OR "kutya" OR "nyaralás")',
-        '("autó" OR "motor" OR "gaming" OR "játék" OR "film" OR "sorozat" OR "edzés" OR "foci")',
+        '("randi" OR "párkapcsolat" OR "szingli" OR "ismerkedés" OR "csaj" OR "férfi" OR "nők" OR "randizás")',
+        '("kávé" OR "hétvége" OR "zene" OR "kutya" OR "nyaralás" OR "film" OR "sorozat" OR "étterem")',
+        '("autó" OR "motor" OR "gaming" OR "játék" OR "edzés" OR "fitness" OR "foci" OR "koncert")',
       ];
       type SearchBody = { data?: Post[]; includes?: { users?: { id: string; username: string; protected?: boolean }[] } };
       const results = await Promise.allSettled(topics.map(async topic => {
         const url = new URL("https://api.x.com/2/tweets/search/recent");
-        url.search = new URLSearchParams({ query: `${topic} lang:hu min_likes:5 -is:retweet -is:reply`,
+        url.search = new URLSearchParams({ query: `${topic} lang:hu min_likes:2 -is:retweet -is:reply`,
           max_results: "100", expansions: "author_id", "tweet.fields": "author_id,created_at,lang,possibly_sensitive,public_metrics",
           "user.fields": "username,protected" }).toString();
         const response = await fetch(url, { headers: { Authorization: `Bearer ${token}` }, signal: AbortSignal.timeout(20_000) });
@@ -108,12 +109,12 @@ export async function scanCommentSuggestions(ownerId?: string) {
       const posts = [...unique.values()].filter(post => post.lang === "hu" && !post.possibly_sensitive
         && !seen.has(post.id) && authors.has(post.author_id) && !authors.get(post.author_id)?.protected
         && Date.parse(post.created_at) >= Date.parse(cutoff)
-        && (post.public_metrics?.like_count ?? 0) >= 5
+        && (post.public_metrics?.like_count ?? 0) >= 2
         && (post.public_metrics?.impression_count !== undefined
           ? post.public_metrics.impression_count >= 1000
           : (post.public_metrics?.like_count ?? 0) >= 50)
         && looksHungarian(post.text)
-        && !/\b(?:orbán|fidesz|tisz[aá]|parlament|kormány|választás|politika|politikus|párt)\b/iu.test(post.text)
+        && !/(?:^|[^\p{L}])(?:orbán|fidesz|tisz[aá]|parlament|kormány|választás|politika|politikus|párt|hankó|ügyészség|miniszter|tüntetés)(?=$|[^\p{L}])/iu.test(post.text)
         && !/\b(?:pornó|meztelen|baszn|szex|onlyfans)\b/iu.test(post.text))
         .sort((a, b) => score(b) - score(a));
       console.info("x.comment.scan.filter", { received: unique.size, eligible: posts.length });
