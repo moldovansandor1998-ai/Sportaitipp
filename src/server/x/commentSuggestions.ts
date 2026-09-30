@@ -94,7 +94,11 @@ export async function scanCommentSuggestions(ownerId?: string) {
       const posts = (body.data ?? []).filter(post => post.lang === "hu" && !post.possibly_sensitive
         && !seen.has(post.id) && authors.has(post.author_id) && !authors.get(post.author_id)?.protected
         && Date.parse(post.created_at) >= Date.parse(cutoff)
-        && (post.public_metrics?.like_count ?? 0) >= 20 && post.text.length >= 25)
+        && (post.public_metrics?.like_count ?? 0) >= 20
+        && (post.public_metrics?.impression_count !== undefined
+          ? post.public_metrics.impression_count >= 1000
+          : (post.public_metrics?.like_count ?? 0) >= 50)
+        && post.text.length >= 25)
         .sort((a, b) => score(b) - score(a));
       for (const item of room) {
         const picked = posts.splice(0, item.capacity);
