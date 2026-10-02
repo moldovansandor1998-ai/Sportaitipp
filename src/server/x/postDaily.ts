@@ -35,6 +35,15 @@ const fallbackCaptions = [
   "Ha ez lenne az első kép, amit rólam látsz, mit gondolnál? ✨",
 ];
 
+const repostPrompts = [
+  "Ha tetszik, jöhet egy RT. ♻️", "RT, ha továbbküldenéd ezt a pillanatot. ✨",
+  "Egy RT-vel másoknak is megmutathatod. 🤍", "Ha megosztanád, nyomj egy RT-t. 😉",
+  "RT, ha szerinted is jó ez a hangulat. 👀", "Tetszik a kép? Egy RT-t megér. 🖤",
+  "Ha szívesen látnál még ilyet, jöhet az RT. ✨", "RT, ha egy barátodnak is megmutatnád. 🤎",
+  "Egy RT, és mások is beleszólhatnak. 💬", "Ha ez a kép megfogott, oszd meg egy RT-vel. ♻️",
+  "RT, ha szerinted is maradjon ez a stílus. 😉", "Ha tetszik a mai pillanat, jöhet egy RT. 🤍",
+] as const;
+
 function captionWords(value: string) {
   return new Set(value.toLocaleLowerCase("hu-HU").normalize("NFD")
     .replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9 ]/g, " ")
@@ -279,7 +288,10 @@ export async function postDailyX(now = new Date()) {
             question = fallbackCaptions.map((_, index) => fallbackCaptions[(seed + item.index + index) % fallbackCaptions.length])
               .find(text => !tooSimilar(text, recentCaptions)) ?? fallbackCaptions[(seed + item.index) % fallbackCaptions.length];
           }
-          const copy = [question, slot === "20:49" ? fanvueLink : "", hashtags.join(" ")]
+          const modelIndex = Math.max(0, Object.keys(questionsByModel).indexOf(character.name));
+          const repostPrompt = repostPrompts[(Number(local.date.replaceAll("-", "")) + item.index * 5 + modelIndex * 3)
+            % repostPrompts.length];
+          const copy = [question, slot === "20:49" ? fanvueLink : "", hashtags.join(" "), repostPrompt]
             .filter(Boolean).join("\n\n");
           const id = await xUploadAndPost(access, jpeg, copy);
           published = true;
