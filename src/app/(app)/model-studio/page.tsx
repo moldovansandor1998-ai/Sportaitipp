@@ -193,6 +193,8 @@ export default function ModelStudio() {
     <section className="card" style={{ marginTop: 16 }}>
       <h2>X · napi 10 automatikus képes poszt</h2>
       <p className="muted">A modell TikTok galériájának már felhasznált képeiből választ; ugyanazt a képet X-en soha nem posztolja újra. Minden poszt a kiválasztott képhez illő kérdést tartalmaz; a Fanvue-link csak a 20:49-es posztba kerül. Budapesti idő szerint: 06:13, 08:37, 10:23, 12:03, 14:46, 17:06, 19:38, 20:49, 22:58, 23:29. Ha elfogynak a még nem posztolt képek, a következő időpont kimarad, amíg új TikTok-képek nem érkeznek.</p>
+      {xAccounts.some(account => !account.enabled && xHistory.some(post => post.character_id === account.character_id && post.error === "X_POST_402"))
+        && <p className="error" role="alert">Az X API 402-es számlázási hibát adott, ezért az érintett fiókok automatikus posztolása leállt. Ellenőrizd a <a href="https://console.x.com/account" target="_blank" rel="noopener noreferrer">Credits · Remaining balance</a> részt. Ha újra van felhasználható egyenleg, az alábbi „Automatika indítása” gombbal kapcsold vissza az érintett fiókokat.</p>}
       {!xConfigured && <p className="error">Az X fejlesztői alkalmazás kulcsai még hiányoznak. Az összekötés addig nem indítható.</p>}
       {typeof window !== "undefined" && new URLSearchParams(window.location.search).get("x") === "failed"
         && <p className="error">Az X összekötése nem sikerült. Ellenőrizd az engedélyezést és próbáld újra.</p>}
@@ -210,7 +212,7 @@ export default function ModelStudio() {
               onClick={() => void setXEnabled(character.id, !linked.enabled)}>{linked.enabled ? "Automatika szüneteltetése" : "Automatika indítása"}</button>}
             {linked && <span>{linked.enabled ? "Aktív" : "Szünetel"} · napi 10 poszt (Budapest)</span>}
           </div>
-          {recent && <small>Legutóbbi: {recent.local_date} {recent.slot === "morning" ? "08:30" : recent.slot === "evening" ? "20:30" : recent.slot} · {recent.status === "posted" ? "közzétéve" : recent.status === "failed" ? `hiba: ${recent.error ?? "ismeretlen"}` : "folyamatban"}</small>}
+          {recent && <small>Legutóbbi: {recent.local_date} {recent.slot === "morning" ? "08:30" : recent.slot === "evening" ? "20:30" : recent.slot} · {recent.status === "posted" ? "közzétéve" : recent.error === "X_POST_402" ? "X API számlázási hiba (402), automatika leállítva" : recent.status === "failed" ? `hiba: ${recent.error ?? "ismeretlen"}` : "folyamatban"}</small>}
         </div>;
       })}
     </section>
