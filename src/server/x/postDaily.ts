@@ -35,6 +35,30 @@ const fallbackCaptions = [
   "Ha ez lenne az első kép, amit rólam látsz, mit gondolnál? ✨",
 ];
 
+const repostPrompts = [
+  "Ha tetszik, jöhet egy RT. ♻️", "RT, ha továbbküldenéd ezt a pillanatot. ✨",
+  "Egy RT-vel másoknak is megmutathatod. 🤍", "Ha megosztanád, nyomj egy RT-t. 😉",
+  "RT, ha szerinted is jó ez a hangulat. 👀", "Tetszik a kép? Egy RT-t megér. 🖤",
+  "Ha szívesen látnál még ilyet, jöhet az RT. ✨", "RT, ha egy barátodnak is megmutatnád. 🤎",
+  "Egy RT, és mások is beleszólhatnak. 💬", "Ha ez a kép megfogott, oszd meg egy RT-vel. ♻️",
+  "RT, ha szerinted is maradjon ez a stílus. 😉", "Ha tetszik a mai pillanat, jöhet egy RT. 🤍",
+] as const;
+
+const fanvuePrompts = [
+  "Ha többet szeretnél belőlem, Fanvue-n megtalálsz. Csak ott válaszolok. 😏",
+  "Kíváncsi vagy a folytatásra? Fanvue-n keress, ott válaszolok. 🔥",
+  "A merészebb oldalamat a Fanvue-n látod. Üzenetre csak ott válaszolok. 😉",
+  "Többet mutassak? Fanvue-n megtalálsz, és ott válaszolok. 🖤",
+  "Ha közelebb jönnél, Fanvue-n vár a folytatás. Csak ott írok vissza. 💋",
+  "A többit Fanvue-n mesélem el. Ha írsz, ott válaszolok. 😘",
+  "Van még mit megmutatnom a Fanvue-n. Beszélgetni is ott tudunk. 🔥",
+  "A folytatás Fanvue-n van. Ha rám írsz, ott felelek. 👀",
+  "Ha kíváncsi vagy rám, Fanvue-n megtalálsz. Választ csak ott kapsz. 😉",
+  "Több belőlem a Fanvue-n vár. Ott üzenj, ott válaszolok. 🤍",
+  "A képnél többet szeretnél? Fanvue-n keress, csak ott felelek. 😏",
+  "Fanvue-n megmutatom a folytatást. Ha írsz, ott válaszolok. 🖤",
+] as const;
+
 function captionWords(value: string) {
   return new Set(value.toLocaleLowerCase("hu-HU").normalize("NFD")
     .replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9 ]/g, " ")
@@ -169,18 +193,20 @@ export async function postDailyX(now = new Date()) {
         if (characterError || !character) throw new Error("X_MODEL_LOOKUP_FAILED");
         const questions = questionsByModel[character.name]?.[item.index];
         if (!questions?.length) { console.error("x.schedule.questions_missing", account.id); continue; }
-        const { data: profile, error: profileError } = await sb.from("model_accounts")
-          .select("account_url").eq("owner_id", account.owner_id)
-          .eq("character_id", account.character_id).eq("platform", "fanvue")
-          .not("account_url", "is", null).limit(1).maybeSingle();
-        if (profileError) throw new Error(`X_FANVUE_PROFILE_${profileError.code}`);
-        let fanvueLink: string;
-        try {
-          const url = new URL(profile?.account_url ?? "");
-          if (url.protocol !== "https:" || !["fanvue.com", "www.fanvue.com"].includes(url.hostname)
-            || url.pathname === "/") throw new Error("invalid");
-          fanvueLink = url.toString();
-        } catch { console.error("x.schedule.fanvue_link_missing", account.id); continue; }
+        let fanvueLink = "";
+        if (slot === "20:49") {
+          const { data: profile, error: profileError } = await sb.from("model_accounts")
+            .select("account_url").eq("owner_id", account.owner_id)
+            .eq("character_id", account.character_id).eq("platform", "fanvue")
+            .not("account_url", "is", null).limit(1).maybeSingle();
+          if (profileError) throw new Error(`X_FANVUE_PROFILE_${profileError.code}`);
+          try {
+            const url = new URL(profile?.account_url ?? "");
+            if (url.protocol !== "https:" || !["fanvue.com", "www.fanvue.com"].includes(url.hostname)
+              || url.pathname === "/") throw new Error("invalid");
+            fanvueLink = url.toString();
+          } catch { console.error("x.schedule.fanvue_link_missing", account.id); continue; }
+        }
         const { data: prior } = await sb.from("x_social_posts").select("id")
           .eq("connection_id", account.id).eq("local_date", local.date).eq("slot", slot).maybeSingle();
         if (prior) continue;
@@ -279,8 +305,19 @@ export async function postDailyX(now = new Date()) {
             question = fallbackCaptions.map((_, index) => fallbackCaptions[(seed + item.index + index) % fallbackCaptions.length])
               .find(text => !tooSimilar(text, recentCaptions)) ?? fallbackCaptions[(seed + item.index) % fallbackCaptions.length];
           }
-          const copy = [question, slot === "20:49" ? fanvueLink : "", hashtags.join(" ")]
-            .filter(Boolean).join("\n\n");
+          const modelIndex = Math.max(0, Object.keys(questionsByModel).indexOf(character.name));
+          const repostPrompt = repostPrompts[(Number(local.date.replaceAll("-", "")) + item.index * 5 + modelIndex * 3)
+            % repostPrompts.length];
+          const fanvuePrompt = fanvuePrompts[(Number(local.date.replaceAll("-", "")) * 3 + item.index * 7 + modelIndex * 5)
+            % fanvuePrompts.length];
+          const tagText = hashtags.join(" ");
+          let parts = [question, fanvueLink, tagText, repostPrompt, fanvuePrompt].filter(Boolean);
+          if (parts.join("\n\n").length > 280 && tagText) parts = parts.filter(part => part !== tagText);
+          if (parts.join("\n\n").length > 280) {
+            const room = 280 - parts.slice(1).join("\n\n").length - 3;
+            parts[0] = `${question.slice(0, room).trimEnd()}…`;
+          }
+          const copy = parts.join("\n\n");
           const id = await xUploadAndPost(access, jpeg, copy);
           published = true;
           const { error: doneError } = await sb.from("x_social_posts")

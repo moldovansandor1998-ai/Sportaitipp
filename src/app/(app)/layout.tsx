@@ -8,7 +8,6 @@ const NAV = [
   { href: "/dashboard", icon: "⌂", label: "Explore" },
   { href: "/characters", icon: "◉", label: "My Models" },
   { href: "/model-studio", icon: "▥", label: "Modellközpont" },
-  { href: "/x-comments", icon: "✉", label: "X-kommentek" },
   { href: "/gallery", icon: "▦", label: "Galéria" },
   { href: "/generate", icon: "✦", label: "Generator" },
   { href: "/tools", icon: "⧉", label: "AI Tools" },
