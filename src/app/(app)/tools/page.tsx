@@ -49,6 +49,9 @@ export default function ToolsPage() {
   const [swapPinUrl, setSwapPinUrl] = useState("");
   const [characterEditModel, setCharacterEditModel] = useState<"seedream-v4.5" | "nano-banana">("seedream-v4.5");
   const [talkVideo, setTalkVideo] = useState(""); const [talkAudio, setTalkAudio] = useState("");
+  const [elevenVoices, setElevenVoices] = useState<Array<{ id: string; name: string }>>([]);
+  const [elevenVoice, setElevenVoice] = useState("");
+  const [elevenText, setElevenText] = useState("");
   const [v2vVideo, setV2vVideo] = useState(""); const [v2vPrompt, setV2vPrompt] = useState("");
   const [videoResolution, setVideoResolution] = useState<"480p" | "720p">("720p");
   const [motionQuality, setMotionQuality] = useState<"pro" | "standard">("pro");
@@ -56,6 +59,34 @@ export default function ToolsPage() {
 
   const getSb = () => browserClient();
   const token = useCallback(async () => (await getSb().auth.getSession()).data.session?.access_token ?? "", []);
+
+  async function loadElevenVoices() {
+    const response = await fetch("/api/elevenlabs/voices", { headers: { authorization: `Bearer ${await token()}` } });
+    if (!response.ok) {
+      setMsg((current) => ({ ...current, eleven: "Az ElevenLabs hangok nem tölthetők be. Ellenőrizd a szerver API-kulcsát." }));
+      return;
+    }
+    const data = await response.json() as { voices: Array<{ id: string; name: string }> };
+    setElevenVoices(data.voices);
+    setElevenVoice((current) => current || data.voices[0]?.id || "");
+  }
+
+  async function generateElevenSpeech() {
+    if (!elevenVoice || !elevenText.trim() || busyKey) return;
+    setBusyKey("eleven");
+    try {
+      const response = await fetch("/api/elevenlabs/speech", {
+        method: "POST", headers: { authorization: `Bearer ${await token()}`, "Content-Type": "application/json" },
+        body: JSON.stringify({ voiceId: elevenVoice, text: elevenText.trim() }),
+      });
+      if (!response.ok) throw new Error("A hangkészítés nem sikerült. Ellenőrizd az ElevenLabs kreditet és a kiválasztott hangot.");
+      const data = await response.json() as { assetId: string };
+      setTalkAudio(data.assetId);
+      setMsg((current) => ({ ...current, eleven: "A hang elkészült és ki van választva a videóhoz." }));
+    } catch (error) {
+      setMsg((current) => ({ ...current, eleven: error instanceof Error ? error.message : "Hanghiba" }));
+    } finally { setBusyKey(null); }
+  }
 
   const init = useCallback(async () => {
     const { data: { user } } = await getSb().auth.getUser();
@@ -521,7 +552,18 @@ export default function ToolsPage() {
       </div>
 
       <div className="card" style={{ marginTop: 12 }}>
-        <h3 style={{ marginTop: 0 }}>Talking Video · Lip Sync</h3>
+        <h3 style={{ marginTop: 0 }}>ElevenLabs-hang a modellvideóhoz</h3>
+        <p className="muted">Írd be a szöveget, válaszd ki az ElevenLabs-hangot, majd a kész modellvideóval indítsd a Lip Sync műveletet. Kész MP3/WAV hangot is feltölthetsz.</p>
+        <button className="ghost" type="button" disabled={busyKey !== null} onClick={() => void loadElevenVoices()}>ElevenLabs-hangok betöltése</button>
+        {elevenVoices.length > 0 && <div style={{ marginTop: 8 }}>
+          <select aria-label="ElevenLabs-hang" value={elevenVoice} onChange={(e) => setElevenVoice(e.target.value)}>
+            {elevenVoices.map((voice) => <option key={voice.id} value={voice.id}>{voice.name}</option>)}
+          </select>
+          <textarea aria-label="Felmondandó szöveg" maxLength={1500} placeholder="Mit mondjon a modell?" value={elevenText}
+            onChange={(e) => setElevenText(e.target.value)} style={{ display: "block", width: "100%", minHeight: 95, marginTop: 8 }} />
+          <button type="button" disabled={busyKey !== null || !elevenText.trim()} onClick={() => void generateElevenSpeech()}>Hang készítése</button>
+        </div>}
+        {msg.eleven && <p role="status" className="muted">{msg.eleven}</p>}
         <label>Videó</label>
         <Picker media="video" selected={talkVideo} onSelect={setTalkVideo} />
         <input placeholder="videó asset ID" value={talkVideo} onChange={(e) => setTalkVideo(e.target.value)} style={{ marginTop: 6 }} />
@@ -543,26 +585,35 @@ export default function ToolsPage() {
 
       <div className="card" style={{ marginTop: 12 }}>
         <h3 style={{ marginTop: 0 }}>Video-to-Video · Image-to-Video</h3>
-        <h4>Képből videó: a modell átveszi a feltöltött videó mozgását</h4>
-        <p className="muted">A Kling a kiválasztott modell teljes alakos referenciafotójából készít új videót. A feltöltött MP4 a mozgás és a kamera nézőpontjának mintája. 3–30 másodperces videó ajánlott; a hosszabbat a szolgáltató levághatja.</p>
+        <h4>Szereplőcsere a feltöltött videóban</h4>
+        <p className="muted">A PixVerse Swap a meglévő videó főszereplőjét a kiválasztott modell referenciafotója alapján cseréli. Az eredeti mozgást, időzítést és kameraképet használja. MP4, legfeljebb 30 másodperc és 48 MB. Az újrarajzolt szereplőt és a jelenetet ellenőrizd a kész videóban.</p>
         <button className="ghost" type="button" disabled={busyKey !== null} onClick={() => void uploadVideo()}>Mozgásvideó feltöltése (MP4, max. 48 MB)</button>
         {msg.videoUpload && <p className="muted">{msg.videoUpload}</p>}
         {videoPreview && <video controls src={videoPreview} style={{ display: "block", maxWidth: "100%", maxHeight: 320, marginTop: 8 }} />}
         {v2vVideo && <p className="muted">Mozgásvideó kiválasztva. Fent válaszd ki a modellt.</p>}
         <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap", marginTop: 8 }}>
-          <select aria-label="Kling videóminőség" value={motionQuality} onChange={(e) => setMotionQuality(e.target.value as "pro" | "standard")}>
-            <option value="pro">Kling 3.0 Pro – jobb minőség</option><option value="standard">Kling 3.0 Standard</option>
+          <select aria-label="Videócsere minősége" value={motionQuality} onChange={(e) => setMotionQuality(e.target.value as "pro" | "standard")}>
+            <option value="pro">720p</option><option value="standard">540p</option>
           </select>
           <button disabled={busyKey !== null || !toolChar || !v2vVideo} onClick={() => run("modelMotion", "character_motion_video", { videoAssetId: v2vVideo, quality: motionQuality }, { characterId: toolChar })}>
-            Videó készítése a kiválasztott modellel
+            Szereplő cseréje a kiválasztott modellre
           </button>
           <Badge k="modelMotion" /><Price k="modelMotion" />
         </div>
         <Results k="modelMotion" kind="video" />
+        {results.modelMotion?.some((item) => item.mediaType === "video" && item.assetId) && (
+          <button className="ghost" type="button" style={{ marginTop: 8 }} onClick={() => {
+            const latest = results.modelMotion.find((item) => item.mediaType === "video" && item.assetId);
+            if (latest) {
+              setTalkVideo(latest.assetId);
+              setMsg((current) => ({ ...current, talk: "A kész modellvideó kiválasztva. Töltsd fel az ElevenLabsban készített hangot, majd indítsd a Lip Sync műveletet." }));
+            }
+          }}>Kész modellvideó használata a hanghoz</button>
+        )}
         {msg.modelMotion && <p className="muted">{msg.modelMotion}</p>}
         <details style={{ marginTop: 14 }}>
           <summary>Csak arc és haj cseréje az eredeti videóban</summary>
-          <p className="muted">Az eredeti test és háttér megtartásához válaszd ezt. A fenti Kling művelet új videót készít a modell fotójából.</p>
+          <p className="muted">Az eredeti test és háttér megtartásához válaszd ezt. A fenti szereplőcsere a teljes látható személyt célozza.</p>
           <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap", marginTop: 8 }}>
           <select aria-label="Videó felbontás" value={videoResolution} onChange={(e) => setVideoResolution(e.target.value as "480p" | "720p")}>
             <option value="720p">720p</option><option value="480p">480p</option>
