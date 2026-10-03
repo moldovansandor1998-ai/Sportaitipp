@@ -1,8 +1,12 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
+  // ffmpeg-static computes its binary path from __dirname; bundling it into
+  // .next/server/chunks points at a binary that does not exist on Vercel.
+  serverExternalPackages: ["ffmpeg-static"],
   outputFileTracingIncludes: {
     "/api/jobs/*": ["./node_modules/ffmpeg-static/ffmpeg"],
+    "/api/webhooks/provider/*": ["./node_modules/ffmpeg-static/ffmpeg"],
   },
   images: {
     // Konkrét hostok – saját asset host + Supabase Storage (signed URL-ek)
