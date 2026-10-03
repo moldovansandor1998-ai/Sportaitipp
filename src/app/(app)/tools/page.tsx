@@ -55,6 +55,7 @@ export default function ToolsPage() {
   const [v2vVideo, setV2vVideo] = useState(""); const [v2vPrompt, setV2vPrompt] = useState("");
   const [videoResolution, setVideoResolution] = useState<"480p" | "720p">("720p");
   const [motionQuality, setMotionQuality] = useState<"pro" | "standard">("pro");
+  const [motionMethod, setMotionMethod] = useState<"anchored" | "legacy">("anchored");
   const [motionVoiceMode, setMotionVoiceMode] = useState<"model" | "original">("model");
   const [videoPreview, setVideoPreview] = useState("");
 
@@ -589,14 +590,18 @@ export default function ToolsPage() {
       <div className="card" style={{ marginTop: 12 }}>
         <h3 style={{ marginTop: 0 }}>Video-to-Video · Image-to-Video</h3>
         <h4>Szereplőcsere a feltöltött videóban</h4>
-        <p className="muted">A PixVerse Swap a meglévő videó főszereplőjét a kiválasztott modell referenciafotója alapján cseréli. Az eredeti mozgást, időzítést és kameraképet használja. MP4, legfeljebb 30 másodperc és 48 MB. Az újrarajzolt szereplőt és a jelenetet ellenőrizd a kész videóban.</p>
+        <p className="muted">A videó elejéről választott látható képkockán a kiválasztott modellre cseréljük a szereplőt, majd a forrásvideó mozgását használjuk. MP4, legfeljebb 30 másodperc és 48 MB. A kész videóban ellenőrizd az arcot, a kellékeket és a mozdulatokat.</p>
         <button className="ghost" type="button" disabled={busyKey !== null} onClick={() => void uploadVideo()}>Mozgásvideó feltöltése (MP4, max. 48 MB)</button>
         {msg.videoUpload && <p className="muted">{msg.videoUpload}</p>}
         {videoPreview && <video controls src={videoPreview} style={{ display: "block", maxWidth: "100%", maxHeight: 320, marginTop: 8 }} />}
         {v2vVideo && <p className="muted">Mozgásvideó kiválasztva. Fent válaszd ki a modellt.</p>}
         <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap", marginTop: 8 }}>
           <select aria-label="Videócsere minősége" value={motionQuality} onChange={(e) => setMotionQuality(e.target.value as "pro" | "standard")}>
-            <option value="pro">720p</option><option value="standard">540p</option>
+            <option value="pro">Magas minőség</option><option value="standard">Alap minőség</option>
+          </select>
+          <select aria-label="Videókészítés módja" value={motionMethod} onChange={(e) => setMotionMethod(e.target.value as "anchored" | "legacy")}>
+            <option value="anchored">Jelenetkép + mozgás (új)</option>
+            <option value="legacy">Régi gyors szereplőcsere</option>
           </select>
           <label htmlFor="motion-voice-mode">Videó hangja</label>
           <select id="motion-voice-mode" value={characters.find((c) => c.id === toolChar)?.name.trim().toLocaleLowerCase("hu") === "laura" ? motionVoiceMode : "original"}
@@ -606,14 +611,14 @@ export default function ToolsPage() {
           </select>
           <button disabled={busyKey !== null || !toolChar || !v2vVideo} onClick={() => {
             setResults((current) => ({ ...current, modelMotion: [] }));
-            run("modelMotion", "character_motion_video", { videoAssetId: v2vVideo, quality: motionQuality,
+            run("modelMotion", "character_motion_video", { videoAssetId: v2vVideo, quality: motionQuality, motionMethod,
               voiceMode: characters.find((c) => c.id === toolChar)?.name.trim().toLocaleLowerCase("hu") === "laura" ? motionVoiceMode : "original" }, { characterId: toolChar });
           }}>
             Szereplő cseréje a kiválasztott modellre
           </button>
           <Badge k="modelMotion" /><Price k="modelMotion" />
         </div>
-        <p className="muted">Válaszd ki, hogy az eredeti videó hangját tartsuk meg, vagy Laura beszédhangjára alakítsuk. Más modellhez jelenleg az eredeti hang érhető el. A szereplőcsere újrarajzolhatja az arcot, a testet és a hátteret; ellenőrizd a kész videót.</p>
+        <p className="muted">Az új mód a videó elejéről egy látható jelenetképet választ, ezen alakítja át a szereplőt, majd a képet a referencia mozgással animálja. A kellékekkel való érintkezést és a modell pontos arcát ellenőrizd a kész videóban. Az eredeti hang vagy Laura hangja külön választható.</p>
         <Results k="modelMotion" kind="video" />
         {results.modelMotion?.some((item) => item.mediaType === "video" && item.assetId) && (
           <button className="ghost" type="button" style={{ marginTop: 8 }} onClick={() => {
