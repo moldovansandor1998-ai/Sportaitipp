@@ -68,7 +68,8 @@ export default function ToolsPage() {
     }
     const data = await response.json() as { voices: Array<{ id: string; name: string }> };
     setElevenVoices(data.voices);
-    setElevenVoice((current) => current || data.voices[0]?.id || "");
+    setElevenVoice((current) => current || data.voices.find((voice) => voice.name.toLocaleLowerCase("hu") === "laura")?.id
+      || data.voices.find((voice) => voice.name.toLocaleLowerCase("hu").startsWith("laura"))?.id || data.voices[0]?.id || "");
   }
 
   async function generateElevenSpeech() {
