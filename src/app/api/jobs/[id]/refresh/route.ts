@@ -6,6 +6,7 @@ import { ProviderError } from "@/lib/providers/types";
 import { failJob, finalizeJob, type JobRow } from "@/server/jobs/runJob";
 
 export const runtime = "nodejs";
+export const maxDuration = 300;
 
 // A már beküldött szolgáltatói kérés állapotának lekérdezése; nem indít új generálást.
 export async function POST(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {

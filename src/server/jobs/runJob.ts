@@ -129,7 +129,13 @@ async function finalizeLocked(
 
   const assetIds: string[] = [];
   for (const [i, f] of output.files.entries()) {
-    const { buf, contentType } = await fileToBuffer(f);
+    let { buf, contentType } = await fileToBuffer(f);
+    if (job.type === "character_motion_video" && job.payload?.replaceVoice === true && f.kind === "video") {
+      const { replaceVideoVoice } = await import("./replaceVideoVoice");
+      buf = await replaceVideoVoice(buf, String(job.payload.voiceId ?? ""));
+      contentType = "video/mp4";
+    }
+    contentType ??= f.contentType;
     if (job.type === "character_swap" && job.payload?.outputCategory !== "fanvue" && Array.isArray(job.payload?.characterImageUrls) && f.kind === "image") {
       const dimensions = await sharp(buf).metadata();
       if (!dimensions.width || !dimensions.height || Math.abs(dimensions.width / dimensions.height - 9 / 16) > 0.015)
@@ -139,13 +145,13 @@ async function finalizeLocked(
     const sha = createHash("sha256").update(buf).digest("hex");
 
     const { error: upErr } = await sb.storage.from("assets").upload(objectPath, buf, {
-      contentType: f.contentType ?? contentType, upsert: true,
+      contentType, upsert: true,
     });
     if (upErr) throw new Error(`storage upload failed: ${upErr.message}`);
 
     const { data: asset, error: assetErr } = await sb.from("assets").upsert({
       owner_id: job.owner_id, bucket: "assets", object_path: objectPath,
-      media_type: f.kind, content_type: f.contentType ?? contentType,
+      media_type: f.kind, content_type: contentType,
       bytes: buf.length, sha256: sha, source: "generation",
     }, { onConflict: "bucket,object_path" }).select("id").single();
     if (assetErr || !asset) throw new Error(`asset upsert failed: ${assetErr?.message}`);
