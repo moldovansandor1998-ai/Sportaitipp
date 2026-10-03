@@ -7,6 +7,7 @@ import { serviceClient } from "@/lib/supabase/server";
 import { requireStableEventId, providerWebhookSecret } from "@/lib/security/webhook";
 
 export const runtime = "nodejs";
+export const maxDuration = 300;
 import { buildRouter } from "@/lib/providers";
 import { finalizeJob, failJob, type JobRow } from "@/server/jobs/runJob";
 

@@ -1,6 +1,9 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
+  outputFileTracingIncludes: {
+    "/api/jobs/*": ["./node_modules/ffmpeg-static/ffmpeg"],
+  },
   images: {
     // Konkrét hostok – saját asset host + Supabase Storage (signed URL-ek)
     remotePatterns: [

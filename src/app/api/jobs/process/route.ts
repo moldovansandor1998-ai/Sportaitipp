@@ -6,6 +6,7 @@
 import { NextRequest, NextResponse } from "next/server";
 
 export const runtime = "nodejs";
+export const maxDuration = 300;
 import { serviceClient } from "@/lib/supabase/server";
 import { isCronAuthorized } from "@/lib/security/cron";
 import { buildRouter } from "@/lib/providers";
