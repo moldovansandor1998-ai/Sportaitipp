@@ -170,6 +170,8 @@ export const CreateJobSchema = z.object({
         ctx.addIssue({ code: z.ZodIssueCode.custom, message: "Érvénytelen videóminőség." });
       if (p.voiceMode !== undefined && !["model", "original"].includes(String(p.voiceMode)))
         ctx.addIssue({ code: z.ZodIssueCode.custom, message: "Érvénytelen videóhang-választás." });
+      if (p.motionMethod !== undefined && !["anchored", "legacy"].includes(String(p.motionMethod)))
+        ctx.addIssue({ code: z.ZodIssueCode.custom, message: "Érvénytelen videókészítési mód." });
       break;
     }
     case "motion_control": {

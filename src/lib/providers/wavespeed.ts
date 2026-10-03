@@ -1,5 +1,7 @@
 import { ProviderAdapter, ProviderError, type Estimate, type JobType, type NormalizedOutput, type SubmitParams, type SubmitResult } from "./types";
 import sharp from "sharp";
+import { serviceClient } from "@/lib/supabase/server";
+import { sceneFrame } from "@/server/jobs/sceneFrame";
 
 const API = "https://api.wavespeed.ai/api/v3";
 const MODEL = "wavespeed-ai/image-face-swap-pro";
@@ -8,6 +10,8 @@ const EDIT_MODELS = {
   "nano-banana": "google/nano-banana/edit",
 } as const;
 const CHARACTER_EDIT_PROMPT = "Refer to image 2 to make the same photograph, but use the face, hair and eyes of the adult woman in image 1. Images 3 and 4, when present, show the same woman's body proportions and further identity views. Image 1 is the identity anchor; image 2 alone determines the pose, clothing, camera angle, setting and objects. Preserve image 1's exact hair length, color, face shape, eye shape and natural skin detail. Keep her consistent natural body proportions from the identity references, with exactly two arms, two hands and five fingers on each hand. Preserve image 2's composition. Photorealistic candid camera image, not illustration or cartoon. Copy no objects or accessories from images 1, 3 or 4. No text, watermark, tattoos, extra limbs, extra hands, plastic skin or altered face. Do not add other people.";
+const SCENE_EDIT_PROMPT = `${CHARACTER_EDIT_PROMPT} Keep every food item, utensil, prop and its position from image 2 exactly recognizable. Preserve the original hand-object contact, framing, clothing, camera position and background. Change only the woman, never replace or invent objects.`;
+const MOTION_ENDPOINT = "kwaivgi/kling-v2.6-pro/motion-control";
 
 async function sourceRatio(url: string): Promise<number> {
   const response = await fetch(url, { signal: AbortSignal.timeout(20_000) });
@@ -56,7 +60,7 @@ export class WaveSpeedAdapter implements ProviderAdapter {
     if (jobType === "video_character_swap") return { credits: 120 * (payload.resolution === "480p" ? 8 : 16), secondsExpected: 180 };
     // Video person swap is billed by duration, capped at 30 seconds. Keep the
     // existing conservative reservation until provider usage reconciliation.
-    if (jobType === "character_motion_video") return { credits: payload.quality === "standard" ? 756 : 1008, secondsExpected: 180 };
+    if (jobType === "character_motion_video") return { credits: (payload.quality === "standard" ? 756 : 1008) + (payload.motionMethod === "anchored" ? 40 : 0), secondsExpected: payload.motionMethod === "anchored" ? 420 : 180 };
     return { credits: 40, secondsExpected: 60 };
   }
 
@@ -78,6 +82,31 @@ export class WaveSpeedAdapter implements ProviderAdapter {
       const video = p.payload.videoUrl, image = p.payload.characterImageUrl;
       if (typeof video !== "string" || typeof image !== "string")
         throw new ProviderError("Az eredeti videó és a modell referenciafotója kötelező.", false);
+      if (p.payload.motionMethod === "anchored") {
+        const sb = serviceClient();
+        const { data: job } = await sb.from("generation_jobs").select("owner_id").eq("id", p.jobId).single();
+        if (!job) throw new ProviderError("Video job not found", false);
+        const response = await fetch(video, { signal: AbortSignal.timeout(45_000) });
+        if (!response.ok) throw new ProviderError("A forrásvideó nem olvasható.", true);
+        const source = Buffer.from(await response.arrayBuffer());
+        if (source.length > 48 * 1024 * 1024) throw new ProviderError("A videó túl nagy.", false);
+        const frame = await sceneFrame(source);
+        const framePath = `${job.owner_id}/${p.jobId}/scene-frame.jpg`;
+        const { error: uploadError } = await sb.storage.from("assets").upload(framePath, frame, {
+          contentType: "image/jpeg", upsert: true,
+        });
+        if (uploadError) throw new ProviderError(`Kezdőkép tárolási hiba: ${uploadError.message}`, true);
+        const { data: signed } = await sb.storage.from("assets").createSignedUrl(framePath, 7200);
+        if (!signed?.signedUrl) throw new ProviderError("A kezdőkép nem érhető el.", true);
+        const endpoint = EDIT_MODELS["seedream-v4.5"];
+        const references = Array.isArray(p.payload.characterImageUrls) ? p.payload.characterImageUrls
+          .filter((url): url is string => typeof url === "string" && /^https:\/\//.test(url)).slice(1, 3) : [];
+        const data = await this.request(`${API}/${endpoint}`, {
+          images: [image, signed.signedUrl, ...references], prompt: SCENE_EDIT_PROMPT, size: "1152*2048",
+        });
+        if (typeof data.id !== "string") throw new ProviderError("WaveSpeed did not return the scene image task ID", false);
+        return { providerJobId: data.id, providerMeta: { endpoint, stage: "still", jobId: p.jobId, sourceVideoUrl: video } };
+      }
       const endpoint = "pixverse/swap";
       const data = await this.request(`${API}/${endpoint}`, {
         video, image, mode: "person", resolution: p.payload.quality === "standard" ? "540p" : "720p",
@@ -122,9 +151,15 @@ export class WaveSpeedAdapter implements ProviderAdapter {
 
   private result(id: string) { return this.request(`${API}/predictions/${encodeURIComponent(id)}/result`); }
 
-  async getStatus(id: string): Promise<"running" | "done" | "failed"> {
+  async getStatus(id: string, meta?: Record<string, unknown>): Promise<"running" | "done" | "failed"> {
     const data = await this.result(id);
-    if (data.status === "completed") return "done";
+    if (data.status === "completed") {
+      if (meta?.stage === "still") {
+        await this.advanceSceneToVideo(id, meta, data);
+        return "running";
+      }
+      return meta?.stage === "submitting_motion" ? "running" : "done";
+    }
     if (["failed", "cancelled", "timeout", "deleted"].includes(String(data.status))) {
       const detail = typeof data.error === "string" ? data.error
         : typeof data.error_message === "string" ? data.error_message
@@ -132,6 +167,40 @@ export class WaveSpeedAdapter implements ProviderAdapter {
       throw new ProviderError(`WaveSpeed ${String(data.status)}: ${detail.slice(0, 400)}`, false, id, "invalid_input");
     }
     return "running";
+  }
+
+  private async advanceSceneToVideo(id: string, meta: Record<string, unknown>, data: Record<string, unknown>): Promise<void> {
+    const first = Array.isArray(data.outputs) ? data.outputs[0] : null;
+    const imageUrl = typeof first === "string" ? first : first && typeof first === "object" && "url" in first && typeof first.url === "string" ? first.url : null;
+    if (!imageUrl || !/^https:\/\//.test(imageUrl) || typeof meta.jobId !== "string" || typeof meta.sourceVideoUrl !== "string")
+      throw new ProviderError("A szerkesztett jelenetkép hiányzik.", false, id);
+    const sb = serviceClient();
+    // Only one cron or user refresh may start the paid motion step.
+    const submitting = { ...meta, stage: "submitting_motion", sceneImageUrl: imageUrl };
+    const { data: claimed, error: claimError } = await sb.from("generation_jobs")
+      .update({ provider_meta: submitting }).eq("id", meta.jobId).eq("provider_job_id", id)
+      .eq("status", "processing").contains("provider_meta", { stage: "still" }).select("id").maybeSingle();
+    if (claimError) throw new ProviderError(`A videófázis lefoglalása sikertelen: ${claimError.message}`, true, id);
+    if (!claimed) return;
+    try {
+      const motion = await this.request(`${API}/${MOTION_ENDPOINT}`, {
+        image: imageUrl, video: meta.sourceVideoUrl, character_orientation: "video", keep_original_sound: true,
+        prompt: "Keep the reference scene, objects, clothing, camera and hand-object contact consistent with the edited image. Follow the source video's gestures and timing.",
+        negative_prompt: "extra hands, missing objects, transformed objects, distorted hands, altered background, face drift",
+      });
+      if (typeof motion.id !== "string") throw new ProviderError("WaveSpeed did not return the motion task ID", false);
+      const { data: updated, error } = await sb.from("generation_jobs")
+        .update({ provider_job_id: motion.id, provider_meta: { ...submitting, endpoint: MOTION_ENDPOINT, stage: "video" } })
+        .eq("id", meta.jobId).eq("provider_job_id", id).contains("provider_meta", { stage: "submitting_motion" })
+        .select("id").maybeSingle();
+      if (error || !updated) throw new Error(`Motion submission recorded uncertainly: ${error?.message ?? "race"}`);
+    } catch (error) {
+      if (error instanceof ProviderError && !error.retryable) throw error;
+      await sb.from("generation_jobs").update({ status: "submission_uncertain", error: {
+        message: String(error), recovery: "Ellenőrizd a WaveSpeed motion feladatot, mielőtt újraindítod.",
+      } }).eq("id", meta.jobId).eq("status", "processing");
+      throw new ProviderError("A mozgásgenerálás állapota nem egyértelmű; nem indítjuk újra automatikusan.", true, id);
+    }
   }
 
   async getResult(id: string, _meta?: Record<string, unknown>, jobType?: JobType): Promise<NormalizedOutput> {
@@ -142,7 +211,10 @@ export class WaveSpeedAdapter implements ProviderAdapter {
       .filter((x): x is string => typeof x === "string" && /^https:\/\//.test(x));
     if (urls.length === 0) throw new ProviderError("WaveSpeed returned no output", false, id);
     const kind = jobType === "video_character_swap" || jobType === "character_motion_video" ? "video" as const : "image" as const;
-    return { files: urls.map((url) => ({ kind, url })), meta: {} };
+    const files: NormalizedOutput["files"] = urls.map((url) => ({ kind, url }));
+    if (jobType === "character_motion_video" && _meta?.stage === "video" && typeof _meta.sceneImageUrl === "string")
+      files.push({ kind: "image", url: _meta.sceneImageUrl });
+    return { files, meta: {} };
   }
 
   async cancel(): Promise<void> { /* No cancellation API required for this integration. */ }

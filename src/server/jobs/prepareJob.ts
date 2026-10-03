@@ -343,15 +343,17 @@ export async function prepareValidatedJobInput(input: {
     const { data: version } = await svc.from("character_versions").select("id")
       .eq("id", character.active_version_id).eq("character_id", characterId!).eq("status", "approved").single();
     if (!version) return { type, payload: {}, error: "CHARACTER_REQUIRED", status: 409 };
-    const [{ data: signedVideo }, referenceUrl] = await Promise.all([
+    const [{ data: signedVideo }, referenceUrls] = await Promise.all([
       svc.storage.from(video.bucket).createSignedUrl(video.object_path, 7200),
-      resolveCharacterFaces().then((faces) => faces[0]),
+      resolveCharacterFaces(),
     ]);
-    if (!referenceUrl) return { type, payload: {}, error: "IMAGE_INPUT_REQUIRED", status: 409 };
+    if (!referenceUrls.length) return { type, payload: {}, error: "IMAGE_INPUT_REQUIRED", status: 409 };
     if (!signedVideo?.signedUrl)
       return { type, payload: {}, error: "SOURCE_IMAGE_REQUIRED", status: 502 };
     payload.videoUrl = signedVideo.signedUrl;
-    payload.characterImageUrl = referenceUrl;
+    payload.characterImageUrl = referenceUrls[0];
+    payload.characterImageUrls = referenceUrls;
+    payload.motionMethod = payload.motionMethod === "legacy" ? "legacy" : "anchored";
     const useLauraVoice = character.name.trim().toLocaleLowerCase("hu") === "laura" && payload.voiceMode !== "original";
     if (useLauraVoice) {
       if (!process.env.ELEVENLABS_API_KEY || !process.env.ELEVENLABS_LAURA_VOICE_ID)
