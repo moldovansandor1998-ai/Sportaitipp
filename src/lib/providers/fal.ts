@@ -105,7 +105,7 @@ const MODELS: Partial<Record<JobType, FalModelSpec>> = {
     mapOutput: (raw) => ({ files: file("video")(raw.video), meta: {} }),
   },
   lip_sync: {
-    endpoint: "fal-ai/sync-lips",
+    endpoint: "fal-ai/sync-lipsync/v3",
     estimate: 300,
     mapInput: (p) => ({ video_url: p.videoUrl, audio_url: p.audioUrl }),
     mapOutput: (raw) => ({ files: file("video")(raw.video), meta: {} }),
@@ -159,7 +159,7 @@ const MODELS: Partial<Record<JobType, FalModelSpec>> = {
   },
   talking_video: {
     // Kép helyett VIDEÓ + hang → beszélő videó (sync-lips)
-    endpoint: "fal-ai/sync-lips",
+    endpoint: "fal-ai/sync-lipsync/v3",
     estimate: 350,
     mapInput: (p) => ({ video_url: p.videoUrl, audio_url: p.audioUrl }),
     mapOutput: (raw) => ({ files: file("video")(raw.video), meta: {} }),
