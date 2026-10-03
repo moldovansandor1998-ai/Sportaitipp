@@ -604,21 +604,21 @@ export default function ToolsPage() {
             <option value="legacy">Régi gyors szereplőcsere</option>
           </select>
           <label htmlFor="motion-voice-mode">Videó hangja</label>
-          <select id="motion-voice-mode" value={characters.find((c) => c.id === toolChar)?.name.trim().toLocaleLowerCase("hu") === "laura" ? motionVoiceMode : "original"}
+          <select id="motion-voice-mode" value={motionVoiceMode}
             onChange={(e) => setMotionVoiceMode(e.target.value as "model" | "original")}>
             <option value="original">Eredeti videó hangja</option>
-            <option value="model" disabled={characters.find((c) => c.id === toolChar)?.name.trim().toLocaleLowerCase("hu") !== "laura"}>Modell hangja (Laura)</option>
+            <option value="model">A kiválasztott modell hangja</option>
           </select>
           <button disabled={busyKey !== null || !toolChar || !v2vVideo} onClick={() => {
             setResults((current) => ({ ...current, modelMotion: [] }));
             run("modelMotion", "character_motion_video", { videoAssetId: v2vVideo, quality: motionQuality, motionMethod,
-              voiceMode: characters.find((c) => c.id === toolChar)?.name.trim().toLocaleLowerCase("hu") === "laura" ? motionVoiceMode : "original" }, { characterId: toolChar });
+              voiceMode: motionVoiceMode }, { characterId: toolChar });
           }}>
             Szereplő cseréje a kiválasztott modellre
           </button>
           <Badge k="modelMotion" /><Price k="modelMotion" />
         </div>
-        <p className="muted">Az új mód a videó elejéről egy látható jelenetképet választ, ezen alakítja át a szereplőt, majd a képet a referencia mozgással animálja. A kellékekkel való érintkezést és a modell pontos arcát ellenőrizd a kész videóban. Az eredeti hang vagy Laura hangja külön választható.</p>
+        <p className="muted">Az új mód a videó elejéről egy látható jelenetképet választ, ezen alakítja át a szereplőt, majd a képet a referencia mozgással animálja. A kellékekkel való érintkezést és a modell pontos arcát ellenőrizd a kész videóban. Az eredeti hang vagy a kiválasztott modell hangja külön választható.</p>
         <Results k="modelMotion" kind="video" />
         {results.modelMotion?.some((item) => item.mediaType === "video" && item.assetId) && (
           <button className="ghost" type="button" style={{ marginTop: 8 }} onClick={() => {

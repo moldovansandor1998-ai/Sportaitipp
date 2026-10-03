@@ -354,12 +354,22 @@ export async function prepareValidatedJobInput(input: {
     payload.characterImageUrl = referenceUrls[0];
     payload.characterImageUrls = referenceUrls;
     payload.motionMethod = payload.motionMethod === "legacy" ? "legacy" : "anchored";
-    const useLauraVoice = character.name.trim().toLocaleLowerCase("hu") === "laura" && payload.voiceMode !== "original";
-    if (useLauraVoice) {
-      if (!process.env.ELEVENLABS_API_KEY || !process.env.ELEVENLABS_LAURA_VOICE_ID)
+    const modelName = character.name.trim().toLocaleLowerCase("hu");
+    const voiceByModel: Record<string, string | undefined> = {
+      laura: process.env.ELEVENLABS_LAURA_VOICE_ID,
+      petra: process.env.ELEVENLABS_PETRA_VOICE_ID,
+      dorina: process.env.ELEVENLABS_DORINA_VOICE_ID,
+      dorika: process.env.ELEVENLABS_DORA_VOICE_ID,
+      "dóra": process.env.ELEVENLABS_DORA_VOICE_ID,
+      "zsófia": process.env.ELEVENLABS_ZSOFI_VOICE_ID,
+      "zsófi": process.env.ELEVENLABS_ZSOFI_VOICE_ID,
+    };
+    if (payload.voiceMode !== "original") {
+      const voiceId = voiceByModel[modelName];
+      if (!process.env.ELEVENLABS_API_KEY || !voiceId)
         return { type, payload: {}, error: "TTS_VOICE_INVALID", status: 503 };
       payload.replaceVoice = true;
-      payload.voiceId = process.env.ELEVENLABS_LAURA_VOICE_ID;
+      payload.voiceId = voiceId;
     }
     delete payload.voiceMode;
     payload.quality = payload.quality === "standard" ? "standard" : "pro";
