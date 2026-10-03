@@ -10,7 +10,7 @@ export const maxDuration = 300;
 import { serviceClient } from "@/lib/supabase/server";
 import { isCronAuthorized } from "@/lib/security/cron";
 import { buildRouter } from "@/lib/providers";
-import { runClaimedJob, finalizeJob, type JobRow } from "@/server/jobs/runJob";
+import { runClaimedJob, finalizeJob, recoverRefundedVideoJob, type JobRow } from "@/server/jobs/runJob";
 import { failJob } from "@/server/jobs/runJob";
 import { ProviderError } from "@/lib/providers/types";
 import { createJobWithHold } from "@/lib/credits/rpc";
@@ -159,7 +159,19 @@ export async function POST(req: NextRequest) {
       if (error instanceof ProviderError && !error.retryable) await failJob(job, error.message);
     }
   }
-  return NextResponse.json({ reaped: reaped ?? 0, processed: claimed.length, resumed, bulkStarted, checked, content, x });
+  // Recover provider-completed videos that failed the old Storage size limit.
+  // Their credits remain refunded; the provider is never submitted a second time.
+  const { data: recoverable } = await sb.from("generation_jobs").select("*")
+    .eq("status", "refunded").eq("type", "character_motion_video")
+    .is("result", null).order("created_at", { ascending: false }).limit(20);
+  let recovered = 0;
+  for (const job of (recoverable ?? []) as (JobRow & { provider_meta?: Record<string, unknown>; error?: { message?: string } })[]) {
+    if (!job.error?.message?.includes("maximum allowed size")) continue;
+    try { if (await recoverRefundedVideoJob(job)) recovered++; }
+    catch (error) { console.error(JSON.stringify({ scope: "cron.recoverGallery", jobId: job.id, error: String(error) })); }
+    if (recovered >= 2) break;
+  }
+  return NextResponse.json({ reaped: reaped ?? 0, processed: claimed.length, resumed, bulkStarted, checked, recovered, content, x });
 }
 
 // Vercel Cron GET kérést küld, azonos Bearer ellenőrzéssel.
