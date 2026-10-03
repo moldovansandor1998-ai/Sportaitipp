@@ -55,6 +55,7 @@ export default function ToolsPage() {
   const [v2vVideo, setV2vVideo] = useState(""); const [v2vPrompt, setV2vPrompt] = useState("");
   const [videoResolution, setVideoResolution] = useState<"480p" | "720p">("720p");
   const [motionQuality, setMotionQuality] = useState<"pro" | "standard">("pro");
+  const [motionVoiceMode, setMotionVoiceMode] = useState<"model" | "original">("model");
   const [videoPreview, setVideoPreview] = useState("");
 
   const getSb = () => browserClient();
@@ -597,15 +598,22 @@ export default function ToolsPage() {
           <select aria-label="Videócsere minősége" value={motionQuality} onChange={(e) => setMotionQuality(e.target.value as "pro" | "standard")}>
             <option value="pro">720p</option><option value="standard">540p</option>
           </select>
+          <label htmlFor="motion-voice-mode">Videó hangja</label>
+          <select id="motion-voice-mode" value={characters.find((c) => c.id === toolChar)?.name.trim().toLocaleLowerCase("hu") === "laura" ? motionVoiceMode : "original"}
+            onChange={(e) => setMotionVoiceMode(e.target.value as "model" | "original")}>
+            <option value="original">Eredeti videó hangja</option>
+            <option value="model" disabled={characters.find((c) => c.id === toolChar)?.name.trim().toLocaleLowerCase("hu") !== "laura"}>Modell hangja (Laura)</option>
+          </select>
           <button disabled={busyKey !== null || !toolChar || !v2vVideo} onClick={() => {
             setResults((current) => ({ ...current, modelMotion: [] }));
-            run("modelMotion", "character_motion_video", { videoAssetId: v2vVideo, quality: motionQuality }, { characterId: toolChar });
+            run("modelMotion", "character_motion_video", { videoAssetId: v2vVideo, quality: motionQuality,
+              voiceMode: characters.find((c) => c.id === toolChar)?.name.trim().toLocaleLowerCase("hu") === "laura" ? motionVoiceMode : "original" }, { characterId: toolChar });
           }}>
             Szereplő cseréje a kiválasztott modellre
           </button>
           <Badge k="modelMotion" /><Price k="modelMotion" />
         </div>
-        <p className="muted">Lauránál a feltöltött videó beszédét automatikusan Laura hangjára alakítjuk. Nem kell MP3-at feltölteni. A szereplőcsere újrarajzolhatja az arcot, a testet és a hátteret; ellenőrizd a kész videót.</p>
+        <p className="muted">Válaszd ki, hogy az eredeti videó hangját tartsuk meg, vagy Laura beszédhangjára alakítsuk. Más modellhez jelenleg az eredeti hang érhető el. A szereplőcsere újrarajzolhatja az arcot, a testet és a hátteret; ellenőrizd a kész videót.</p>
         <Results k="modelMotion" kind="video" />
         {results.modelMotion?.some((item) => item.mediaType === "video" && item.assetId) && (
           <button className="ghost" type="button" style={{ marginTop: 8 }} onClick={() => {
