@@ -168,6 +168,8 @@ export const CreateJobSchema = z.object({
         ctx.addIssue({ code: z.ZodIssueCode.custom, message: "Válassz modellt és tölts fel egy MP4 mozgásvideót." });
       if (p.quality !== undefined && !["pro", "standard"].includes(String(p.quality)))
         ctx.addIssue({ code: z.ZodIssueCode.custom, message: "Érvénytelen videóminőség." });
+      if (p.voiceMode !== undefined && !["model", "original"].includes(String(p.voiceMode)))
+        ctx.addIssue({ code: z.ZodIssueCode.custom, message: "Érvénytelen videóhang-választás." });
       break;
     }
     case "motion_control": {

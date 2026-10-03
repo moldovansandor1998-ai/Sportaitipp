@@ -68,7 +68,7 @@ export default function GalleryPage() {
     const { data: { user } } = await getSb().auth.getUser();
     if (!user) return;
     let pendingQuery = getSb().from("generation_jobs")
-      .select("id").eq("owner_id", user.id).in("type", ["character_swap", "image_edit"]).in("status", ["queued", "submitted", "processing", "finalizing"])
+      .select("id").eq("owner_id", user.id).in("type", ["character_swap", "image_edit", "character_motion_video"]).in("status", ["queued", "submitted", "processing", "finalizing"])
       .order("created_at", { ascending: false }).limit(50);
     if (characterFilter === "unassigned") pendingQuery = pendingQuery.is("character_id", null);
     else if (characterFilter !== "all") pendingQuery = pendingQuery.eq("character_id", characterFilter);
@@ -332,7 +332,8 @@ export default function GalleryPage() {
         <span>{page + 1} / {Math.ceil(total / 24)}</span>
         <button className="ghost" disabled={(page + 1) * 24 >= total} onClick={() => { setPage(page + 1); setSelected(new Set()); }}>Következő oldal</button>
       </div>}
-      {pendingCount > 0 && <p className="muted">{pendingCount} kép feldolgozás alatt. Az eredmények itt automatikusan frissülnek.</p>}
+      <button className="ghost" onClick={() => void load()}>Galéria frissítése</button>
+      {pendingCount > 0 && <p className="muted">{pendingCount} kép vagy videó feldolgozás alatt. Az eredmények itt automatikusan frissülnek.</p>}
       {failedEdits > 0 && <p role="status" style={{ color: "#f29a9a" }}>{failedEdits} képszerkesztés meghiúsult az elmúlt órában; ezek krediteit a rendszer visszaadta.</p>}
       {filtered.length === 0 ? (
         <div className="empty">Nincs a szűrésnek megfelelő elem.</div>

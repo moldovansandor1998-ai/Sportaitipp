@@ -352,12 +352,14 @@ export async function prepareValidatedJobInput(input: {
       return { type, payload: {}, error: "SOURCE_IMAGE_REQUIRED", status: 502 };
     payload.videoUrl = signedVideo.signedUrl;
     payload.characterImageUrl = referenceUrl;
-    if (character.name.trim().toLocaleLowerCase("hu") === "laura") {
+    const useLauraVoice = character.name.trim().toLocaleLowerCase("hu") === "laura" && payload.voiceMode !== "original";
+    if (useLauraVoice) {
       if (!process.env.ELEVENLABS_API_KEY || !process.env.ELEVENLABS_LAURA_VOICE_ID)
         return { type, payload: {}, error: "TTS_VOICE_INVALID", status: 503 };
       payload.replaceVoice = true;
       payload.voiceId = process.env.ELEVENLABS_LAURA_VOICE_ID;
     }
+    delete payload.voiceMode;
     payload.quality = payload.quality === "standard" ? "standard" : "pro";
     delete payload.videoAssetId;
   }
