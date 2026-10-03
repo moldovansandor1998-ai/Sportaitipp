@@ -56,6 +56,7 @@ export default function ToolsPage() {
   const [videoResolution, setVideoResolution] = useState<"480p" | "720p">("720p");
   const [motionQuality, setMotionQuality] = useState<"pro" | "standard">("pro");
   const [videoPreview, setVideoPreview] = useState("");
+  const [motionSource, setMotionSource] = useState<{ videoId: string; characterId: string } | null>(null);
 
   const getSb = () => browserClient();
   const token = useCallback(async () => (await getSb().auth.getSession()).data.session?.access_token ?? "", []);
@@ -87,6 +88,35 @@ export default function ToolsPage() {
     } catch (error) {
       setMsg((current) => ({ ...current, eleven: error instanceof Error ? error.message : "Hanghiba" }));
     } finally { setBusyKey(null); }
+  }
+
+  async function convertOriginalVoiceAndSync() {
+    const model = characters.find((character) => character.id === toolChar);
+    const swappedVideo = results.modelMotion?.find((item) => item.mediaType === "video" && item.assetId);
+    if (!motionSource || !swappedVideo || motionSource.videoId !== v2vVideo ||
+      motionSource.characterId !== toolChar || model?.name.trim().toLocaleLowerCase("hu") !== "laura" || busyKey) return;
+    setBusyKey("voiceSwap");
+    setMsg((current) => ({ ...current, voiceSwap: "Az eredeti videó beszédét Laura hangjára alakítjuk…" }));
+    try {
+      const response = await fetch("/api/elevenlabs/video-voice", {
+        method: "POST", headers: { authorization: `Bearer ${await token()}`, "Content-Type": "application/json" },
+        body: JSON.stringify({ videoAssetId: motionSource.videoId, characterId: motionSource.characterId }),
+      });
+      if (!response.ok) {
+        const detail = await response.json().catch(() => null) as { error?: string } | null;
+        throw new Error(detail?.error === "LAURA_VOICE_NOT_FOUND" ? "A Laura nevű ElevenLabs-hang nem található."
+          : `A hang átalakítása sikertelen (${detail?.error ?? response.status}).`);
+      }
+      const { assetId } = await response.json() as { assetId: string };
+      setTalkVideo(swappedVideo.assetId);
+      setTalkAudio(assetId);
+      setMsg((current) => ({ ...current, voiceSwap: "Laura hangja elkészült. Az ajakszinkron indul…" }));
+      setBusyKey(null);
+      run("talk", "lip_sync", { videoAssetId: swappedVideo.assetId, audioAssetId: assetId });
+    } catch (error) {
+      setMsg((current) => ({ ...current, voiceSwap: error instanceof Error ? error.message : "Hanghiba" }));
+      setBusyKey(null);
+    }
   }
 
   const init = useCallback(async () => {
@@ -552,8 +582,9 @@ export default function ToolsPage() {
         {(msg.up || msg.bg || msg.skin || msg.face) && <p className="muted">{[msg.up, msg.bg, msg.skin, msg.face].filter(Boolean).join(" · ")}</p>}
       </div>
 
-      <div className="card" style={{ marginTop: 12 }}>
-        <h3 style={{ marginTop: 0 }}>ElevenLabs-hang a modellvideóhoz</h3>
+      <details className="card" style={{ marginTop: 12 }}>
+        <summary>Kézi hangkészítés vagy saját hang feltöltése (opcionális)</summary>
+        <h3>ElevenLabs-hang a modellvideóhoz</h3>
         <p className="muted">Írd be a szöveget, válaszd ki az ElevenLabs-hangot, majd a kész modellvideóval indítsd a Lip Sync műveletet. Kész MP3/WAV hangot is feltölthetsz.</p>
         <button className="ghost" type="button" disabled={busyKey !== null} onClick={() => void loadElevenVoices()}>ElevenLabs-hangok betöltése</button>
         {elevenVoices.length > 0 && <div style={{ marginTop: 8 }}>
@@ -582,7 +613,7 @@ export default function ToolsPage() {
         </div>
         <Results k="talk" kind="video" />
         {msg.talk && <p className="muted">{msg.talk}</p>}
-      </div>
+      </details>
 
       <div className="card" style={{ marginTop: 12 }}>
         <h3 style={{ marginTop: 0 }}>Video-to-Video · Image-to-Video</h3>
@@ -596,12 +627,27 @@ export default function ToolsPage() {
           <select aria-label="Videócsere minősége" value={motionQuality} onChange={(e) => setMotionQuality(e.target.value as "pro" | "standard")}>
             <option value="pro">720p</option><option value="standard">540p</option>
           </select>
-          <button disabled={busyKey !== null || !toolChar || !v2vVideo} onClick={() => run("modelMotion", "character_motion_video", { videoAssetId: v2vVideo, quality: motionQuality }, { characterId: toolChar })}>
+          <button disabled={busyKey !== null || !toolChar || !v2vVideo} onClick={() => {
+            setMotionSource({ videoId: v2vVideo, characterId: toolChar });
+            setResults((current) => ({ ...current, modelMotion: [] }));
+            run("modelMotion", "character_motion_video", { videoAssetId: v2vVideo, quality: motionQuality }, { characterId: toolChar });
+          }}>
             Szereplő cseréje a kiválasztott modellre
           </button>
           <Badge k="modelMotion" /><Price k="modelMotion" />
         </div>
         <Results k="modelMotion" kind="video" />
+        {results.modelMotion?.some((item) => item.mediaType === "video" && item.assetId) && (
+          <div style={{ marginTop: 10 }}>
+            <button type="button" disabled={busyKey !== null || !motionSource || motionSource.videoId !== v2vVideo ||
+              motionSource.characterId !== toolChar || characters.find((c) => c.id === toolChar)?.name.trim().toLocaleLowerCase("hu") !== "laura"}
+              onClick={() => void convertOriginalVoiceAndSync()}>Eredeti beszéd Laura hangján + ajakszinkron</button>
+            <p className="muted">A feltöltött videóban elhangzó beszédet veszi át. Nem kell szöveget írni vagy MP3-at feltölteni. Jelenleg Laura hangja van összekötve.</p>
+            {msg.voiceSwap && <p role="status" className="muted">{msg.voiceSwap}</p>}
+            <Badge k="talk" /><Price k="talk" /><Results k="talk" kind="video" />
+            {msg.talk && <p className="muted">{msg.talk}</p>}
+          </div>
+        )}
         {results.modelMotion?.some((item) => item.mediaType === "video" && item.assetId) && (
           <button className="ghost" type="button" style={{ marginTop: 8 }} onClick={() => {
             const latest = results.modelMotion.find((item) => item.mediaType === "video" && item.assetId);
