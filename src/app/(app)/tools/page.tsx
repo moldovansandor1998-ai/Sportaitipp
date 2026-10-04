@@ -10,7 +10,7 @@ import { createSubmitGuard, type SubmitGuard } from "@/lib/jobs/submitGuard";
 import { guardedRun } from "@/lib/jobs/guardedRun";
 import { startJobWithTracker } from "@/lib/jobs/startJob";
 
-interface GalItem { galleryItemId: string; assetId: string; mediaType: string; url: string | null; }
+interface GalItem { galleryItemId: string; assetId: string; mediaType: string; url: string | null; characterId?: string | null; }
 interface CharacterRow { id: string; name: string; }
 interface JobRow { id: string; status: string; error: { message?: string } | null; }
 interface Res { assetId: string; galleryItemId: string; mediaType: string; url: string | null; }
@@ -18,6 +18,7 @@ interface Cfg { mode: string; faceSwapConfigured: boolean; i2vModels: Array<{ id
 
 export default function ToolsPage() {
   const [gallery, setGallery] = useState<GalItem[]>([]);
+  const [approvedVideos, setApprovedVideos] = useState<GalItem[]>([]);
   const [characters, setCharacters] = useState<CharacterRow[]>([]);
   const [cfg, setCfg] = useState<Cfg | null>(null);
   const [busyKey, setBusyKey] = useState<string | null>(null);
@@ -99,9 +100,10 @@ export default function ToolsPage() {
     const { data: { user } } = await getSb().auth.getUser();
     if (!user) return;
     const accessToken = await token();
-    const [batchResponse, res, lastVideoResult, charsResult, c, latestEditsResult] = await Promise.all([
+    const [batchResponse, res, approvedResponse, lastVideoResult, charsResult, c, latestEditsResult] = await Promise.all([
       fetch("/api/jobs/batch", { headers: { authorization: `Bearer ${accessToken}` } }),
       fetch("/api/gallery", { headers: { authorization: `Bearer ${accessToken}` } }),
+      fetch("/api/gallery?approvedVideos=1", { headers: { authorization: `Bearer ${accessToken}` } }),
       getSb().from("assets").select("id").eq("owner_id", user.id).eq("media_type", "video")
         .eq("source", "upload").order("created_at", { ascending: false }).limit(1).maybeSingle(),
       getSb().from("characters").select("id,name").eq("owner_id", user.id).not("active_version_id", "is", null),
@@ -119,6 +121,17 @@ export default function ToolsPage() {
     if (res.ok) {
       const items = ((await res.json()) as { items: GalItem[] }).items.filter((i) => i.url);
       setGallery(items);
+    }
+    if (approvedResponse.ok) {
+      const first = await approvedResponse.json() as { items: GalItem[]; total: number };
+      const items = [...first.items];
+      for (let page = 1; page < Math.ceil(first.total / 100); page++) {
+        const next = await fetch(`/api/gallery?approvedVideos=1&page=${page}`, { headers: { authorization: `Bearer ${accessToken}` } });
+        if (!next.ok) break;
+        items.push(...((await next.json()) as { items: GalItem[] }).items);
+      }
+      const available = items.filter((i) => i.url);
+      setApprovedVideos(available);
     }
     const { data: lastVideo } = lastVideoResult;
     if (lastVideo?.id) setV2vVideo((current) => current || lastVideo.id);
@@ -153,6 +166,10 @@ export default function ToolsPage() {
       }
     }
   }, [token]);
+  useEffect(() => {
+    setSceneVideo("");
+    setVariationVideo("");
+  }, [toolChar]);
   useEffect(() => { void init(); }, [init]);
   useEffect(() => {
     pollerRef.current ??= new JobPoller({ intervalMs: 8000, maxAttempts: 240, maxConsecutiveErrors: 3, isTerminal: (s) => TERMINAL_STATUSES.includes(s) });
@@ -392,9 +409,9 @@ export default function ToolsPage() {
     });
   }
 
-  const Picker = ({ media, selected, onSelect }: { media: string; selected: string; onSelect: (id: string) => void }) => (
+  const Picker = ({ media, selected, onSelect, approvedOnly = false }: { media: string; selected: string; onSelect: (id: string) => void; approvedOnly?: boolean }) => (
     <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 8 }}>
-      {gallery.filter((g) => g.mediaType === media).slice(0, 10).map((g) => (
+      {(approvedOnly ? approvedVideos.filter((g) => g.characterId === toolChar) : gallery).filter((g) => g.mediaType === media).map((g) => (
         <button key={g.galleryItemId} className="ghost" disabled={busyKey !== null} onClick={() => onSelect(g.assetId)}
           style={{ padding: 2, borderRadius: 8, outline: selected === g.assetId ? "2px solid var(--accent)" : "1px solid var(--border)" }}>
           {media === "video" ? (
@@ -405,7 +422,7 @@ export default function ToolsPage() {
           )}
         </button>
       ))}
-      {gallery.filter((g) => g.mediaType === media).length === 0 && <span className="muted">nincs {media} a galériában – tölts fel</span>}
+      {(approvedOnly ? approvedVideos.filter((g) => g.characterId === toolChar) : gallery).filter((g) => g.mediaType === media).length === 0 && <span className="muted">{approvedOnly ? "Nincs jó alapvideó megjelölve ehhez a modellhez a Galériában." : `nincs ${media} a galériában – tölts fel`}</span>}
     </div>
   );
   const Badge = ({ k }: { k: string }) => jobs[k] ? <span className="badge">{jobs[k].status}{jobs[k].error?.message ? ` – ${jobs[k].error.message}` : ""}</span> : null;
@@ -637,7 +654,7 @@ export default function ToolsPage() {
         <div style={{ borderTop: "1px solid var(--border)", marginTop: 20, paddingTop: 16 }}>
           <h4>Új mozgás egy sikerült modellvideóból</h4>
           <p className="muted">Válassz egy korábbi, kész videót ugyanettől a modelltől. Egyetlen új, 8 másodperces, 1080p videó készül eltérő, természetes mozgással. A jelenet és az arc kiindulópontja a videó egyik jól látható képkockája. Az eredmény a galériába kerül; a mozdulatokat és az arcot közzététel előtt nézd meg. Ez külön fizetős generálás.</p>
-          <Picker media="video" selected={variationVideo} onSelect={setVariationVideo} />
+          <Picker media="video" selected={variationVideo} onSelect={setVariationVideo} approvedOnly />
           <select aria-label="Új mozgás stílusa" value={variationStyle}
             onChange={(e) => setVariationStyle(e.target.value as "playful" | "confident" | "casual")}
             style={{ marginTop: 8 }}>
@@ -646,7 +663,7 @@ export default function ToolsPage() {
             <option value="casual">Laza, természetes</option>
           </select>
           <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap", marginTop: 8 }}>
-            <button disabled={busyKey !== null || !toolChar || !variationVideo}
+            <button disabled={busyKey !== null || !toolChar || !approvedVideos.some((g) => g.assetId === variationVideo && g.characterId === toolChar)}
               onClick={() => {
                 setResults((current) => ({ ...current, newMotion: [] }));
                 run("newMotion", "character_motion_video", {
@@ -662,12 +679,12 @@ export default function ToolsPage() {
         <div style={{ borderTop: "1px solid var(--border)", marginTop: 20, paddingTop: 16 }}>
           <h4>Új szöveg ugyanazon a helyszínen</h4>
           <p className="muted">Válassz egy jól sikerült, természetesen mozgó modellvideót a galériából. A saját hangján felmondott új szöveghez a szájmozgást igazítjuk; a helyszínt és a gesztusok időzítését az alapvideó adja. Olyan felvételt válassz, amelynek mozdulatai illenek a mondandóhoz. A videó a hang és a forrás közül a rövidebb hosszáig tart, legfeljebb 30 másodpercig. Egy indítás egy eredményt készít.</p>
-          <Picker media="video" selected={sceneVideo} onSelect={setSceneVideo} />
+          <Picker media="video" selected={sceneVideo} onSelect={setSceneVideo} approvedOnly />
           <label htmlFor="scene-text">Mit mondjon a modell?</label>
           <textarea id="scene-text" rows={5} maxLength={450} value={sceneText}
             onChange={(e) => setSceneText(e.target.value)} placeholder="Írd be a magyar szöveget..." />
           <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap", marginTop: 8 }}>
-            <button disabled={busyKey !== null || !toolChar || !sceneVideo || sceneText.trim().length < 20}
+            <button disabled={busyKey !== null || !toolChar || !approvedVideos.some((g) => g.assetId === sceneVideo && g.characterId === toolChar) || sceneText.trim().length < 20}
               onClick={() => {
                 setResults((current) => ({ ...current, talkingScene: [] }));
                 run("talkingScene", "character_motion_video", {
