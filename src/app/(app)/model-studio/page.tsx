@@ -4,7 +4,7 @@ import Link from "next/link";
 import { browserClient } from "@/lib/supabase/client";
 
 type Account = { id: string; character_id: string | null; model_name: string; platform: string; login_email: string | null; account_url: string | null; notes: string | null };
-type Character = { id: string; name: string; status: string; active_version_id: string | null; birth_date: string | null; occupation: string | null };
+type Character = { id: string; name: string; status: string; active_version_id: string | null; birth_date: string | null; occupation: string | null; elevenlabs_voice_id: string | null; elevenlabs_hungarian_tts: boolean };
 type Slide = { index: number; job_id: string; status: string; output_url: string | null; source_id: string | null; source_url: string | null; review_status: string | null; favorite: boolean; error: unknown };
 type Item = { id: string; character_id: string; platform: string; local_date: string; post_hour: number; due_at: string; aspect_ratio: string; status: string; trend_title: string | null; trend_url: string | null; copy: { slides?: string[]; caption?: string }; image_jobs: string[]; slides: Slide[]; error: string | null };
 type Source = { id: string; pool: "tiktok" | "telegram" | "fanvue_public"; preview_url: string | null; used_at: string | null };
@@ -53,6 +53,19 @@ export default function ModelStudio() {
     });
     if (!response.ok) setError("A fiókadat mentése sikertelen.");
     setSaving(null);
+  }
+
+  async function saveVoice(character: Character) {
+    setSaving(character.id); setError("");
+    try {
+      const token = (await browserClient().auth.getSession()).data.session?.access_token;
+      const response = await fetch(`/api/characters/${character.id}/voice`, { method: "PATCH",
+        headers: { authorization: `Bearer ${token}`, "content-type": "application/json" },
+        body: JSON.stringify({ voiceId: character.elevenlabs_voice_id?.trim() || null, hungarianTts: character.elevenlabs_hungarian_tts }) });
+      if (!response.ok) throw new Error("A hang mentése nem sikerült. Ellenőrizd az ElevenLabs voice ID-t.");
+      await load();
+    } catch (error) { setError(error instanceof Error ? error.message : "A hang nem menthető."); }
+    finally { setSaving(null); }
   }
 
   async function connectX(characterId: string) {
@@ -170,6 +183,18 @@ export default function ModelStudio() {
           {character?.occupation && <p>Foglalkozás: {character.occupation}</p>}
           <p className="muted">{character ? `Karakter: ${character.status}` : "Karakter még nincs létrehozva"}</p>
           {character && <Link href={`/characters/${character.id}`}>Karakter megnyitása</Link>}
+          {character && <div style={{ marginTop: 12 }}>
+            <label htmlFor={`voice-${character.id}`}>Karakter ElevenLabs voice ID</label>
+            <input id={`voice-${character.id}`} value={character.elevenlabs_voice_id ?? ""}
+              onChange={event => setCharacters(current => current.map(item => item.id === character.id
+                ? { ...item, elevenlabs_voice_id: event.target.value } : item))} />
+            <label><input type="checkbox" checked={character.elevenlabs_hungarian_tts}
+              onChange={event => setCharacters(current => current.map(item => item.id === character.id
+                ? { ...item, elevenlabs_hungarian_tts: event.target.checked } : item))} />
+              Magyar beszéd újramondása hangcserekor</label>
+            <button className="ghost" disabled={saving === character.id} onClick={() => void saveVoice(character)}>
+              {saving === character.id ? "Hang mentése…" : "Karakterhang mentése"}</button>
+          </div>}
           {list.map(a => <div key={a.id} style={{ borderTop: "1px solid var(--border)", marginTop: 12, paddingTop: 12 }}>
             <strong>{a.platform === "fanvue" ? "Fanvue" : a.platform === "tiktok" ? "TikTok" : "Telegram"}</strong>
             {a.login_email && <p style={{ overflowWrap: "anywhere", margin: "6px 0" }}>{a.login_email}</p>}

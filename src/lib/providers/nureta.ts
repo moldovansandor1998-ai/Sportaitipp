@@ -12,7 +12,7 @@ export class NuretaAdapter implements ProviderAdapter {
     const duration = Number(payload.duration);
     // The existing WaveSpeed estimate uses roughly 300 credits/USD. Include a small margin.
     const rate = payload.resolution === "720p" ? 0.2773 : 0.1888;
-    return { credits: Math.ceil(duration * rate * 330), secondsExpected: 240 };
+    return { credits: Math.ceil(duration * rate * 330) + (payload.voiceMode === "model" ? 100 : 0), secondsExpected: 240 };
   }
 
   private async request(url: string, init?: RequestInit): Promise<Record<string, unknown>> {
@@ -46,6 +46,7 @@ export class NuretaAdapter implements ProviderAdapter {
     const body = {
       model: p.payload.resolution === "720p" ? "seahorse-720p" : "seahorse-480p",
       duration: Number(p.payload.duration), ratio: "9:16",
+      generate_audio: p.payload.voiceMode === "nureta",
       content: [{ type: "text", text: String(p.payload.prompt) },
         { type: "image_url", image_url: { url: refs[0] }, role: "first_frame" }],
     };
@@ -58,7 +59,11 @@ export class NuretaAdapter implements ProviderAdapter {
   async getStatus(id: string, meta?: Record<string, unknown>): Promise<"running" | "done" | "failed"> {
     const result = await this.request(`${endpoint(meta?.image === true)}/${encodeURIComponent(id)}`);
     if (result.status === "succeeded") return "done";
-    if (result.status === "failed" || result.status === "cancelled") return "failed";
+    if (result.status === "failed" || result.status === "cancelled") {
+      const error = result.error as { message?: string; code?: string } | string | undefined;
+      const detail = typeof error === "string" ? error : error?.message ?? error?.code ?? String(result.status);
+      throw new ProviderError(`Nureta: ${detail.slice(0, 250)}`, false, id, "invalid_input");
+    }
     return "running";
   }
 
@@ -69,7 +74,8 @@ export class NuretaAdapter implements ProviderAdapter {
     const content = result.content as Record<string, unknown> | undefined;
     const url = content?.[image ? "image_url" : "video_url"];
     if (typeof url !== "string" || !url.startsWith("https://")) throw new ProviderError("Nureta eredmény URL hiányzik.", false);
-    return { files: [{ kind: image ? "image" : "video", url, filename: image ? "scene.jpg" : "video.mp4" }], meta: { provider: "nureta" } };
+    console.info(JSON.stringify({ scope: "provider.output", provider: "nureta", providerJobId: id, outputHost: new URL(url).hostname }));
+    return { files: [{ kind: image ? "image" : "video", url, filename: image ? "scene.jpg" : "video.mp4" }], meta: { provider: "nureta", outputHost: new URL(url).hostname } };
   }
 
   async cancel(): Promise<void> { /* Single-clip tasks cannot be cancelled through the API. */ }

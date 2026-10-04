@@ -54,7 +54,7 @@ function closestRatio(ratio: number): { ratio: string; width: number; height: nu
 
 export class WaveSpeedAdapter implements ProviderAdapter {
   readonly name = "wavespeed";
-  readonly supports: JobType[] = ["character_swap", "video_character_swap", "character_motion_video", "nureta_scene_image", "image_edit"];
+  readonly supports: JobType[] = ["character_swap", "video_character_swap", "character_motion_video", "nureta_scene_image", "nureta_scene_video", "image_edit"];
 
   private async request(url: string, body?: Record<string, unknown>): Promise<Record<string, unknown>> {
     const res = await fetch(url, {
@@ -72,6 +72,10 @@ export class WaveSpeedAdapter implements ProviderAdapter {
 
   async estimate(jobType: JobType, payload: Record<string, unknown>): Promise<Estimate> {
     if (jobType === "nureta_scene_image") return { credits: 40, secondsExpected: 90 };
+    if (jobType === "nureta_scene_video") {
+      const rate = payload.voiceMode === "nureta" ? 0.168 : 0.112;
+      return { credits: Math.ceil(Number(payload.duration) * rate * 330) + (payload.voiceMode === "model" ? 100 : 0), secondsExpected: 300 };
+    }
     // The provider caps billing at 120 seconds; never use client-supplied duration to price a job.
     if (jobType === "video_character_swap") return { credits: 120 * (payload.resolution === "480p" ? 8 : 16), secondsExpected: 180 };
     // Video person swap is billed by duration, capped at 30 seconds. Keep the
@@ -87,6 +91,19 @@ export class WaveSpeedAdapter implements ProviderAdapter {
   }
 
   async submit(p: SubmitParams): Promise<SubmitResult> {
+    if (p.jobType === "nureta_scene_video") {
+      if (p.payload.videoEngine !== "kling" || typeof p.payload.sceneImageUrl !== "string")
+        throw new ProviderError("A jóváhagyott jelenetkép és a Kling motor szükséges.", false);
+      const endpoint = "kwaivgi/kling-v3.0-pro/image-to-video";
+      const data = await this.request(`${API}/${endpoint}`, {
+        image: p.payload.sceneImageUrl, duration: Number(p.payload.duration),
+        prompt: `${String(p.payload.prompt)} ${IDENTITY_MOTION_PROMPT.replace("Transfer only the source video's natural gestures and timing.", "Follow only the requested motion in one continuous shot.")}`,
+        negative_prompt: IDENTITY_MOTION_NEGATIVE, sound: p.payload.voiceMode === "nureta",
+        cfg_scale: 0.5, shot_type: "customize",
+      });
+      if (typeof data.id !== "string") throw new ProviderError("Kling feladatazonosító hiányzik.", false);
+      return { providerJobId: data.id, providerMeta: { endpoint, stage: "approved_scene_video" } };
+    }
     if (p.jobType === "nureta_scene_image") {
       const refs = p.payload.referenceUrls;
       if (!Array.isArray(refs) || typeof refs[0] !== "string" || typeof p.payload.sourceUrl !== "string")
@@ -331,7 +348,7 @@ export class WaveSpeedAdapter implements ProviderAdapter {
     const urls = outputs.map((x) => typeof x === "string" ? x : (x as { url?: unknown })?.url)
       .filter((x): x is string => typeof x === "string" && /^https:\/\//.test(x));
     if (urls.length === 0) throw new ProviderError("WaveSpeed returned no output", false, id);
-    const kind = jobType === "video_character_swap" || (jobType === "character_motion_video" && _meta?.stage !== "scene_preview") ? "video" as const : "image" as const;
+    const kind = jobType === "nureta_scene_video" || jobType === "video_character_swap" || (jobType === "character_motion_video" && _meta?.stage !== "scene_preview") ? "video" as const : "image" as const;
     const files: NormalizedOutput["files"] = urls.map((url) => ({ kind, url }));
     if (jobType === "character_motion_video" && _meta?.stage === "video" && typeof _meta.sceneImageUrl === "string")
       files.push({ kind: "image", url: _meta.sceneImageUrl });
