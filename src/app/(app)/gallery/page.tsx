@@ -24,7 +24,8 @@ export default function GalleryPage() {
   const [typeFilter, setTypeFilter] = useState("all");
   const [albumFilter, setAlbumFilter] = useState("all");
   const [view, setView] = useState<"available" | "used">("available");
-  const [contentCategory, setContentCategory] = useState<"tiktok" | "fanvue">("tiktok");
+  const [contentCategory, setContentCategory] = useState<"tiktok" | "fanvue" | "all">("tiktok");
+  const loadSequence = useRef(0);
   const [usageError, setUsageError] = useState("");
   const [deleting, setDeleting] = useState(false);
   const [savingUsage, setSavingUsage] = useState<string | null>(null);
@@ -53,7 +54,13 @@ export default function GalleryPage() {
       if (!active) return;
       const available = (data ?? []) as Character[];
       setCharacters(available);
-      const requested = new URLSearchParams(window.location.search).get("characterId");
+      const params = new URLSearchParams(window.location.search);
+      const requested = params.get("characterId");
+      const requestedType = params.get("mediaType");
+      if (["image", "video", "audio"].includes(requestedType ?? "")) setTypeFilter(requestedType!);
+      const requestedCategory = params.get("category");
+      if (requestedCategory === "fanvue" || requestedCategory === "tiktok" || requestedCategory === "all")
+        setContentCategory(requestedCategory);
       const initial = requested === "all" || requested === "unassigned" || available.some((c) => c.id === requested)
         ? requested! : "all";
       characterFilterRef.current = initial;
@@ -64,12 +71,13 @@ export default function GalleryPage() {
 
   const load = useCallback(async () => {
     if (characterFilter === null) return;
+    const sequence = ++loadSequence.current;
     // The background worker processes jobs. Listing the gallery must never
     // trigger dozens of provider refresh requests on every page visit.
     const { data: { user } } = await getSb().auth.getUser();
     if (!user) return;
     let pendingQuery = getSb().from("generation_jobs")
-      .select("id").eq("owner_id", user.id).in("type", ["character_swap", "image_edit", "character_motion_video"]).in("status", ["queued", "submitted", "processing", "finalizing"])
+      .select("id").eq("owner_id", user.id).in("type", ["character_swap", "image_edit", "character_motion_video", "nureta_scene_image", "nureta_scene_video"]).in("status", ["queued", "submitted", "processing", "finalizing"])
       .order("created_at", { ascending: false }).limit(50);
     if (characterFilter === "unassigned") pendingQuery = pendingQuery.is("character_id", null);
     else if (characterFilter !== "all") pendingQuery = pendingQuery.eq("character_id", characterFilter);
@@ -87,20 +95,24 @@ export default function GalleryPage() {
     if (characterFilter !== "all") qs.set("characterId", characterFilter);
     if (albumFilter !== "all") qs.set("albumId", albumFilter);
     qs.set("view", view);
-    qs.set("category", contentCategory);
+    if (contentCategory !== "all") qs.set("category", contentCategory);
+    if (typeFilter !== "all") qs.set("mediaType", typeFilter);
     qs.set("page", String(page));
     const res = await fetch(`/api/gallery?${qs}`, { headers: { authorization: `Bearer ${await token()}` } });
     if (res.ok) {
       const body = await res.json();
-      if (characterFilterRef.current === characterFilter) {
+      if (sequence === loadSequence.current && characterFilterRef.current === characterFilter) {
         setItems(body.items);
         setTotal(body.total ?? body.items.length);
         if (page > 0 && body.items.length === 0) setPage(page - 1);
       }
+    } else if (sequence === loadSequence.current) {
+      setUsageError("A galéria nem tölthető be. Próbáld újra a Galéria frissítése gombbal.");
+      setItems(current => current ?? []);
     }
     const alb = await fetch("/api/albums", { headers: { authorization: `Bearer ${await token()}` } });
     if (alb.ok) setAlbums((await alb.json()).albums);
-  }, [token, albumFilter, characterFilter, view, contentCategory, page]);
+  }, [token, albumFilter, characterFilter, view, contentCategory, typeFilter, page]);
   useEffect(() => { load(); }, [load]);
   useEffect(() => {
     const refresh = () => { if (document.visibilityState === "visible") void load(); };
@@ -205,15 +217,18 @@ export default function GalleryPage() {
   async function moveCategory(id: string) {
     setMovingCategory(id); setUsageError("");
     try {
-      const destination = contentCategory === "fanvue" ? "tiktok" : "fanvue";
+      const item = items?.find(item => item.galleryItemId === id);
+      const destination = item?.contentCategory === "fanvue" ? "tiktok" : "fanvue";
       const response = await fetch(`/api/gallery/${id}/category`, {
         method: "PATCH", headers: { authorization: `Bearer ${await token()}`, "content-type": "application/json" },
         body: JSON.stringify({ category: destination }),
       });
       if (!response.ok) throw new Error("A kép áthelyezése nem sikerült.");
-      setItems(current => current?.filter(item => item.galleryItemId !== id) ?? null);
+      setItems(current => contentCategory === "all"
+        ? current?.map(item => item.galleryItemId === id ? { ...item, contentCategory: destination as "tiktok" | "fanvue" } : item) ?? null
+        : current?.filter(item => item.galleryItemId !== id) ?? null);
       setSelected(current => { const next = new Set(current); next.delete(id); return next; });
-      setTotal(current => Math.max(0, current - 1));
+      if (contentCategory !== "all") setTotal(current => Math.max(0, current - 1));
     } catch { setUsageError("A kép áthelyezése nem sikerült. Próbáld újra."); }
     finally { setMovingCategory(null); }
   }
@@ -291,20 +306,25 @@ export default function GalleryPage() {
     <main>
       <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
         <h1 style={{ fontSize: 22, margin: 0 }}>Galériám</h1>
-        <button className={contentCategory === "tiktok" ? "" : "ghost"} disabled={contentCategory === "tiktok"}
-          onClick={() => { setContentCategory("tiktok"); setPage(0); setSelected(new Set()); setItems(null); }}>TikTok képek</button>
-        <button className={contentCategory === "fanvue" ? "" : "ghost"} disabled={contentCategory === "fanvue"}
-          onClick={() => { setContentCategory("fanvue"); setPage(0); setSelected(new Set()); setItems(null); }}>Fanvue képek</button>
+        <button className={contentCategory === "tiktok" ? "" : "ghost"} disabled={contentCategory === "tiktok" && typeFilter === "all"}
+          onClick={() => { setContentCategory("tiktok"); setTypeFilter("all"); setPage(0); setSelected(new Set()); setItems(null); }}>TikTok</button>
+        <button className={contentCategory === "fanvue" ? "" : "ghost"} disabled={contentCategory === "fanvue" && typeFilter === "all"}
+          onClick={() => { setContentCategory("fanvue"); setTypeFilter("all"); setPage(0); setSelected(new Set()); setItems(null); }}>Fanvue</button>
+        <button className={contentCategory === "all" && typeFilter === "video" ? "" : "ghost"}
+          disabled={contentCategory === "all" && typeFilter === "video" && albumFilter === "all" && view === "available"}
+          onClick={() => { setContentCategory("all"); setTypeFilter("video"); setPage(0); setAlbumFilter("all"); setView("available"); setSelected(new Set()); setItems(null); }}>Videók</button>
         <button className={view === "available" ? "" : "ghost"} disabled={view === "available"}
-          onClick={() => { setView("available"); setPage(0); setSelected(new Set()); setItems(null); }}>Használatlan képek</button>
+          onClick={() => { setView("available"); setPage(0); setSelected(new Set()); setItems(null); }}>Használatlan</button>
         <button className={view === "used" ? "" : "ghost"} disabled={view === "used"}
-          onClick={() => { setView("used"); setPage(0); setSelected(new Set()); setItems(null); }}>Felhasznált képek</button>
+          onClick={() => { setView("used"); setPage(0); setSelected(new Set()); setItems(null); }}>Felhasznált</button>
         <select aria-label="Modell galériája" value={characterFilter} onChange={(e) => {
           setItems(null); setPage(0);
           setSelected(new Set());
           characterFilterRef.current = e.target.value;
           setCharacterFilter(e.target.value);
-          window.history.replaceState(null, "", `/gallery?characterId=${encodeURIComponent(e.target.value)}`);
+          const params = new URLSearchParams({ characterId: e.target.value, category: contentCategory });
+          if (typeFilter !== "all") params.set("mediaType", typeFilter);
+          window.history.replaceState(null, "", `/gallery?${params}`);
         }}>
           <option value="all">Összes modell</option>
           {characters.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
@@ -315,7 +335,7 @@ export default function GalleryPage() {
           <option value="all">minden album</option>
           {albums.map((a) => <option key={a.id} value={a.id}>{a.name}</option>)}
         </select>
-        <select value={typeFilter} onChange={(e) => setTypeFilter(e.target.value)}>
+        <select aria-label="Médiatípus" value={typeFilter} onChange={(e) => { setTypeFilter(e.target.value); setPage(0); setSelected(new Set()); setItems(null); }}>
           <option value="all">mind</option><option value="image">kép</option><option value="video">videó</option><option value="audio">hang</option>
         </select>
         <button className="ghost" onClick={createAlbum}>+ Album</button>
@@ -380,7 +400,7 @@ export default function GalleryPage() {
                 <span className="badge">{characters.find((c) => c.id === it.characterId)?.name ?? "Egyéb"} · {it.contentCategory === "fanvue" ? "Fanvue" : "TikTok"} · {it.mediaType} · {it.mediaType === "video" && it.qcStatus === "approved" ? "Jó alapvideó" : it.qcStatus}{selected.has(it.galleryItemId) && " ✓"}</span>
                 <span style={{ display: "flex", gap: 6 }}>
                   <button className="ghost" style={{ padding: "4px 10px" }} disabled={movingCategory !== null}
-                    onClick={() => void moveCategory(it.galleryItemId)}>{movingCategory === it.galleryItemId ? "Áthelyezés…" : contentCategory === "fanvue" ? "→ TikTok" : "→ Fanvue"}</button>
+                    onClick={() => void moveCategory(it.galleryItemId)}>{movingCategory === it.galleryItemId ? "Áthelyezés…" : it.contentCategory === "fanvue" ? "→ TikTok" : "→ Fanvue"}</button>
                   {it.mediaType === "image" && <button className="ghost" style={{ padding: "4px 10px" }}
                     onClick={() => { setEditingItem(it); setEditPrompt(""); setEditStatus(""); }}>Módosítás</button>}
                   {it.mediaType === "video" && <button className="ghost" style={{ padding: "4px 10px" }} disabled={savingVideoApproval}

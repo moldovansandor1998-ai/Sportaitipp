@@ -23,6 +23,10 @@ export async function GET(req: NextRequest) {
   const view = req.nextUrl.searchParams.get("view") === "used" ? "used" : "available";
   const contentCategory = req.nextUrl.searchParams.get("category");
   const approvedVideos = req.nextUrl.searchParams.get("approvedVideos") === "1";
+  const mediaType = req.nextUrl.searchParams.get("mediaType");
+  if (mediaType && !["image", "video", "audio"].includes(mediaType)) {
+    return NextResponse.json({ error: "INVALID_MEDIA_TYPE" }, { status: 400 });
+  }
   if (contentCategory && !["tiktok", "fanvue"].includes(contentCategory)) {
     return NextResponse.json({ error: "INVALID_CONTENT_CATEGORY" }, { status: 400 });
   }
@@ -52,12 +56,13 @@ export async function GET(req: NextRequest) {
     assets: { id: string; object_path: string; media_type: string; content_type: string; bytes: number } | null;
   }
   let query = svc.from("gallery_items")
-    .select(`id,job_id,qc_status,created_at,used_at,character_id,album_id,content_category,${approvedVideos ? "assets!inner" : "assets"}(id,object_path,media_type,content_type,bytes)`, { count: "exact" })
+    .select(`id,job_id,qc_status,created_at,used_at,character_id,album_id,content_category,${approvedVideos || mediaType ? "assets!inner" : "assets"}(id,object_path,media_type,content_type,bytes)`, { count: "exact" })
     .eq("owner_id", user.id).is("deleted_at", null)
     .order(view === "used" ? "used_at" : "created_at", { ascending: false })
     .range(page * pageSize, (page + 1) * pageSize - 1);
   if (approvedVideos) query = query.eq("qc_status", "approved").eq("assets.media_type", "video");
   else query = view === "used" ? query.not("used_at", "is", null) : query.is("used_at", null);
+  if (mediaType && !approvedVideos) query = query.eq("assets.media_type", mediaType);
   if (albumId && albumId !== "all") query = query.eq("album_id", albumId);
   if (contentCategory) query = query.eq("content_category", contentCategory);
   if (characterId === "unassigned") query = query.is("character_id", null);
