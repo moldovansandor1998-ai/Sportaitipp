@@ -496,6 +496,10 @@ export async function prepareValidatedJobInput(input: {
     delete payload.videoAssetId;
   }
   if (type === "talking_video" || type === "lip_sync") {
+    if (type === "lip_sync" && payload.nuretaPostprocess === true) {
+      const { prepareNuretaLipSync } = await import("./nuretaLipSync");
+      return prepareNuretaLipSync(input.userId, characterId!, payload, finalProjectId);
+    }
     const vAsset = typeof payload.videoAssetId === "string" ? payload.videoAssetId : null;
     const vUrl = vAsset ? (await resolveImages([vAsset]))[0] : (typeof payload.videoUrl === "string" ? payload.videoUrl : null);
     const aAsset = typeof payload.audioAssetId === "string" ? payload.audioAssetId : null;

@@ -81,7 +81,7 @@ export default function GalleryPage() {
     const { data: { user } } = await getSb().auth.getUser();
     if (!user) return;
     let pendingQuery = getSb().from("generation_jobs")
-      .select("id").eq("owner_id", user.id).in("type", ["character_swap", "image_edit", "character_motion_video", "nureta_scene_image", "nureta_scene_video"]).in("status", ["queued", "submitted", "processing", "finalizing"])
+      .select("id").eq("owner_id", user.id).in("type", ["character_swap", "image_edit", "character_motion_video", "nureta_scene_image", "nureta_scene_video", "lip_sync"]).in("status", ["queued", "submitted", "processing", "finalizing"])
       .order("created_at", { ascending: false }).limit(50);
     if (characterFilter === "unassigned") pendingQuery = pendingQuery.is("character_id", null);
     else if (characterFilter !== "all") pendingQuery = pendingQuery.eq("character_id", characterFilter);
