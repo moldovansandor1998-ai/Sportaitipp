@@ -57,6 +57,8 @@ export default function ToolsPage() {
   const [motionQuality, setMotionQuality] = useState<"pro" | "standard">("pro");
   const [motionMethod, setMotionMethod] = useState<"anchored" | "legacy">("anchored");
   const [motionVoiceMode, setMotionVoiceMode] = useState<"model" | "original">("model");
+  const [variationVideo, setVariationVideo] = useState("");
+  const [variationStyle, setVariationStyle] = useState<"playful" | "confident" | "casual">("playful");
   const [videoPreview, setVideoPreview] = useState("");
 
   const getSb = () => browserClient();
@@ -630,6 +632,31 @@ export default function ToolsPage() {
           }}>Kész modellvideó használata a hanghoz</button>
         )}
         {msg.modelMotion && <p className="muted">{msg.modelMotion}</p>}
+        <div style={{ borderTop: "1px solid var(--border)", marginTop: 20, paddingTop: 16 }}>
+          <h4>Új mozgás egy sikerült modellvideóból</h4>
+          <p className="muted">Válassz egy korábbi, kész videót ugyanettől a modelltől. Egyetlen új, 8 másodperces, 1080p videó készül eltérő, természetes mozgással. A jelenet és az arc kiindulópontja a videó egyik jól látható képkockája. Az eredmény a galériába kerül; a mozdulatokat és az arcot közzététel előtt nézd meg. Ez külön fizetős generálás.</p>
+          <Picker media="video" selected={variationVideo} onSelect={setVariationVideo} />
+          <select aria-label="Új mozgás stílusa" value={variationStyle}
+            onChange={(e) => setVariationStyle(e.target.value as "playful" | "confident" | "casual")}
+            style={{ marginTop: 8 }}>
+            <option value="playful">Játékos</option>
+            <option value="confident">Magabiztos</option>
+            <option value="casual">Laza, természetes</option>
+          </select>
+          <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap", marginTop: 8 }}>
+            <button disabled={busyKey !== null || !toolChar || !variationVideo}
+              onClick={() => {
+                setResults((current) => ({ ...current, newMotion: [] }));
+                run("newMotion", "character_motion_video", {
+                  videoAssetId: variationVideo, quality: "pro", motionMethod: "creative",
+                  motionStyle: variationStyle, voiceMode: "original",
+                }, { characterId: toolChar });
+              }}>Egy új, jó minőségű videó készítése</button>
+            <Badge k="newMotion" /><Price k="newMotion" />
+          </div>
+          <Results k="newMotion" kind="video" />
+          {msg.newMotion && <p className="muted">{msg.newMotion}</p>}
+        </div>
         <details style={{ marginTop: 14 }}>
           <summary>Csak arc és haj cseréje az eredeti videóban</summary>
           <p className="muted">Az eredeti test és háttér megtartásához válaszd ezt. A fenti szereplőcsere a teljes látható személyt célozza.</p>
