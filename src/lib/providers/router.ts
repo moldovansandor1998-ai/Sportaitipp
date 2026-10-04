@@ -51,7 +51,7 @@ export class ProviderRouter {
     const keyed = this.adapters
       .filter((a) => a.supports.includes(jobType) && (jobType !== "image_edit" || (galleryEdit ? a.name === "wavespeed" : a.name !== "wavespeed"))
         && (jobType !== "nureta_scene_image" || a.name === "wavespeed")
-        && (jobType !== "nureta_scene_video" || a.name === "nureta"))
+        && (jobType !== "nureta_scene_video" || a.name === (payload?.videoEngine === "kling" ? "wavespeed" : "nureta")))
       .map((a) => ({ a, open: this.isOpen(a.name) ? 1 : 0, primary: a.name === primaryName ? 0 : 1 }));
     keyed.sort((x, y) => x.open - y.open || x.primary - y.primary);
     return keyed.map((k) => k.a);

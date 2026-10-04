@@ -18,7 +18,7 @@ async function ffmpeg(args: string[]): Promise<void> {
 }
 
 /** Replace only the soundtrack. The video frames are stream-copied without regeneration. */
-export async function replaceVideoVoice(video: Buffer, voiceId: string, hungarianTts = false): Promise<Buffer> {
+export async function replaceVideoVoice(video: Buffer, voiceId: string, hungarianTts = false, sourceVideo?: Buffer): Promise<Buffer> {
   const apiKey = process.env.ELEVENLABS_API_KEY;
   if (!apiKey || !voiceId) throw new Error("ELEVENLABS_VOICE_NOT_CONFIGURED");
   const directory = await mkdtemp(join(tmpdir(), "castora-voice-"));
@@ -28,7 +28,9 @@ export async function replaceVideoVoice(video: Buffer, voiceId: string, hungaria
     const converted = join(directory, "converted.mp3");
     const output = join(directory, "output.mp4");
     await writeFile(input, video);
-    await ffmpeg(["-i", input, "-vn", "-ac", "1", "-ar", "44100", speech]);
+    const audioInput = sourceVideo ? join(directory, "source.mp4") : input;
+    if (sourceVideo) await writeFile(audioInput, sourceVideo);
+    await ffmpeg(["-i", audioInput, "-vn", "-map", "0:a:0", "-ac", "1", "-ar", "44100", speech]);
     let response: Response;
     if (hungarianTts) {
       const form = new FormData();

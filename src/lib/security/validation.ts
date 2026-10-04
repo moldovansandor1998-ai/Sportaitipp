@@ -56,6 +56,12 @@ export const CreateJobSchema = z.object({
       } else {
         if (typeof p.prompt !== "string" || !p.prompt.trim() || p.prompt.length > 1500)
           ctx.addIssue({ code: z.ZodIssueCode.custom, message: "Add meg a videó szövegét (legfeljebb 1500 karakter)." });
+        if (p.videoEngine !== undefined && !["nureta", "kling"].includes(String(p.videoEngine)))
+          ctx.addIssue({ code: z.ZodIssueCode.custom, message: "Ismeretlen videómotor." });
+        if (!["source", "model", "nureta"].includes(String(p.voiceMode)))
+          ctx.addIssue({ code: z.ZodIssueCode.custom, message: "Válassz hangot a videóhoz." });
+        if (p.speechText !== undefined && (typeof p.speechText !== "string" || p.speechText.length > 450))
+          ctx.addIssue({ code: z.ZodIssueCode.custom, message: "A modell beszédszövege legfeljebb 450 karakter lehet." });
         if (!z.string().uuid().safeParse(p.sceneJobId).success || !z.string().uuid().safeParse(p.sceneImageAssetId).success)
           ctx.addIssue({ code: z.ZodIssueCode.custom, message: "Előbb hagyd jóvá a jelenetképet." });
         if (![5, 8, 10, 12, 15].includes(Number(p.duration)))

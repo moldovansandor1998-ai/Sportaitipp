@@ -40,7 +40,16 @@ export async function runClaimedJob(job: JobRow, routerOverride?: ReturnType<typ
     }
     return; // éles provider: webhook/poll folytatja
   }
-  if (activeRouter.candidates(job.type).length === 0) throw new Error("NO_PROVIDER_CONFIGURED");
+  if ((job.type === "nureta_scene_image" && job.payload?.sourceAssetId)
+    || (job.type === "nureta_scene_video" && job.payload?.sceneImageAssetId)) {
+    const { prepareValidatedJobInput } = await import("./prepareJob");
+    const prepared = await prepareValidatedJobInput({ userId: job.owner_id, type: job.type,
+      characterId: job.character_id ?? undefined, payload: job.payload ?? {} });
+    if (prepared.error) { await failJob(job, prepared.error); return; }
+    await mustUpdate("generation_jobs", { payload: prepared.payload }, job.id, "submitted");
+    job = { ...job, payload: prepared.payload };
+  }
+  if (activeRouter.candidates(job.type, job.payload ?? {}).length === 0) throw new Error("NO_PROVIDER_CONFIGURED");
   // Ledger-mutex: két párhuzamos workerből pontosan egy nyeri meg a submit-jogot
   const { data: maySubmit } = await sb0.rpc("begin_provider_submission", { p_job: job.id });
   if (!maySubmit) return; // a submit-jog a másik feldolgozóé (vagy már lezajlott)
@@ -165,7 +174,24 @@ async function storeOutputAssets(
 ): Promise<string[]> {
   const assetIds: string[] = [];
   for (const [i, f] of output.files.entries()) {
+    if (f.url) console.info(JSON.stringify({ scope: "asset.download", jobId, provider: job.provider,
+      kind: f.kind, host: new URL(f.url).hostname }));
     let { buf, contentType } = await fileToBuffer(f);
+    if (job.type === "nureta_scene_video" && f.kind === "video") {
+      const sourceUrl = job.payload?.sourceVideoUrl;
+      const voiceMode = job.payload?.voiceMode;
+      if (voiceMode === "source" || voiceMode === "model") {
+        const { addVideoSoundtrack } = await import("./videoSoundtrack");
+        const source = typeof sourceUrl === "string" ? await downloadProviderFile(sourceUrl) : null;
+        buf = await addVideoSoundtrack(buf, {
+          sourceVideo: source?.buf,
+          voiceId: voiceMode === "model" ? String(job.payload?.voiceId ?? "") : undefined,
+          speechText: typeof job.payload?.speechText === "string" ? job.payload.speechText : undefined,
+          hungarianTts: job.payload?.naturalHungarianVoice === true,
+        });
+        contentType = "video/mp4";
+      }
+    }
     if (job.type === "character_motion_video" && job.payload?.replaceVoice === true && f.kind === "video") {
       const { replaceVideoVoice } = await import("./replaceVideoVoice");
       buf = await replaceVideoVoice(buf, String(job.payload.voiceId ?? ""), job.payload.naturalHungarianVoice === true);
@@ -279,7 +305,13 @@ async function mustUpdate(
 
 // ---------- SSRF-védett, méretkorlátos provider-letöltés ----------
 async function downloadProviderFile(url: string): Promise<{ buf: Buffer; contentType: string }> {
-  const safe = assertAllowedUrl(url); // allowlist + privát/link-local tiltás
+  let safe: URL;
+  try { safe = assertAllowedUrl(url); }
+  catch (error) {
+    const host = (() => { try { return new URL(url).hostname; } catch { return "invalid"; } })();
+    console.error(JSON.stringify({ scope: "asset.url_validation", host, error: error instanceof Error ? error.message : "invalid" }));
+    throw error;
+  }
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), 60_000);
   try {

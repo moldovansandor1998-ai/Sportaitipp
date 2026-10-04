@@ -69,9 +69,20 @@ export default function ToolsPage() {
   const [adultSource, setAdultSource] = useState<{ id: string; mediaType: "image" | "video" } | null>(null);
   const [adultSourcePreview, setAdultSourcePreview] = useState("");
   const [adultVideoPrompt, setAdultVideoPrompt] = useState("");
+  const [sceneVideoEngine, setSceneVideoEngine] = useState<"nureta" | "kling">("nureta");
   const [adultDuration, setAdultDuration] = useState<5 | 8 | 10 | 12 | 15>(5);
   const [adultResolution, setAdultResolution] = useState<"480p" | "720p">("480p");
+  const [adultVoiceMode, setAdultVoiceMode] = useState<"source" | "model" | "nureta">("nureta");
+  const [adultSpeechText, setAdultSpeechText] = useState("");
   const [adultChoice, setAdultChoice] = useState<{ jobId: string; assetId: string; characterId: string } | null>(null);
+
+  const chooseAdultSource = (id: string, mediaType: "image" | "video", preview: string) => {
+    setAdultSource({ id, mediaType });
+    setAdultSourcePreview(preview);
+    setAdultChoice(null);
+    setResults((current) => ({ ...current, adultPreview: [], adultVideo: [] }));
+    setAdultVoiceMode("nureta");
+  };
 
   const getSb = () => browserClient();
   const token = useCallback(async () => (await getSb().auth.getSession()).data.session?.access_token ?? "", []);
@@ -524,22 +535,23 @@ export default function ToolsPage() {
       </div>
 
       <section className="card" style={{ marginBottom: 16 }}>
-        <h2 style={{ marginTop: 0 }}>Felnőtt jelenet: kép jóváhagyása → videó</h2>
+        <h2 style={{ marginTop: 0 }}>Jelenetkép jóváhagyása → videó</h2>
         <p className="muted">Válassz képet vagy videót a galériából, vagy tölts fel újat. A forrás képének pózát, helyszínét és tárgyait megtartva a kiválasztott modell kerül rá. Videónál egy jól látható képkockát választunk.</p>
         <label>Forráskép a galériából</label>
         <Picker media="image" selected={adultSource?.mediaType === "image" ? adultSource.id : ""}
-          onSelect={(id) => { setAdultSource({ id, mediaType: "image" }); setAdultSourcePreview(gallery.find((g) => g.assetId === id)?.url ?? ""); }} />
+          onSelect={(id) => chooseAdultSource(id, "image", gallery.find((g) => g.assetId === id)?.url ?? "")} />
         <label>Forrásvideó a galériából</label>
         <Picker media="video" selected={adultSource?.mediaType === "video" ? adultSource.id : ""}
-          onSelect={(id) => { setAdultSource({ id, mediaType: "video" }); setAdultSourcePreview(gallery.find((g) => g.assetId === id)?.url ?? ""); }} />
+          onSelect={(id) => chooseAdultSource(id, "video", gallery.find((g) => g.assetId === id)?.url ?? "")} />
         <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 8 }}>
           <button className="ghost" disabled={busyKey !== null} onClick={async () => {
-            const id = await upload("image/*", (file) => setAdultSourcePreview(URL.createObjectURL(file)));
-            if (id) setAdultSource({ id, mediaType: "image" });
+            let preview = "";
+            const id = await upload("image/*", (file) => { preview = URL.createObjectURL(file); });
+            if (id) chooseAdultSource(id, "image", preview);
           }}>Kép feltöltése</button>
           <button className="ghost" disabled={busyKey !== null}
             onClick={() => void uploadVideo((id, file) => {
-              setAdultSource({ id, mediaType: "video" }); setAdultSourcePreview(URL.createObjectURL(file));
+              chooseAdultSource(id, "video", URL.createObjectURL(file));
             })}>Videó feltöltése (MP4)</button>
         </div>
         {(msg.videoUpload || msg.upload) && <p role="status" className="muted">{msg.videoUpload || msg.upload}</p>}
@@ -584,22 +596,47 @@ export default function ToolsPage() {
         )}
         {adultChoice?.characterId === toolChar && results.adultPreview?.some((item) => item.assetId === adultChoice.assetId) && <>
           <p className="muted">Jóváhagyott kép kiválasztva. A videó ebből a képből indul; az arcot és a kellékeket a kész videóban is ellenőrizd.</p>
+          <label htmlFor="scene-video-engine">Videómotor</label>
+          <select id="scene-video-engine" value={sceneVideoEngine}
+            onChange={(event) => setSceneVideoEngine(event.target.value as "nureta" | "kling")}>
+            <option value="nureta">Nureta / Seahorse</option>
+            <option value="kling">Kling 3.0 Pro / WaveSpeed</option>
+          </select>
           <label htmlFor="adult-video-prompt">Mit csináljon a videóban?</label>
           <textarea id="adult-video-prompt" maxLength={1500} value={adultVideoPrompt}
             onChange={(event) => setAdultVideoPrompt(event.target.value)} placeholder="Írd le a mozdulatokat és a jelenet menetét" />
+          <label htmlFor="adult-video-voice">Videó hangja</label>
+          <select id="adult-video-voice" value={adultVoiceMode}
+            onChange={(event) => setAdultVoiceMode(event.target.value as "source" | "model" | "nureta")}>
+            <option value="nureta">Videómotor által készített hang</option>
+            {adultSource?.mediaType === "video" && <option value="source">Forrásvideó eredeti hangja</option>}
+            <option value="model">A kiválasztott modell hangja</option>
+          </select>
+          {adultVoiceMode === "model" && adultSource?.mediaType !== "video" && <>
+            <label htmlFor="adult-speech">Mit mondjon a modell? (magyar beszéd)</label>
+            <textarea id="adult-speech" maxLength={adultDuration * 12} value={adultSpeechText}
+              onChange={(event) => setAdultSpeechText(event.target.value)} />
+            <p className="muted">Rövid mondatot írj, amely belefér a választott {adultDuration} másodpercbe.</p>
+          </>}
+          {adultVoiceMode === "model" && <p className="muted">A karakterhez mentett ElevenLabs-hangot használjuk. A hangcsere önmagában nem szájmozgás-szinkron.</p>}
+          {adultVoiceMode === "model" && adultSource?.mediaType === "video" &&
+            <p className="muted">A forrásvideó beszédét a modell hangjára cseréljük. A videóképet nem generáljuk újra a hangcsere során.</p>}
           <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
             <select aria-label="Videó hossza" value={adultDuration}
               onChange={(event) => setAdultDuration(Number(event.target.value) as 5 | 8 | 10 | 12 | 15)}>
               {[5, 8, 10, 12, 15].map((seconds) => <option key={seconds} value={seconds}>{seconds} mp</option>)}
             </select>
-            <select aria-label="Nureta felbontás" value={adultResolution}
+            <select disabled={sceneVideoEngine === "kling"} aria-label="Nureta felbontás" value={adultResolution}
               onChange={(event) => setAdultResolution(event.target.value as "480p" | "720p")}>
               <option value="480p">480p próba</option><option value="720p">720p</option>
             </select>
-            <button disabled={busyKey !== null || !adultVideoPrompt.trim()} onClick={() =>
+            <button disabled={busyKey !== null || !adultVideoPrompt.trim()
+              || adultVoiceMode === "model" && adultSource?.mediaType !== "video" && !adultSpeechText.trim()}
+              onClick={() =>
               run("adultVideo", "nureta_scene_video", {
-                prompt: adultVideoPrompt, sceneJobId: adultChoice.jobId,
+                prompt: adultVideoPrompt, videoEngine: sceneVideoEngine, sceneJobId: adultChoice.jobId,
                 sceneImageAssetId: adultChoice.assetId, duration: adultDuration, resolution: adultResolution,
+                voiceMode: adultVoiceMode, speechText: adultSpeechText,
               }, { characterId: toolChar })}>Jóváhagyott képből videó készítése</button>
           </div>
         </>}

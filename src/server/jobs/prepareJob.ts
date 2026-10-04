@@ -4,6 +4,7 @@ import { resolveCharacterLora, type LoraError } from "@/lib/jobs/characterLora";
 import { buildEasyPrompt, normalizeEasyInput } from "@/lib/promptBuilder";
 import { serviceClient } from "@/lib/supabase/server";
 import { assertAllowedUrl } from "@/lib/security/ssrf";
+import { resolveCharacterVoice } from "./characterVoice";
 import { isAllowedI2vModel } from "@/lib/providers/modelAllowlist";
 
 export type PrepError =
@@ -50,7 +51,7 @@ export async function prepareValidatedJobInput(input: {
     return { type, payload: {}, error: "PROVIDER_MODEL_INVALID", status: 503 };
   if (type === "nureta_scene_image" && !process.env.WAVESPEED_API_KEY)
     return { type, payload: {}, error: "PROVIDER_MODEL_INVALID", status: 503 };
-  if (type === "nureta_scene_video" && !process.env.NURETA_API_KEY)
+  if (type === "nureta_scene_video" && !(payload.videoEngine === "kling" ? process.env.WAVESPEED_API_KEY : process.env.NURETA_API_KEY))
     return { type, payload: {}, error: "PROVIDER_MODEL_INVALID", status: 503 };
 
   // A kliens által küldött LoRA-adatok KIZÁRÓDNEK – csak sikeres szerveroldali feloldás után kerülnek vissza
@@ -269,12 +270,38 @@ export async function prepareValidatedJobInput(input: {
       payload.sourceAssetId = String(payload.sourceAssetId);
       payload.scenePrompt = typeof payload.scenePrompt === "string" ? payload.scenePrompt.trim() : "";
     } else {
+      // Never accept client-injected media URLs or voice configuration.
+      delete payload.sourceVideoUrl; delete payload.voiceId; delete payload.naturalHungarianVoice;
+      payload.videoEngine = payload.videoEngine === "kling" ? "kling" : "nureta";
       payload.prompt = String(payload.prompt).trim();
-      const { data: preview } = await svc.from("generation_jobs").select("id,type,status")
+      const { data: preview } = await svc.from("generation_jobs").select("id,type,status,payload")
         .eq("id", String(payload.sceneJobId)).eq("owner_id", input.userId)
         .eq("character_id", characterId).eq("type", "nureta_scene_image")
         .eq("status", "completed").maybeSingle();
       if (!preview) return { type, payload: {}, error: "SCENE_PREVIEW_REQUIRED", status: 409 };
+      const origin = preview.payload as { sourceAssetId?: string; sourceMediaType?: string } | null;
+      const sourceMediaType = origin?.sourceMediaType;
+      if (payload.voiceMode === "source" || payload.voiceMode === "model" && sourceMediaType === "video") {
+        if (sourceMediaType !== "video" || !origin?.sourceAssetId)
+          return { type, payload: {}, error: "VIDEO_FORMAT_UNSUPPORTED", status: 400 };
+        const { data: sourceVideo } = await svc.from("assets").select("bucket,object_path")
+          .eq("id", origin.sourceAssetId).eq("owner_id", input.userId).eq("media_type", "video").maybeSingle();
+        if (!sourceVideo) return { type, payload: {}, error: "SOURCE_IMAGE_REQUIRED", status: 404 };
+        const { data: signedSource } = await svc.storage.from(sourceVideo.bucket).createSignedUrl(sourceVideo.object_path, 86400);
+        if (!signedSource?.signedUrl) return { type, payload: {}, error: "SOURCE_IMAGE_REQUIRED", status: 502 };
+        payload.sourceVideoUrl = signedSource.signedUrl;
+      }
+      if (payload.voiceMode === "model") {
+        const voice = await resolveCharacterVoice(svc, characterId, input.userId);
+        if (!process.env.ELEVENLABS_API_KEY || !voice?.voiceId)
+          return { type, payload: {}, error: "TTS_VOICE_INVALID", status: 503 };
+        payload.voiceId = voice.voiceId;
+        payload.naturalHungarianVoice = voice.hungarianTts;
+        if (sourceMediaType !== "video" && (!String(payload.speechText ?? "").trim()
+          || String(payload.speechText).trim().length > Number(payload.duration) * 12))
+          return { type, payload: {}, error: "TTS_VOICE_INVALID", status: 400 };
+        payload.speechText = String(payload.speechText ?? "").trim();
+      }
       const { data: chosen } = await svc.from("gallery_items")
         .select("assets!inner(bucket,object_path,media_type)")
         .eq("owner_id", input.userId).eq("job_id", preview.id)
@@ -288,7 +315,7 @@ export async function prepareValidatedJobInput(input: {
       payload.duration = Number(payload.duration);
       payload.resolution = payload.resolution === "720p" ? "720p" : "480p";
     }
-    delete payload.sceneImageAssetId;
+    // Retain the owned approved asset ID so a delayed submission can re-sign it.
   }
   if (type === "image_edit") {
     const urls = await resolveImages(payload.imageAssetIds);
@@ -443,18 +470,9 @@ export async function prepareValidatedJobInput(input: {
       // A kreatív videóhoz a beszédet külön hagyjuk jóvá; a meglévő hangcserét nem módosítjuk.
       payload.voiceMode = "original";
     }
-    const modelName = character.name.trim().toLocaleLowerCase("hu");
-    const voiceByModel: Record<string, string | undefined> = {
-      laura: process.env.ELEVENLABS_LAURA_VOICE_ID,
-      petra: process.env.ELEVENLABS_PETRA_VOICE_ID,
-      dorina: process.env.ELEVENLABS_DORINA_VOICE_ID,
-      dorika: process.env.ELEVENLABS_ZSOFI_VOICE_ID,
-      "dóra": process.env.ELEVENLABS_ZSOFI_VOICE_ID,
-      "zsófia": process.env.ELEVENLABS_DORA_VOICE_ID,
-      "zsófi": process.env.ELEVENLABS_DORA_VOICE_ID,
-    };
+    const voice = await resolveCharacterVoice(svc, characterId!, input.userId);
     if (payload.motionMethod === "talking_scene") {
-      const voiceId = voiceByModel[modelName];
+      const voiceId = voice?.voiceId;
       if (!process.env.ELEVENLABS_API_KEY || !voiceId)
         return { type, payload: {}, error: "TTS_VOICE_INVALID", status: 503 };
       payload.voiceId = voiceId;
@@ -464,13 +482,13 @@ export async function prepareValidatedJobInput(input: {
       payload.voiceMode = "original";
     }
     if (payload.voiceMode !== "original") {
-      const voiceId = voiceByModel[modelName];
+      const voiceId = voice?.voiceId;
       if (!process.env.ELEVENLABS_API_KEY || !voiceId)
         return { type, payload: {}, error: "TTS_VOICE_INVALID", status: 503 };
       payload.replaceVoice = true;
       payload.voiceId = voiceId;
       // The previous Dorika voice now belongs to Zsófi; keep its Hungarian TTS path with the voice.
-      payload.naturalHungarianVoice = modelName === "zsófi" || modelName === "zsófia";
+      payload.naturalHungarianVoice = voice?.hungarianTts === true;
     }
     delete payload.voiceMode;
     payload.quality = payload.quality === "standard" ? "standard" : "pro";
