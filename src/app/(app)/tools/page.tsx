@@ -174,6 +174,9 @@ export default function ToolsPage() {
         const data = await latest.json() as { results: Res[] };
         const image = data.results.find((item) => item.mediaType === "image");
         if (image) {
+          setJobs((current) => ({
+            ...current, adultPreview: { id: lastAdultScene.id, status: "completed", error: null },
+          }));
           if (approvedScene?.asset_id === image.assetId)
             setAdultChoice({ jobId: lastAdultScene.id, assetId: image.assetId, characterId: lastAdultScene.character_id });
           setResults((current) => ({ ...current, adultPreview: data.results }));
