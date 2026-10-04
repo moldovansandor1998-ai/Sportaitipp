@@ -399,10 +399,10 @@ export async function prepareValidatedJobInput(input: {
       laura: process.env.ELEVENLABS_LAURA_VOICE_ID,
       petra: process.env.ELEVENLABS_PETRA_VOICE_ID,
       dorina: process.env.ELEVENLABS_DORINA_VOICE_ID,
-      dorika: process.env.ELEVENLABS_DORA_VOICE_ID,
-      "dóra": process.env.ELEVENLABS_DORA_VOICE_ID,
-      "zsófia": process.env.ELEVENLABS_ZSOFI_VOICE_ID,
-      "zsófi": process.env.ELEVENLABS_ZSOFI_VOICE_ID,
+      dorika: process.env.ELEVENLABS_ZSOFI_VOICE_ID,
+      "dóra": process.env.ELEVENLABS_ZSOFI_VOICE_ID,
+      "zsófia": process.env.ELEVENLABS_DORA_VOICE_ID,
+      "zsófi": process.env.ELEVENLABS_DORA_VOICE_ID,
     };
     if (payload.motionMethod === "talking_scene") {
       const voiceId = voiceByModel[modelName];
@@ -420,7 +420,8 @@ export async function prepareValidatedJobInput(input: {
         return { type, payload: {}, error: "TTS_VOICE_INVALID", status: 503 };
       payload.replaceVoice = true;
       payload.voiceId = voiceId;
-      payload.naturalHungarianVoice = modelName === "dorika" || modelName === "dóra";
+      // The previous Dorika voice now belongs to Zsófi; keep its Hungarian TTS path with the voice.
+      payload.naturalHungarianVoice = modelName === "zsófi" || modelName === "zsófia";
     }
     delete payload.voiceMode;
     payload.quality = payload.quality === "standard" ? "standard" : "pro";
