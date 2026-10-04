@@ -423,6 +423,14 @@ export default function ToolsPage() {
         </button>
       ))}
       {(approvedOnly ? approvedVideos.filter((g) => g.characterId === toolChar) : gallery).filter((g) => g.mediaType === media).length === 0 && <span className="muted">{approvedOnly ? "Nincs jó alapvideó megjelölve ehhez a modellhez a Galériában." : `nincs ${media} a galériában – tölts fel`}</span>}
+      {media === "video" && selected && (approvedOnly ? approvedVideos : gallery).find((g) => g.assetId === selected && (!approvedOnly || g.characterId === toolChar))?.url && (
+        <div style={{ flexBasis: "100%", marginTop: 8 }}>
+          <span className="muted">Kiválasztott alapvideó – nézd végig indítás előtt:</span>
+          <video key={selected} controls playsInline preload="metadata"
+            src={(approvedOnly ? approvedVideos : gallery).find((g) => g.assetId === selected)?.url ?? ""}
+            style={{ display: "block", width: "min(100%, 260px)", maxHeight: 460, marginTop: 8, borderRadius: 8 }} />
+        </div>
+      )}
     </div>
   );
   const Badge = ({ k }: { k: string }) => jobs[k] ? <span className="badge">{jobs[k].status}{jobs[k].error?.message ? ` – ${jobs[k].error.message}` : ""}</span> : null;
