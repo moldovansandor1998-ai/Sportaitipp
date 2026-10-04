@@ -661,7 +661,7 @@ export default function ToolsPage() {
         </div>
         <div style={{ borderTop: "1px solid var(--border)", marginTop: 20, paddingTop: 16 }}>
           <h4>Új szöveg ugyanazon a helyszínen</h4>
-          <p className="muted">Válassz egy jól sikerült kész modellvideót a galériából. A saját hangján felmondott új szöveghez a meglévő videó szájmozgását igazítjuk; a helyszín, a test és a mozdulatok megmaradnak. A videó a hang és a forrás közül a rövidebb hosszáig tart, legfeljebb 30 másodpercig. Hosszabb szöveghez hosszabb forrásvideót válassz. Egy indítás egy eredményt készít.</p>
+          <p className="muted">Válassz egy jól sikerült, természetesen mozgó modellvideót a galériából. A saját hangján felmondott új szöveghez a szájmozgást igazítjuk; a helyszínt és a gesztusok időzítését az alapvideó adja. Olyan felvételt válassz, amelynek mozdulatai illenek a mondandóhoz. A videó a hang és a forrás közül a rövidebb hosszáig tart, legfeljebb 30 másodpercig. Egy indítás egy eredményt készít.</p>
           <Picker media="video" selected={sceneVideo} onSelect={setSceneVideo} />
           <label htmlFor="scene-text">Mit mondjon a modell?</label>
           <textarea id="scene-text" rows={5} maxLength={450} value={sceneText}
