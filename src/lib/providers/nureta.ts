@@ -1,15 +1,14 @@
 import { Estimate, JobType, NormalizedOutput, ProviderAdapter, ProviderError, SubmitParams, SubmitResult } from "./types";
 
 const BASE = "https://developer.nureta.ai";
-const isImage = (type: JobType) => type === "nureta_scene_image";
 const endpoint = (image: boolean) => `${BASE}/api/v3/${image ? "images" : "contents"}/generations/tasks`;
 
 export class NuretaAdapter implements ProviderAdapter {
   readonly name = "nureta";
-  readonly supports: readonly JobType[] = ["nureta_scene_image", "nureta_scene_video"];
+  readonly supports: readonly JobType[] = ["nureta_scene_video"];
 
   async estimate(type: JobType, payload: Record<string, unknown>): Promise<Estimate> {
-    if (isImage(type)) return { credits: 25, secondsExpected: 90 };
+    if (type !== "nureta_scene_video") throw new ProviderError("Unsupported Nureta job", false);
     const duration = Number(payload.duration);
     // The existing WaveSpeed estimate uses roughly 300 credits/USD. Include a small margin.
     const rate = payload.resolution === "720p" ? 0.2773 : 0.1888;
@@ -40,15 +39,11 @@ export class NuretaAdapter implements ProviderAdapter {
   }
 
   async submit(p: SubmitParams): Promise<SubmitResult> {
-    const image = isImage(p.jobType);
-    const refs = image ? p.payload.referenceUrls : [p.payload.sceneImageUrl];
+    const image = false;
+    const refs = [p.payload.sceneImageUrl];
     if (!Array.isArray(refs) || !refs.length || refs.some((url) => typeof url !== "string" || !url.startsWith("https://")))
       throw new ProviderError("Hiányzik a jóváhagyott modellkép.", false, undefined, "invalid_input");
-    const body = image ? {
-      model: "seahorse-image", size: "2K",
-      content: [{ type: "text", text: String(p.payload.prompt) },
-        ...refs.map((url) => ({ type: "image_url", image_url: { url } }))],
-    } : {
+    const body = {
       model: p.payload.resolution === "720p" ? "seahorse-720p" : "seahorse-480p",
       duration: Number(p.payload.duration), ratio: "9:16",
       content: [{ type: "text", text: String(p.payload.prompt) },
