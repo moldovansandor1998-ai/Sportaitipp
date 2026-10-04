@@ -171,6 +171,24 @@ export async function POST(req: NextRequest) {
     catch (error) { console.error(JSON.stringify({ scope: "cron.recoverGallery", jobId: job.id, error: String(error) })); }
     if (recovered >= 2) break;
   }
+  // Refresh owner-scoped previews only for deliberately marked E2E test outputs.
+  // This also lets a test completed on the previous deployment be inspected without regenerating it.
+  const { data: verifiedTests } = await sb.from("generation_jobs").select("id,owner_id,payload,result")
+    .eq("status", "completed").like("payload->>verificationRun", "castora-e2e-%")
+    .order("created_at", { ascending: false }).limit(10);
+  for (const job of verifiedTests ?? []) {
+    const result = job.result as { assetIds?: string[]; meta?: Record<string, unknown> } | null;
+    if (!result?.assetIds?.length || result.meta?.verificationAssets) continue;
+    const { data: assets } = await sb.from("assets").select("id,bucket,object_path")
+      .eq("owner_id", job.owner_id).in("id", result.assetIds);
+    const previews: Array<{ assetId: string; url: string }> = [];
+    for (const asset of assets ?? []) {
+      const { data: signed } = await sb.storage.from(asset.bucket).createSignedUrl(asset.object_path, 3600);
+      if (signed?.signedUrl) previews.push({ assetId: asset.id, url: signed.signedUrl });
+    }
+    if (previews.length) await sb.from("generation_jobs").update({ result: { ...result,
+      meta: { ...result.meta, verificationAssets: previews } } }).eq("id", job.id).eq("owner_id", job.owner_id).eq("status", "completed");
+  }
   return NextResponse.json({ reaped: reaped ?? 0, processed: claimed.length, resumed, bulkStarted, checked, recovered, content, x });
 }
 
