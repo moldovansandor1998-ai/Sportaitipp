@@ -168,7 +168,7 @@ async function storeOutputAssets(
     let { buf, contentType } = await fileToBuffer(f);
     if (job.type === "character_motion_video" && job.payload?.replaceVoice === true && f.kind === "video") {
       const { replaceVideoVoice } = await import("./replaceVideoVoice");
-      buf = await replaceVideoVoice(buf, String(job.payload.voiceId ?? ""));
+      buf = await replaceVideoVoice(buf, String(job.payload.voiceId ?? ""), job.payload.naturalHungarianVoice === true);
       contentType = "video/mp4";
     }
     if (f.kind === "video") {

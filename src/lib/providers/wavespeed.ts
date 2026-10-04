@@ -12,6 +12,12 @@ const EDIT_MODELS = {
 const CHARACTER_EDIT_PROMPT = "Refer to image 2 to make the same photograph, but use the face, hair and eyes of the adult woman in image 1. Images 3 and 4, when present, show the same woman's body proportions and further identity views. Image 1 is the identity anchor; image 2 alone determines the pose, clothing, camera angle, setting and objects. Preserve image 1's exact hair length, color, face shape, eye shape and natural skin detail. Keep her consistent natural body proportions from the identity references, with exactly two arms, two hands and five fingers on each hand. Preserve image 2's composition. Photorealistic candid camera image, not illustration or cartoon. Copy no objects or accessories from images 1, 3 or 4. No text, watermark, tattoos, extra limbs, extra hands, plastic skin or altered face. Do not add other people.";
 const SCENE_EDIT_PROMPT = `${CHARACTER_EDIT_PROMPT} Keep every food item, utensil, prop and its position from image 2 exactly recognizable. Preserve the original hand-object contact, framing, clothing, camera position and background. Change only the woman, never replace or invent objects.`;
 const MOTION_ENDPOINT = "kwaivgi/kling-v2.6-pro/motion-control";
+const CREATIVE_ENDPOINT = "wavespeed-ai/open-video/image-to-video";
+const CREATIVE_PROMPTS: Record<string, string> = {
+  playful: "The same adult woman gives a spontaneous playful smile, glances briefly away from the camera, turns back and makes a small natural hand gesture.",
+  confident: "The same adult woman shifts her posture naturally, makes calm eye contact, smiles with confidence and gently turns toward the camera.",
+  casual: "The same adult woman makes a relaxed small movement, brushes her hair back once and looks toward the camera with a natural smile.",
+};
 
 async function sourceRatio(url: string): Promise<number> {
   const response = await fetch(url, { signal: AbortSignal.timeout(20_000) });
@@ -60,7 +66,10 @@ export class WaveSpeedAdapter implements ProviderAdapter {
     if (jobType === "video_character_swap") return { credits: 120 * (payload.resolution === "480p" ? 8 : 16), secondsExpected: 180 };
     // Video person swap is billed by duration, capped at 30 seconds. Keep the
     // existing conservative reservation until provider usage reconciliation.
-    if (jobType === "character_motion_video") return { credits: (payload.quality === "standard" ? 756 : 1008) + (payload.motionMethod === "anchored" ? 40 : 0), secondsExpected: payload.motionMethod === "anchored" ? 420 : 180 };
+    if (jobType === "character_motion_video") {
+      if (payload.motionMethod === "creative") return { credits: 100, secondsExpected: 240 };
+      return { credits: (payload.quality === "standard" ? 756 : 1008) + (payload.motionMethod === "anchored" ? 40 : 0), secondsExpected: payload.motionMethod === "anchored" ? 420 : 180 };
+    }
     return { credits: 40, secondsExpected: 60 };
   }
 
@@ -82,6 +91,30 @@ export class WaveSpeedAdapter implements ProviderAdapter {
       const video = p.payload.videoUrl, image = p.payload.characterImageUrl;
       if (typeof video !== "string" || typeof image !== "string")
         throw new ProviderError("Az eredeti videó és a modell referenciafotója kötelező.", false);
+      if (p.payload.motionMethod === "creative") {
+        const sb = serviceClient();
+        const { data: job } = await sb.from("generation_jobs").select("owner_id").eq("id", p.jobId).single();
+        if (!job) throw new ProviderError("Video job not found", false);
+        const response = await fetch(video, { signal: AbortSignal.timeout(45_000) });
+        if (!response.ok) throw new ProviderError("A kész modellvideó nem olvasható.", true);
+        const source = Buffer.from(await response.arrayBuffer());
+        if (source.length > 48 * 1024 * 1024) throw new ProviderError("A videó túl nagy.", false);
+        const frame = await sceneFrame(source);
+        const framePath = `${job.owner_id}/${p.jobId}/variation-frame.jpg`;
+        const { error: uploadError } = await sb.storage.from("assets").upload(framePath, frame, {
+          contentType: "image/jpeg", upsert: true,
+        });
+        if (uploadError) throw new ProviderError(`Kezdőkép tárolási hiba: ${uploadError.message}`, true);
+        const { data: signed } = await sb.storage.from("assets").createSignedUrl(framePath, 7200);
+        if (!signed?.signedUrl) throw new ProviderError("A kezdőkép nem érhető el.", true);
+        const style = typeof p.payload.motionStyle === "string" ? p.payload.motionStyle : "playful";
+        const prompt = `${CREATIVE_PROMPTS[style] ?? CREATIVE_PROMPTS.playful} Keep the exact same face, hair, clothing, body proportions, props, background and camera framing from the image. Subtle believable motion with consistent hands and objects. One continuous 8-second shot. No dialogue, subtitles or extra people.`;
+        const data = await this.request(`${API}/${CREATIVE_ENDPOINT}`, {
+          image: signed.signedUrl, prompt, resolution: "1080p", duration: 8,
+        });
+        if (typeof data.id !== "string") throw new ProviderError("WaveSpeed did not return a video task ID", false);
+        return { providerJobId: data.id, providerMeta: { endpoint: CREATIVE_ENDPOINT, stage: "creative" } };
+      }
       if (p.payload.motionMethod === "anchored") {
         const sb = serviceClient();
         const { data: job } = await sb.from("generation_jobs").select("owner_id").eq("id", p.jobId).single();

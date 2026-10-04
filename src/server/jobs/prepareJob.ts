@@ -337,6 +337,12 @@ export async function prepareValidatedJobInput(input: {
       .eq("id", String(payload.videoAssetId)).eq("owner_id", input.userId).eq("media_type", "video").single();
     if (!video) return { type, payload: {}, error: "SOURCE_IMAGE_REQUIRED", status: 400 };
     if (video.content_type !== "video/mp4") return { type, payload: {}, error: "VIDEO_FORMAT_UNSUPPORTED", status: 415 };
+    if (payload.motionMethod === "creative") {
+      const { data: previous } = await svc.from("gallery_items").select("id")
+        .eq("owner_id", input.userId).eq("asset_id", String(payload.videoAssetId))
+        .eq("character_id", characterId!).limit(1).maybeSingle();
+      if (!previous) return { type, payload: {}, error: "SOURCE_IMAGE_REQUIRED", status: 409 };
+    }
     const { data: character } = await svc.from("characters").select("name,active_version_id")
       .eq("id", characterId!).eq("owner_id", input.userId).single();
     if (!character?.active_version_id) return { type, payload: {}, error: "CHARACTER_REQUIRED", status: 409 };
@@ -353,7 +359,14 @@ export async function prepareValidatedJobInput(input: {
     payload.videoUrl = signedVideo.signedUrl;
     payload.characterImageUrl = referenceUrls[0];
     payload.characterImageUrls = referenceUrls;
-    payload.motionMethod = payload.motionMethod === "legacy" ? "legacy" : "anchored";
+    payload.motionMethod = payload.motionMethod === "creative" ? "creative"
+      : payload.motionMethod === "legacy" ? "legacy" : "anchored";
+    if (payload.motionMethod === "creative") {
+      payload.motionStyle = ["playful", "confident", "casual"].includes(String(payload.motionStyle))
+        ? payload.motionStyle : "playful";
+      // A kreatív videóhoz a beszédet külön hagyjuk jóvá; a meglévő hangcserét nem módosítjuk.
+      payload.voiceMode = "original";
+    }
     const modelName = character.name.trim().toLocaleLowerCase("hu");
     const voiceByModel: Record<string, string | undefined> = {
       laura: process.env.ELEVENLABS_LAURA_VOICE_ID,
@@ -370,6 +383,7 @@ export async function prepareValidatedJobInput(input: {
         return { type, payload: {}, error: "TTS_VOICE_INVALID", status: 503 };
       payload.replaceVoice = true;
       payload.voiceId = voiceId;
+      payload.naturalHungarianVoice = modelName === "dorika" || modelName === "dóra";
     }
     delete payload.voiceMode;
     payload.quality = payload.quality === "standard" ? "standard" : "pro";
