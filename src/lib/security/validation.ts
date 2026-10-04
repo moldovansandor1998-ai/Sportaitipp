@@ -170,6 +170,14 @@ export const CreateJobSchema = z.object({
     }
     case "talking_video":
     case "lip_sync": {
+      if (val.type === "lip_sync" && p.nuretaPostprocess === true) {
+        if (!val.characterId || !z.string().uuid().safeParse(p.videoAssetId).success
+          || !["keep", "model", "speech"].includes(String(p.audioMode)))
+          ctx.addIssue({ code: z.ZodIssueCode.custom, message: "Nureta videó, modell és hangmód szükséges." });
+        if (p.audioMode === "speech" && (typeof p.speechText !== "string" || !p.speechText.trim() || p.speechText.length > 180))
+          ctx.addIssue({ code: z.ZodIssueCode.custom, message: "Rövid beszédszöveg szükséges (legfeljebb 180 karakter)." });
+        break;
+      }
       const hasVideo = typeof p.videoUrl === "string" || typeof p.videoAssetId === "string";
       const hasAudio = typeof p.audioUrl === "string" || typeof p.audioAssetId === "string";
       if (!hasVideo || !hasAudio) {

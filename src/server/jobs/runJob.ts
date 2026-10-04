@@ -42,7 +42,8 @@ export async function runClaimedJob(job: JobRow, routerOverride?: ReturnType<typ
     return; // éles provider: webhook/poll folytatja
   }
   if ((job.type === "nureta_scene_image" && job.payload?.sourceAssetId)
-    || (job.type === "nureta_scene_video" && job.payload?.sceneImageAssetId)) {
+    || (job.type === "nureta_scene_video" && job.payload?.sceneImageAssetId)
+    || (job.type === "lip_sync" && job.payload?.nuretaPostprocess === true)) {
     try {
       const { prepareValidatedJobInput } = await import("./prepareJob");
       const prepared = await prepareValidatedJobInput({ userId: job.owner_id, type: job.type,

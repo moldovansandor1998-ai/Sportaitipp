@@ -15,6 +15,7 @@ interface CharacterRow { id: string; name: string; }
 interface JobRow { id: string; status: string; error: { message?: string } | null; }
 interface Res { assetId: string; galleryItemId: string; mediaType: string; url: string | null; }
 interface Cfg { mode: string; faceSwapConfigured: boolean; i2vModels: Array<{ id: string; label: string }>; }
+interface NuretaVideo { assetId: string; jobId: string; characterId: string; createdAt: string; duration: number; }
 
 export default function ToolsPage() {
   const [gallery, setGallery] = useState<GalItem[]>([]);
@@ -26,6 +27,10 @@ export default function ToolsPage() {
   const [prices, setPrices] = useState<Record<string, number | null>>({});
   const [jobs, setJobs] = useState<Record<string, JobRow>>({});
   const [results, setResults] = useState<Record<string, Res[]>>({});
+  const [nuretaVideos, setNuretaVideos] = useState<NuretaVideo[]>([]);
+  const [nuretaVideoAsset, setNuretaVideoAsset] = useState("");
+  const [nuretaAudioMode, setNuretaAudioMode] = useState<"keep" | "model" | "speech">("keep");
+  const [nuretaSpeech, setNuretaSpeech] = useState("");
   const [captions, setCaptions] = useState<Record<string, string>>({});
   const pollerRef = useRef<JobPoller | null>(null);
   const trackersRef = useRef<Record<string, AttemptTracker>>({});
@@ -260,6 +265,21 @@ export default function ToolsPage() {
     const cap = b.job.result?.meta?.caption;
     if (cap) setCaptions((m) => ({ ...m, [key]: cap }));
   }
+  useEffect(() => {
+    let active = true;
+    setNuretaVideos([]); setNuretaVideoAsset("");
+    if (!toolChar) return;
+    void (async () => {
+      const res = await fetch(`/api/nureta/videos?characterId=${encodeURIComponent(toolChar)}`,
+        { headers: { authorization: `Bearer ${await token()}` } });
+      if (!active) return;
+      if (!res.ok) { setMsg(current => ({ ...current, nuretaSync: "A Nureta-videók listája nem tölthető be." })); return; }
+      const body = await res.json() as { items: NuretaVideo[] };
+      if (!active) return;
+      setNuretaVideos(body.items); setNuretaVideoAsset(body.items[0]?.assetId ?? "");
+    })();
+    return () => { active = false; };
+  }, [toolChar, token, results.adultVideo]);
   function poll(jobId: string, key: string) {
     pollerRef.current?.stop(jobId);
     pollerRef.current?.start(jobId,
@@ -649,6 +669,36 @@ export default function ToolsPage() {
         <Badge k="adultVideo" /><Price k="adultVideo" />
         <Results k="adultVideo" kind="video" />
         {msg.adultVideo && <p role="status" className="muted">{msg.adultVideo}</p>}
+        <div style={{ marginTop: 24, borderTop: "1px solid var(--border)", paddingTop: 16 }}>
+          <h3>Kész Nureta-videó → hang és szájszinkron</h3>
+          <p className="muted">Az elkészült videóból külön szinkronizált változat készül. Az eredeti megmarad; új Nureta-generálást nem indítunk. A szájszinkron külön kreditbe kerül.</p>
+          <label htmlFor="nureta-sync-video">Elkészült Nureta-videó</label>
+          <select id="nureta-sync-video" value={nuretaVideoAsset} onChange={event => setNuretaVideoAsset(event.target.value)}>
+            <option value="">Válassz kész videót</option>
+            {nuretaVideos.map(video => <option key={video.assetId} value={video.assetId}>
+              {new Date(video.createdAt).toLocaleString("hu-HU")} · {video.duration} mp · {video.jobId.slice(0, 8)}
+            </option>)}
+          </select>
+          {nuretaVideos.length === 0 && <p className="muted">Ehhez a modellhez még nincs elkészült Nureta-videó.</p>}
+          <label htmlFor="nureta-sync-audio">Hang a szinkronizált változatban</label>
+          <select id="nureta-sync-audio" value={nuretaAudioMode} onChange={event => setNuretaAudioMode(event.target.value as "keep" | "model" | "speech")}>
+            <option value="keep">A kész videó meglévő hangja — csak szájszinkron</option>
+            <option value="model">A kész videó hangja a modell ElevenLabs-hangjára cserélve</option>
+            <option value="speech">Új magyar beszéd a modell ElevenLabs-hangján</option>
+          </select>
+          {nuretaAudioMode === "speech" && <>
+            <label htmlFor="nureta-sync-speech">Pontos kimondandó szöveg</label>
+            <textarea id="nureta-sync-speech" maxLength={(nuretaVideos.find(v => v.assetId === nuretaVideoAsset)?.duration ?? 15) * 12}
+              value={nuretaSpeech} onChange={event => setNuretaSpeech(event.target.value)} />
+          </>}
+          <p className="muted">Ha a kész videó már a modell hangját használja, válaszd a „csak szájszinkron” lehetőséget. A beszédhez igazítjuk a szájat; sikítás vagy nevetés pontos szinkronja nem garantált.</p>
+          <button disabled={busyKey !== null || !nuretaVideoAsset || nuretaAudioMode === "speech" && !nuretaSpeech.trim()}
+            onClick={() => run("nuretaSync", "lip_sync", { nuretaPostprocess: true, videoAssetId: nuretaVideoAsset,
+              audioMode: nuretaAudioMode, speechText: nuretaSpeech }, { characterId: toolChar })}>Hang és szájszinkron készítése</button>
+          <Badge k="nuretaSync" /><Price k="nuretaSync" />
+          <Results k="nuretaSync" kind="video" />
+          {msg.nuretaSync && <p role="status" className="muted">{msg.nuretaSync}</p>}
+        </div>
       </section>
 
       <details className="card">

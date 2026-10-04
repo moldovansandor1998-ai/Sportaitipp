@@ -3,6 +3,7 @@ import { FalAdapter } from "./fal";
 import { ReplicateAdapter } from "./replicate";
 import { WaveSpeedAdapter } from "./wavespeed";
 import { NuretaAdapter } from "./nureta";
+import { NuretaLipSyncAdapter } from "./nuretaLipSync";
 import { ProviderRouter } from "./router";
 import { JobType, ProviderAdapter, ProviderError } from "./types";
 
@@ -16,6 +17,7 @@ export function buildRouter(extra: ProviderAdapter[] = []): ProviderRouter {
   if (process.env.REPLICATE_API_TOKEN) real.push(new ReplicateAdapter());
   if (process.env.WAVESPEED_API_KEY) real.push(new WaveSpeedAdapter());
   if (process.env.NURETA_API_KEY) real.push(new NuretaAdapter());
+  if (process.env.WAVESPEED_API_KEY) real.push(new NuretaLipSyncAdapter());
 
   // PRODUCTION-ben a mock SEMMILYEN kapcsolóval nem engedélyezhető.
   const isProd = process.env.NODE_ENV === "production";
