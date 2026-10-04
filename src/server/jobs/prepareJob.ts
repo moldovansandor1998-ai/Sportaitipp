@@ -271,7 +271,7 @@ export async function prepareValidatedJobInput(input: {
       payload.scenePrompt = typeof payload.scenePrompt === "string" ? payload.scenePrompt.trim() : "";
     } else {
       // Never accept client-injected media URLs or voice configuration.
-      delete payload.sourceVideoUrl; delete payload.voiceId; delete payload.naturalHungarianVoice;
+      delete payload.sourceVideoUrl; delete payload.sourceVideoAssetId; delete payload.voiceId; delete payload.naturalHungarianVoice;
       payload.videoEngine = payload.videoEngine === "kling" ? "kling" : "nureta";
       payload.prompt = String(payload.prompt).trim();
       const { data: preview } = await svc.from("generation_jobs").select("id,type,status,payload")
@@ -290,6 +290,7 @@ export async function prepareValidatedJobInput(input: {
         const { data: signedSource } = await svc.storage.from(sourceVideo.bucket).createSignedUrl(sourceVideo.object_path, 86400);
         if (!signedSource?.signedUrl) return { type, payload: {}, error: "SOURCE_IMAGE_REQUIRED", status: 502 };
         payload.sourceVideoUrl = signedSource.signedUrl;
+        payload.sourceVideoAssetId = origin.sourceAssetId;
       }
       if (payload.voiceMode === "model") {
         const voice = await resolveCharacterVoice(svc, characterId, input.userId);

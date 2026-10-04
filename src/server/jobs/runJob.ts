@@ -5,7 +5,7 @@ import { serviceClient } from "@/lib/supabase/server";
 import { refundJob } from "@/lib/credits/rpc";
 import { buildRouter } from "@/lib/providers";
 import type { JobType, NormalizedOutput, ProviderFile } from "@/lib/providers/types";
-import { assertAllowedUrl } from "@/lib/security/ssrf";
+import { assertAllowedProviderOutputUrl } from "@/lib/security/ssrf";
 
 const router = buildRouter();
 const MAX_PROVIDER_FILE = 100 * 1024 * 1024;
@@ -181,12 +181,20 @@ async function storeOutputAssets(
   for (const [i, f] of output.files.entries()) {
     if (f.url) console.info(JSON.stringify({ scope: "asset.download", jobId, provider: job.provider,
       kind: f.kind, host: new URL(f.url).hostname }));
-    let { buf, contentType } = await fileToBuffer(f);
+    let { buf, contentType } = await fileToBuffer(f, job.provider);
     const verify = f.kind === "video" && typeof job.payload?.verificationRun === "string"
       && job.payload.verificationRun.startsWith("castora-e2e-");
     const beforeSound = verify ? await (await import("./inspectVideo")).inspectVideo(buf) : null;
     if (job.type === "nureta_scene_video" && f.kind === "video") {
-      const sourceUrl = job.payload?.sourceVideoUrl;
+      let sourceUrl = job.payload?.sourceVideoUrl;
+      if (typeof job.payload?.sourceVideoAssetId === "string") {
+        const { data: sourceAsset } = await sb.from("assets").select("bucket,object_path")
+          .eq("id", job.payload.sourceVideoAssetId).eq("owner_id", job.owner_id).eq("media_type", "video").maybeSingle();
+        if (!sourceAsset) throw new Error("SOURCE_VIDEO_UNAVAILABLE");
+        const { data: signed } = await sb.storage.from(sourceAsset.bucket).createSignedUrl(sourceAsset.object_path, 7200);
+        if (!signed?.signedUrl) throw new Error("SOURCE_VIDEO_UNAVAILABLE");
+        sourceUrl = signed.signedUrl;
+      }
       const voiceMode = job.payload?.voiceMode;
       if (voiceMode === "source" || voiceMode === "model") {
         const { addVideoSoundtrack } = await import("./videoSoundtrack");
@@ -259,14 +267,17 @@ async function storeOutputAssets(
   return assetIds;
 }
 
-/** Restore completed provider files after an oversize upload refund, without charging again. */
+/** Restore completed files without resubmitting or charging; URL recovery is limited to marked E2E tests. */
 export async function recoverRefundedVideoJob(job: JobRow & { provider_meta?: Record<string, unknown> }): Promise<boolean> {
-  if (job.type !== "character_motion_video" || job.status !== "refunded" || !job.provider_job_id || !job.provider) return false;
+  const sceneTest = job.type === "nureta_scene_video" && job.provider === "nureta"
+    && typeof job.payload?.verificationRun === "string" && job.payload.verificationRun.startsWith("castora-e2e-");
+  if ((!sceneTest && job.type !== "character_motion_video") || job.status !== "refunded" || !job.provider_job_id || !job.provider) return false;
   const sb = serviceClient();
   const { data: current } = await sb.from("generation_jobs").select("status,result,error")
     .eq("id", job.id).single();
+  const message = String((current?.error as { message?: string } | null)?.message ?? "");
   if (current?.status !== "refunded" || current.result ||
-    !String((current.error as { message?: string } | null)?.message ?? "").includes("maximum allowed size")) return false;
+    !(sceneTest ? message === "URL_HOST_NOT_ALLOWED" : message.includes("maximum allowed size"))) return false;
   const adapter = router.getAdapter(job.provider);
   if (!adapter) throw new Error("RECOVERY_PROVIDER_UNAVAILABLE");
   const output = await adapter.getResult(job.provider_job_id, job.provider_meta, job.type);
@@ -324,9 +335,9 @@ async function mustUpdate(
 }
 
 // ---------- SSRF-védett, méretkorlátos provider-letöltés ----------
-async function downloadProviderFile(url: string): Promise<{ buf: Buffer; contentType: string }> {
+async function downloadProviderFile(url: string, provider?: string | null): Promise<{ buf: Buffer; contentType: string }> {
   let safe: URL;
-  try { safe = assertAllowedUrl(url); }
+  try { safe = assertAllowedProviderOutputUrl(url, provider); }
   catch (error) {
     const host = (() => { try { return new URL(url).hostname; } catch { return "invalid"; } })();
     console.error(JSON.stringify({ scope: "asset.url_validation", host, error: error instanceof Error ? error.message : "invalid" }));
@@ -355,13 +366,13 @@ async function downloadProviderFile(url: string): Promise<{ buf: Buffer; content
   }
 }
 
-async function fileToBuffer(f: ProviderFile): Promise<{ buf: Buffer; contentType?: string }> {
+async function fileToBuffer(f: ProviderFile, provider?: string | null): Promise<{ buf: Buffer; contentType?: string }> {
   if (f.base64) return { buf: Buffer.from(f.base64, "base64") };
   if (f.dataUrl) {
     const [head, data] = f.dataUrl.split(",");
     return { buf: Buffer.from(data ?? "", "base64"), contentType: head?.slice(5, head.indexOf(";")) };
   }
-  if (f.url) return downloadProviderFile(f.url);
+  if (f.url) return downloadProviderFile(f.url, provider);
   throw new Error("empty provider file");
 }
 
