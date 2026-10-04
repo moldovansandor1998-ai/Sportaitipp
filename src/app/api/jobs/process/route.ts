@@ -171,6 +171,14 @@ export async function POST(req: NextRequest) {
     catch (error) { console.error(JSON.stringify({ scope: "cron.recoverGallery", jobId: job.id, error: String(error) })); }
     if (recovered >= 2) break;
   }
+  const { data: sceneTests } = await sb.from("generation_jobs").select("*")
+    .eq("status", "refunded").eq("type", "nureta_scene_video").eq("provider", "nureta")
+    .eq("error->>message", "URL_HOST_NOT_ALLOWED").like("payload->>verificationRun", "castora-e2e-%")
+    .is("result", null).order("created_at", { ascending: false }).limit(2);
+  for (const job of (sceneTests ?? []) as (JobRow & { provider_meta?: Record<string, unknown> })[]) {
+    try { if (await recoverRefundedVideoJob(job)) recovered++; }
+    catch (error) { console.error(JSON.stringify({ scope: "cron.recoverSceneTest", jobId: job.id, error: String(error) })); }
+  }
   // Refresh owner-scoped previews only for deliberately marked E2E test outputs.
   // This also lets a test completed on the previous deployment be inspected without regenerating it.
   const { data: verifiedTests } = await sb.from("generation_jobs").select("id,owner_id,payload,result")
