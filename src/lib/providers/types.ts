@@ -72,3 +72,6 @@ export class ProviderError extends Error {
     readonly category: ProviderErrorCategory = "unknown",
   ) { super(message); this.name = "ProviderError"; }
 }
+
+/** A creation request explicitly rejected before a provider task was accepted. */
+export class ProviderSubmissionRejectedError extends ProviderError {}
