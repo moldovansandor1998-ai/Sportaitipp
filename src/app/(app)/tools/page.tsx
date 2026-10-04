@@ -60,7 +60,6 @@ export default function ToolsPage() {
   const [variationVideo, setVariationVideo] = useState("");
   const [variationStyle, setVariationStyle] = useState<"playful" | "confident" | "casual">("playful");
   const [sceneVideo, setSceneVideo] = useState("");
-  const [sceneStyle, setSceneStyle] = useState<"playful" | "confident" | "casual">("playful");
   const [sceneText, setSceneText] = useState("Nekem is van egy másik, vadabb énem. Aki azt mondja, hogy neki nincs, az hazudik. Én szeretem kiélni ezt az oldalamat is. Ha többet szeretnél látni belőlem, figyeld a sztorimat, és kövess be, mert ez még egy új fiók. Puszillak!");
   const [videoPreview, setVideoPreview] = useState("");
 
@@ -662,24 +661,18 @@ export default function ToolsPage() {
         </div>
         <div style={{ borderTop: "1px solid var(--border)", marginTop: 20, paddingTop: 16 }}>
           <h4>Új szöveg ugyanazon a helyszínen</h4>
-          <p className="muted">Válassz egy jól sikerült kész modellvideót a galériából. A jelenet egyik képkockája alapján a modell saját hangján egy új, legfeljebb 30 másodperces beszélő videó készül. Ugyanezt a forrásvideót később új szöveggel ismét kiválaszthatod. A kéz és a kellékek mozgása eltérhet az eredeti videótól. Egy indítás egy eredményt készít.</p>
+          <p className="muted">Válassz egy jól sikerült kész modellvideót a galériából. A saját hangján felmondott új szöveghez a meglévő videó szájmozgását igazítjuk; a helyszín, a test és a mozdulatok megmaradnak. A videó a hang és a forrás közül a rövidebb hosszáig tart, legfeljebb 30 másodpercig. Hosszabb szöveghez hosszabb forrásvideót válassz. Egy indítás egy eredményt készít.</p>
           <Picker media="video" selected={sceneVideo} onSelect={setSceneVideo} />
           <label htmlFor="scene-text">Mit mondjon a modell?</label>
           <textarea id="scene-text" rows={5} maxLength={450} value={sceneText}
             onChange={(e) => setSceneText(e.target.value)} placeholder="Írd be a magyar szöveget..." />
-          <select aria-label="Beszélő jelenet hangulata" value={sceneStyle}
-            onChange={(e) => setSceneStyle(e.target.value as "playful" | "confident" | "casual")}
-            style={{ marginTop: 8 }}>
-            <option value="playful">Játékos</option><option value="confident">Magabiztos</option>
-            <option value="casual">Természetes</option>
-          </select>
           <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap", marginTop: 8 }}>
             <button disabled={busyKey !== null || !toolChar || !sceneVideo || sceneText.trim().length < 20}
               onClick={() => {
                 setResults((current) => ({ ...current, talkingScene: [] }));
                 run("talkingScene", "character_motion_video", {
                   videoAssetId: sceneVideo, quality: "pro", motionMethod: "talking_scene",
-                  motionStyle: sceneStyle, speechText: sceneText.trim(), voiceMode: "model",
+                  speechText: sceneText.trim(), voiceMode: "model",
                 }, { characterId: toolChar });
               }}>Egy beszélő jelenet készítése</button>
             <Badge k="talkingScene" /><Price k="talkingScene" />
