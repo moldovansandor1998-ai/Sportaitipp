@@ -42,12 +42,17 @@ export async function runClaimedJob(job: JobRow, routerOverride?: ReturnType<typ
   }
   if ((job.type === "nureta_scene_image" && job.payload?.sourceAssetId)
     || (job.type === "nureta_scene_video" && job.payload?.sceneImageAssetId)) {
-    const { prepareValidatedJobInput } = await import("./prepareJob");
-    const prepared = await prepareValidatedJobInput({ userId: job.owner_id, type: job.type,
-      characterId: job.character_id ?? undefined, payload: job.payload ?? {} });
-    if (prepared.error) { await failJob(job, prepared.error); return; }
-    await mustUpdate("generation_jobs", { payload: prepared.payload }, job.id, "submitted");
-    job = { ...job, payload: prepared.payload };
+    try {
+      const { prepareValidatedJobInput } = await import("./prepareJob");
+      const prepared = await prepareValidatedJobInput({ userId: job.owner_id, type: job.type,
+        characterId: job.character_id ?? undefined, payload: job.payload ?? {} });
+      if (prepared.error) { await failJob(job, prepared.error); return; }
+      await mustUpdate("generation_jobs", { payload: prepared.payload }, job.id, "submitted");
+      job = { ...job, payload: prepared.payload };
+    } catch (error) {
+      await failJob(job, error instanceof Error ? error.message : "SCENE_PREPARATION_FAILED");
+      return;
+    }
   }
   if (activeRouter.candidates(job.type, job.payload ?? {}).length === 0) throw new Error("NO_PROVIDER_CONFIGURED");
   // Ledger-mutex: két párhuzamos workerből pontosan egy nyeri meg a submit-jogot
@@ -177,6 +182,9 @@ async function storeOutputAssets(
     if (f.url) console.info(JSON.stringify({ scope: "asset.download", jobId, provider: job.provider,
       kind: f.kind, host: new URL(f.url).hostname }));
     let { buf, contentType } = await fileToBuffer(f);
+    const verify = f.kind === "video" && typeof job.payload?.verificationRun === "string"
+      && job.payload.verificationRun.startsWith("castora-e2e-");
+    const beforeSound = verify ? await (await import("./inspectVideo")).inspectVideo(buf) : null;
     if (job.type === "nureta_scene_video" && f.kind === "video") {
       const sourceUrl = job.payload?.sourceVideoUrl;
       const voiceMode = job.payload?.voiceMode;
@@ -196,6 +204,11 @@ async function storeOutputAssets(
       const { replaceVideoVoice } = await import("./replaceVideoVoice");
       buf = await replaceVideoVoice(buf, String(job.payload.voiceId ?? ""), job.payload.naturalHungarianVoice === true);
       contentType = "video/mp4";
+    }
+    if (verify) {
+      const afterSound = await (await import("./inspectVideo")).inspectVideo(buf);
+      output.meta.verification = { ...afterSound, framesUnchangedBySoundtrack: beforeSound?.frameHash === afterSound.frameHash,
+        engine: job.payload?.videoEngine, voiceMode: job.payload?.voiceMode };
     }
     if (f.kind === "video") {
       const { compactVideo } = await import("./compactVideo");
@@ -224,6 +237,13 @@ async function storeOutputAssets(
     }, { onConflict: "bucket,object_path" }).select("id").single();
     if (assetErr || !asset) throw new Error(`asset upsert failed: ${assetErr?.message}`);
     assetIds.push(asset.id);
+    if (typeof job.payload?.verificationRun === "string" && job.payload.verificationRun.startsWith("castora-e2e-")) {
+      const { data: signed } = await sb.storage.from("assets").createSignedUrl(objectPath, 3600);
+      if (signed?.signedUrl) {
+        const previews = (output.meta.verificationAssets ?? []) as Array<{ assetId: string; url: string }>;
+        output.meta.verificationAssets = [...previews, { assetId: asset.id, url: signed.signedUrl }];
+      }
+    }
 
     const outputCategory = job.payload?.outputCategory === "fanvue" ? "fanvue" : "tiktok";
     const { data: existing } = await sb.from("gallery_items")
