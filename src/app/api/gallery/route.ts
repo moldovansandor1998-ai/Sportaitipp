@@ -22,11 +22,12 @@ export async function GET(req: NextRequest) {
   const characterId = req.nextUrl.searchParams.get("characterId");
   const view = req.nextUrl.searchParams.get("view") === "used" ? "used" : "available";
   const contentCategory = req.nextUrl.searchParams.get("category");
+  const approvedVideos = req.nextUrl.searchParams.get("approvedVideos") === "1";
   if (contentCategory && !["tiktok", "fanvue"].includes(contentCategory)) {
     return NextResponse.json({ error: "INVALID_CONTENT_CATEGORY" }, { status: 400 });
   }
   const page = Math.min(10000, Math.max(0, Number.parseInt(req.nextUrl.searchParams.get("page") ?? "0", 10) || 0));
-  const pageSize = 24;
+  const pageSize = approvedVideos ? 100 : 24;
   if (characterId && characterId !== "unassigned") {
     if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(characterId)) {
       return NextResponse.json({ error: "INVALID_CHARACTER_ID" }, { status: 400 });
@@ -51,11 +52,12 @@ export async function GET(req: NextRequest) {
     assets: { id: string; object_path: string; media_type: string; content_type: string; bytes: number } | null;
   }
   let query = svc.from("gallery_items")
-    .select("id,job_id,qc_status,created_at,used_at,character_id,album_id,content_category,assets(id,object_path,media_type,content_type,bytes)", { count: "exact" })
+    .select(`id,job_id,qc_status,created_at,used_at,character_id,album_id,content_category,${approvedVideos ? "assets!inner" : "assets"}(id,object_path,media_type,content_type,bytes)`, { count: "exact" })
     .eq("owner_id", user.id).is("deleted_at", null)
     .order(view === "used" ? "used_at" : "created_at", { ascending: false })
     .range(page * pageSize, (page + 1) * pageSize - 1);
-  query = view === "used" ? query.not("used_at", "is", null) : query.is("used_at", null);
+  if (approvedVideos) query = query.eq("qc_status", "approved").eq("assets.media_type", "video");
+  else query = view === "used" ? query.not("used_at", "is", null) : query.is("used_at", null);
   if (albumId && albumId !== "all") query = query.eq("album_id", albumId);
   if (contentCategory) query = query.eq("content_category", contentCategory);
   if (characterId === "unassigned") query = query.is("character_id", null);

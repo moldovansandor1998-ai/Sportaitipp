@@ -340,7 +340,8 @@ export async function prepareValidatedJobInput(input: {
     if (payload.motionMethod === "creative" || payload.motionMethod === "talking_scene") {
       const { data: previous } = await svc.from("gallery_items").select("id")
         .eq("owner_id", input.userId).eq("asset_id", String(payload.videoAssetId))
-        .eq("character_id", characterId!).limit(1).maybeSingle();
+        .eq("character_id", characterId!).eq("qc_status", "approved")
+        .is("deleted_at", null).limit(1).maybeSingle();
       if (!previous) return { type, payload: {}, error: "SOURCE_IMAGE_REQUIRED", status: 409 };
     }
     const { data: character } = await svc.from("characters").select("name,active_version_id")

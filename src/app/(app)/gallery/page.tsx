@@ -28,6 +28,7 @@ export default function GalleryPage() {
   const [usageError, setUsageError] = useState("");
   const [deleting, setDeleting] = useState(false);
   const [savingUsage, setSavingUsage] = useState<string | null>(null);
+  const [savingVideoApproval, setSavingVideoApproval] = useState(false);
   const [movingCategory, setMovingCategory] = useState<string | null>(null);
   const [editingItem, setEditingItem] = useState<Item | null>(null);
   const [editPrompt, setEditPrompt] = useState("");
@@ -132,6 +133,24 @@ export default function GalleryPage() {
     }
     setSelected(new Set());
     await load();
+  }
+  async function setVideoApproval(ids: string[], approved: boolean) {
+    if (!ids.length) return;
+    setSavingVideoApproval(true);
+    setUsageError("");
+    const { data: { user } } = await getSb().auth.getUser();
+    if (!user) { setUsageError("Jelentkezz be újra."); setSavingVideoApproval(false); return; }
+    const results = await Promise.allSettled(ids.map((id) => getSb().from("gallery_items")
+      .update({ qc_status: approved ? "approved" : "pending" })
+      .eq("id", id).eq("owner_id", user.id).select("id")));
+    const updated = ids.filter((_, index) => {
+      const result = results[index];
+      return result.status === "fulfilled" && !result.value.error && result.value.data?.length === 1;
+    });
+    setItems(current => current?.map(item => updated.includes(item.galleryItemId)
+      ? { ...item, qcStatus: approved ? "approved" : "pending" } : item) ?? null);
+    if (updated.length !== ids.length) setUsageError(`${ids.length - updated.length} videót nem sikerült megjelölni.`);
+    setSavingVideoApproval(false);
   }
   async function removeMany() {
     if (!confirm(`${selected.size} elem törlése?`)) return;
@@ -305,6 +324,10 @@ export default function GalleryPage() {
         {selected.size > 0 && <button className="ghost" disabled={downloading} onClick={() => void downloadSelected()}>
           {downloading ? "ZIP készítése…" : `Kijelöltek letöltése ZIP-ben (${selected.size})`}
         </button>}
+        {items && items.some(it => selected.has(it.galleryItemId) && it.mediaType === "video") &&
+          <button className="ghost" disabled={savingVideoApproval} onClick={() => void setVideoApproval(items.filter(it => selected.has(it.galleryItemId) && it.mediaType === "video").map(it => it.galleryItemId), true)}>
+            Jó alapvideóként jelölés
+          </button>}
         {selected.size > 0 && <button className="ghost" disabled={savingUsage !== null}
           onClick={() => void setUsed([...selected], view === "available")}>{view === "available" ? "Felhasználva jelölés" : "Vissza a használatlanokhoz"} ({selected.size})</button>}
       </div>
@@ -349,12 +372,16 @@ export default function GalleryPage() {
                 <video src={it.url} controls style={{ width: "100%", borderRadius: 8 }} onClick={() => toggle(it.galleryItemId)} />
               ) : <div className="skeleton" />}
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 8 }}>
-                <span className="badge">{characters.find((c) => c.id === it.characterId)?.name ?? "Egyéb"} · {it.contentCategory === "fanvue" ? "Fanvue" : "TikTok"} · {it.mediaType} · {it.qcStatus}{selected.has(it.galleryItemId) && " ✓"}</span>
+                <span className="badge">{characters.find((c) => c.id === it.characterId)?.name ?? "Egyéb"} · {it.contentCategory === "fanvue" ? "Fanvue" : "TikTok"} · {it.mediaType} · {it.mediaType === "video" && it.qcStatus === "approved" ? "Jó alapvideó" : it.qcStatus}{selected.has(it.galleryItemId) && " ✓"}</span>
                 <span style={{ display: "flex", gap: 6 }}>
                   <button className="ghost" style={{ padding: "4px 10px" }} disabled={movingCategory !== null}
                     onClick={() => void moveCategory(it.galleryItemId)}>{movingCategory === it.galleryItemId ? "Áthelyezés…" : contentCategory === "fanvue" ? "→ TikTok" : "→ Fanvue"}</button>
                   {it.mediaType === "image" && <button className="ghost" style={{ padding: "4px 10px" }}
                     onClick={() => { setEditingItem(it); setEditPrompt(""); setEditStatus(""); }}>Módosítás</button>}
+                  {it.mediaType === "video" && <button className="ghost" style={{ padding: "4px 10px" }} disabled={savingVideoApproval}
+                    onClick={() => void setVideoApproval([it.galleryItemId], it.qcStatus !== "approved")}>
+                    {it.qcStatus === "approved" ? "Jó jelölés visszavonása" : "Jó alapvideó"}
+                  </button>}
                   <button className="ghost" style={{ padding: "4px 10px" }} onClick={() => toggle(it.galleryItemId)}
                     aria-label={selected.has(it.galleryItemId) ? "Kijelölés megszüntetése" : "Kép kijelölése"}>{selected.has(it.galleryItemId) ? "✓" : "Kijelölés"}</button>
                   <button className="ghost" style={{ padding: "4px 10px" }} disabled={savingUsage !== null}
