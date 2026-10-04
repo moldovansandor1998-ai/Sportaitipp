@@ -28,7 +28,7 @@ const req = (payload: Record<string, unknown>, key: string, ctx: z.RefinementCtx
 export const JOB_TYPES = [
   "reference_qc","character_training","test_image","identity_check",
   "image_generation","image_edit","upscale","background_removal","skin_enhance","fix_face","pinterest_composition",
-  "video_from_image","video_to_video","video_character_swap","character_motion_video","talking_video","character_swap","motion_control","lip_sync",
+  "video_from_image","video_to_video","video_character_swap","character_motion_video","nureta_scene_image","nureta_scene_video","talking_video","character_swap","motion_control","lip_sync",
   "tts","video_to_prompt","captioning","frame_extract","dataset_generation",
   "carousel_page","viral_scene","ppv_render",
 ] as const;
@@ -44,6 +44,20 @@ export const CreateJobSchema = z.object({
   // Jobtípusonkénti payload-validáció – hiány esetén 400, kredit NEM vonódik le
   const p = val.payload as Record<string, unknown>;
   switch (val.type) {
+    case "nureta_scene_image":
+    case "nureta_scene_video": {
+      if (!val.characterId || typeof p.prompt !== "string" || !p.prompt.trim() || p.prompt.length > 1500)
+        ctx.addIssue({ code: z.ZodIssueCode.custom, message: "Válassz modellt és adj meg legfeljebb 1500 karakteres jelenetleírást." });
+      if (val.type === "nureta_scene_video") {
+        if (!z.string().uuid().safeParse(p.sceneJobId).success || !z.string().uuid().safeParse(p.sceneImageAssetId).success)
+          ctx.addIssue({ code: z.ZodIssueCode.custom, message: "Előbb hagyd jóvá a jelenetképet." });
+        if (![5, 8, 10, 12, 15].includes(Number(p.duration)))
+          ctx.addIssue({ code: z.ZodIssueCode.custom, message: "A videó hossza 5, 8, 10, 12 vagy 15 másodperc lehet." });
+        if (!["480p", "720p"].includes(String(p.resolution)))
+          ctx.addIssue({ code: z.ZodIssueCode.custom, message: "Válassz videófelbontást." });
+      }
+      break;
+    }
     case "character_training": {
       // fal.ai returns a weights URL; only Replicate needs a destination model.
       if (typeof p.versionId !== "string" || p.versionId.length === 0) {
