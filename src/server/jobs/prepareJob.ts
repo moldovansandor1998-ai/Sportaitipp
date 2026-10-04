@@ -48,6 +48,8 @@ export async function prepareValidatedJobInput(input: {
   }
   if (["video_character_swap", "character_motion_video"].includes(type) && !process.env.WAVESPEED_API_KEY)
     return { type, payload: {}, error: "PROVIDER_MODEL_INVALID", status: 503 };
+  if (["nureta_scene_image", "nureta_scene_video"].includes(type) && !process.env.NURETA_API_KEY)
+    return { type, payload: {}, error: "PROVIDER_MODEL_INVALID", status: 503 };
 
   // A kliens által küldött LoRA-adatok KIZÁRÓDNEK – csak sikeres szerveroldali feloldás után kerülnek vissza
   delete payload.loraPath;
@@ -241,6 +243,41 @@ export async function prepareValidatedJobInput(input: {
     if (selected.length === 0) return [];
     return resolveImages(selected.slice(0, 3).map((r) => r.asset_id));
   };
+  if (type === "nureta_scene_image" || type === "nureta_scene_video") {
+    if (!characterId) return { type, payload: {}, error: "CHARACTER_REQUIRED", status: 400 };
+    const { data: character } = await svc.from("characters").select("active_version_id")
+      .eq("id", characterId).eq("owner_id", input.userId).single();
+    if (!character?.active_version_id) return { type, payload: {}, error: "CHARACTER_REQUIRED", status: 409 };
+    const { data: version } = await svc.from("character_versions").select("id")
+      .eq("id", character.active_version_id).eq("character_id", characterId).eq("status", "approved").single();
+    if (!version) return { type, payload: {}, error: "CHARACTER_REQUIRED", status: 409 };
+    payload.prompt = String(payload.prompt).trim();
+    payload.outputCategory = "fanvue";
+    if (type === "nureta_scene_image") {
+      const faces = await resolveCharacterFaces();
+      if (!faces.length) return { type, payload: {}, error: "IMAGE_INPUT_REQUIRED", status: 409 };
+      payload.referenceUrls = faces;
+    } else {
+      const { data: preview } = await svc.from("generation_jobs").select("id,type,status")
+        .eq("id", String(payload.sceneJobId)).eq("owner_id", input.userId)
+        .eq("character_id", characterId).eq("type", "nureta_scene_image")
+        .eq("status", "completed").maybeSingle();
+      if (!preview) return { type, payload: {}, error: "SCENE_PREVIEW_REQUIRED", status: 409 };
+      const { data: chosen } = await svc.from("gallery_items")
+        .select("assets!inner(bucket,object_path,media_type)")
+        .eq("owner_id", input.userId).eq("job_id", preview.id)
+        .eq("asset_id", String(payload.sceneImageAssetId)).eq("qc_status", "approved")
+        .is("deleted_at", null).maybeSingle();
+      const asset = chosen?.assets as unknown as { bucket: string; object_path: string; media_type: string } | null;
+      if (asset?.media_type !== "image") return { type, payload: {}, error: "SCENE_PREVIEW_REQUIRED", status: 409 };
+      const { data: signed } = await svc.storage.from(asset.bucket).createSignedUrl(asset.object_path, 7200);
+      if (!signed?.signedUrl) return { type, payload: {}, error: "SCENE_PREVIEW_REQUIRED", status: 409 };
+      payload.sceneImageUrl = signed.signedUrl;
+      payload.duration = Number(payload.duration);
+      payload.resolution = payload.resolution === "720p" ? "720p" : "480p";
+    }
+    delete payload.sceneImageAssetId;
+  }
   if (type === "image_edit") {
     const urls = await resolveImages(payload.imageAssetIds);
     const external = typeof payload.externalImageUrl === "string" ? payload.externalImageUrl : null;

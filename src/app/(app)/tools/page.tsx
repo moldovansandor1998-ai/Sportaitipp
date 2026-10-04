@@ -65,6 +65,11 @@ export default function ToolsPage() {
   const [videoPreview, setVideoPreview] = useState("");
   const [scenePrompt, setScenePrompt] = useState("");
   const [sceneChoice, setSceneChoice] = useState<{ jobId: string; assetId: string; videoId: string; characterId: string } | null>(null);
+  const [adultScenePrompt, setAdultScenePrompt] = useState("");
+  const [adultVideoPrompt, setAdultVideoPrompt] = useState("");
+  const [adultDuration, setAdultDuration] = useState<5 | 8 | 10 | 12 | 15>(5);
+  const [adultResolution, setAdultResolution] = useState<"480p" | "720p">("480p");
+  const [adultChoice, setAdultChoice] = useState<{ jobId: string; assetId: string; characterId: string } | null>(null);
 
   const getSb = () => browserClient();
   const token = useCallback(async () => (await getSb().auth.getSession()).data.session?.access_token ?? "", []);
@@ -149,6 +154,24 @@ export default function ToolsPage() {
         if (image?.assetId && videoId && lastScene.character_id) {
           setSceneChoice({ jobId: lastScene.id, assetId: image.assetId, videoId, characterId: lastScene.character_id });
           setResults((current) => ({ ...current, scenePreview: sceneData.results }));
+        }
+      }
+    }
+    const { data: lastAdultScene } = await getSb().from("generation_jobs")
+      .select("id,character_id").eq("owner_id", user.id).eq("type", "nureta_scene_image")
+      .eq("status", "completed").order("created_at", { ascending: false }).limit(1).maybeSingle();
+    if (lastAdultScene?.character_id) {
+      const { data: approvedScene } = await getSb().from("gallery_items").select("asset_id")
+        .eq("job_id", lastAdultScene.id).eq("owner_id", user.id).eq("qc_status", "approved")
+        .is("deleted_at", null).limit(1).maybeSingle();
+      const latest = await fetch(`/api/jobs/${lastAdultScene.id}`, { headers: { authorization: `Bearer ${accessToken}` } });
+      if (latest.ok) {
+        const data = await latest.json() as { results: Res[] };
+        const image = data.results.find((item) => item.mediaType === "image");
+        if (image) {
+          if (approvedScene?.asset_id === image.assetId)
+            setAdultChoice({ jobId: lastAdultScene.id, assetId: image.assetId, characterId: lastAdultScene.character_id });
+          setResults((current) => ({ ...current, adultPreview: data.results }));
         }
       }
     }
@@ -488,6 +511,65 @@ export default function ToolsPage() {
         </select>
         <p className="muted" style={{ marginBottom: 0 }}>Válaszd ki, kinek kell szerepelnie az új képen.</p>
       </div>
+
+      <section className="card" style={{ marginBottom: 16 }}>
+        <h2 style={{ marginTop: 0 }}>Felnőtt jelenet: kép jóváhagyása → videó</h2>
+        <p className="muted">A kiválasztott modell jóváhagyott arcképeiből készül a jelenetkép. A kép ellenőrzése után külön indítható a Nureta-videó.</p>
+        <label htmlFor="adult-scene">Jelenetkép leírása</label>
+        <textarea id="adult-scene" maxLength={1500} value={adultScenePrompt}
+          onChange={(event) => setAdultScenePrompt(event.target.value)} placeholder="Helyszín, póz, öltözék, kellékek és képkivágás" />
+        <button disabled={busyKey !== null || !toolChar || !adultScenePrompt.trim()} onClick={() => {
+          setAdultChoice(null);
+          setResults((current) => ({ ...current, adultPreview: [], adultVideo: [] }));
+          run("adultPreview", "nureta_scene_image", { prompt: adultScenePrompt }, { characterId: toolChar });
+        }}>Jelenetkép készítése / újragenerálása</button>
+        <Badge k="adultPreview" /><Price k="adultPreview" />
+        <Results k="adultPreview" kind="image" />
+        {msg.adultPreview && <p role="status" className="muted">{msg.adultPreview}</p>}
+        {results.adultPreview?.some((item) => item.mediaType === "image") && (
+          <button className="ghost" disabled={busyKey !== null || !jobs.adultPreview?.id && !adultChoice} onClick={async () => {
+            const image = results.adultPreview.find((item) => item.mediaType === "image");
+            const jobId = jobs.adultPreview?.id ?? adultChoice?.jobId;
+            if (!image || !jobId || !toolChar) return;
+            setBusyKey("adultApprove");
+            try {
+              const response = await fetch("/api/nureta/scene/approve", {
+                method: "POST", headers: { authorization: `Bearer ${await token()}`, "content-type": "application/json" },
+                body: JSON.stringify({ jobId, assetId: image.assetId, characterId: toolChar }),
+              });
+              if (!response.ok) throw new Error("A jelenetkép jóváhagyása nem sikerült.");
+              setAdultChoice({ jobId, assetId: image.assetId, characterId: toolChar });
+              setMsg((current) => ({ ...current, adultPreview: "Jelenetkép jóváhagyva. Add meg a videó szövegét." }));
+            } catch (error) {
+              setMsg((current) => ({ ...current, adultPreview: error instanceof Error ? error.message : "Jóváhagyási hiba" }));
+            } finally { setBusyKey(null); }
+          }}>Ezt a jelenetképet jóváhagyom</button>
+        )}
+        {adultChoice?.characterId === toolChar && results.adultPreview?.some((item) => item.assetId === adultChoice.assetId) && <>
+          <p className="muted">Jóváhagyott kép kiválasztva. A videó ebből a képből indul; az arcot és a kellékeket a kész videóban is ellenőrizd.</p>
+          <label htmlFor="adult-video-prompt">Mit csináljon a videóban?</label>
+          <textarea id="adult-video-prompt" maxLength={1500} value={adultVideoPrompt}
+            onChange={(event) => setAdultVideoPrompt(event.target.value)} placeholder="Írd le a mozdulatokat és a jelenet menetét" />
+          <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+            <select aria-label="Videó hossza" value={adultDuration}
+              onChange={(event) => setAdultDuration(Number(event.target.value) as 5 | 8 | 10 | 12 | 15)}>
+              {[5, 8, 10, 12, 15].map((seconds) => <option key={seconds} value={seconds}>{seconds} mp</option>)}
+            </select>
+            <select aria-label="Nureta felbontás" value={adultResolution}
+              onChange={(event) => setAdultResolution(event.target.value as "480p" | "720p")}>
+              <option value="480p">480p próba</option><option value="720p">720p</option>
+            </select>
+            <button disabled={busyKey !== null || !adultVideoPrompt.trim()} onClick={() =>
+              run("adultVideo", "nureta_scene_video", {
+                prompt: adultVideoPrompt, sceneJobId: adultChoice.jobId,
+                sceneImageAssetId: adultChoice.assetId, duration: adultDuration, resolution: adultResolution,
+              }, { characterId: toolChar })}>Jóváhagyott képből videó készítése</button>
+          </div>
+        </>}
+        <Badge k="adultVideo" /><Price k="adultVideo" />
+        <Results k="adultVideo" kind="video" />
+        {msg.adultVideo && <p role="status" className="muted">{msg.adultVideo}</p>}
+      </section>
 
       <details className="card">
         <summary>Image-to-Prompt (egyéb eszköz)</summary>

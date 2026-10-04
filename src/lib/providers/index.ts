@@ -2,6 +2,7 @@ import { MockProvider } from "./mock";
 import { FalAdapter } from "./fal";
 import { ReplicateAdapter } from "./replicate";
 import { WaveSpeedAdapter } from "./wavespeed";
+import { NuretaAdapter } from "./nureta";
 import { ProviderRouter } from "./router";
 import { JobType, ProviderAdapter, ProviderError } from "./types";
 
@@ -14,6 +15,7 @@ export function buildRouter(extra: ProviderAdapter[] = []): ProviderRouter {
   if (process.env.FAL_KEY) real.push(new FalAdapter());
   if (process.env.REPLICATE_API_TOKEN) real.push(new ReplicateAdapter());
   if (process.env.WAVESPEED_API_KEY) real.push(new WaveSpeedAdapter());
+  if (process.env.NURETA_API_KEY) real.push(new NuretaAdapter());
 
   // PRODUCTION-ben a mock SEMMILYEN kapcsolóval nem engedélyezhető.
   const isProd = process.env.NODE_ENV === "production";
@@ -29,6 +31,7 @@ export function buildRouter(extra: ProviderAdapter[] = []): ProviderRouter {
 
   const primaryFor = (jobType: JobType): string => {
     if (real.length > 0) {
+      if (["nureta_scene_image", "nureta_scene_video"].includes(jobType)) return "nureta";
       if (["character_swap", "video_character_swap", "character_motion_video"].includes(jobType) && real.some((a) => a.name === "wavespeed")) return "wavespeed";
       const fal = real.find((a) => a.name === "fal");
       if (fal && fal.supports.includes(jobType)) return "fal";

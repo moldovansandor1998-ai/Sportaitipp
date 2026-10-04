@@ -49,7 +49,8 @@ export class ProviderRouter {
     const galleryEdit = jobType === "image_edit" && payload?.galleryEdit === true;
     const primaryName = this.primaryFor(jobType);
     const keyed = this.adapters
-      .filter((a) => a.supports.includes(jobType) && (jobType !== "image_edit" || (galleryEdit ? a.name === "wavespeed" : a.name !== "wavespeed")))
+      .filter((a) => a.supports.includes(jobType) && (jobType !== "image_edit" || (galleryEdit ? a.name === "wavespeed" : a.name !== "wavespeed"))
+        && (!jobType.startsWith("nureta_scene_") || a.name === "nureta"))
       .map((a) => ({ a, open: this.isOpen(a.name) ? 1 : 0, primary: a.name === primaryName ? 0 : 1 }));
     keyed.sort((x, y) => x.open - y.open || x.primary - y.primary);
     return keyed.map((k) => k.a);
