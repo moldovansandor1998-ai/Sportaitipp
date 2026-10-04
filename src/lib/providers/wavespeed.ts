@@ -15,7 +15,10 @@ const MOTION_ENDPOINT = "kwaivgi/kling-v2.6-pro/motion-control";
 const CREATIVE_ENDPOINT = "wavespeed-ai/open-video/image-to-video";
 // Lip-sync the completed video itself. An image-driven avatar regenerates the
 // whole head and torso and can distort proportions in longer speech clips.
-const TALKING_SCENE_ENDPOINT = "sync/lipsync-3";
+// Use the video editing variant that changes the mouth and local expression
+// while retaining the source performance. Lipsync 3 visibly exaggerated
+// Petra's head movement in the second half of a completed scene.
+const TALKING_SCENE_ENDPOINT = "sync/lipsync-2-pro";
 const CREATIVE_PROMPTS: Record<string, string> = {
   playful: "The same adult woman gives a spontaneous playful smile, glances briefly away from the camera, turns back and makes a small natural hand gesture.",
   confident: "The same adult woman shifts her posture naturally, makes calm eye contact, smiles with confidence and gently turns toward the camera.",
