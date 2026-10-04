@@ -126,56 +126,14 @@ async function finalizeLocked(
   jobId: string, job: JobRow, output: NormalizedOutput,
   sb: ReturnType<typeof serviceClient>,
 ): Promise<void> {
-  const assetIds = await storeOutputAssets(jobId, job, output, sb);
 
-  await mustUpdate("generation_jobs", { result: { assetIds, meta: output.meta } }, jobId);
-
-  const refIds = (job.payload as { refIds?: string[] } | null)?.refIds ?? [];
-  const weights = (output.meta as { weightsUrl?: string; weights?: unknown } | null)?.weightsUrl
-    ?? (typeof (output.meta as { weights?: unknown } | null)?.weights === "string"
-      ? (output.meta as { weights: string }).weights : null);
-  if (job.type === "character_training" && job.provider !== "mock" && !weights) {
-    throw new Error("TRAINING_WEIGHTS_MISSING");
-  }
-  const { error: txErr } = await sb.rpc("complete_job_transactional", {
-    p_job: jobId,
-    p_first_asset: assetIds[0] ?? null,
-    p_ref_ids: refIds,
-    p_provider: job.provider ?? "mock",
-    p_weights: weights ?? null,
-  });
-  if (txErr) throw new Error(`complete_job_transactional failed: ${txErr.message}`);
-
-  if (job.type === "character_training") {
-    const { data: vers } = await sb.from("character_versions")
-      .select("id,dataset_object_path").eq("generation_job_id", jobId);
-    for (const v of (vers ?? []) as Array<{ id: string; dataset_object_path: string | null }>) {
-      if (v.dataset_object_path) {
-        await sb.storage.from("assets").remove([v.dataset_object_path]).catch(() => {});
-        await sb.from("character_versions").update({ dataset_object_path: null }).eq("id", v.id).select("id").then(() => {}, () => {});
-      }
-    }
-  }
-  await notify(job.owner_id, "generation_completed", { jobType: job.type }, `done:${jobId}`).catch(() => {});
-}
-
-async function storeOutputAssets(
-  jobId: string, job: JobRow, output: NormalizedOutput,
-  sb: ReturnType<typeof serviceClient>,
-): Promise<string[]> {
   const assetIds: string[] = [];
   for (const [i, f] of output.files.entries()) {
     let { buf, contentType } = await fileToBuffer(f);
     if (job.type === "character_motion_video" && job.payload?.replaceVoice === true && f.kind === "video") {
       const { replaceVideoVoice } = await import("./replaceVideoVoice");
-      buf = await replaceVideoVoice(buf, String(job.payload.voiceId ?? ""));
+      buf = await replaceVideoVoice(buf, String(job.payload.voiceId ?? ""), job.payload.naturalHungarianVoice === true);
       contentType = "video/mp4";
-    }
-    if (f.kind === "video") {
-      const { compactVideo } = await import("./compactVideo");
-      const originalBytes = buf.length;
-      buf = await compactVideo(buf);
-      if (buf.length !== originalBytes) contentType = "video/mp4";
     }
     contentType ??= f.contentType;
     if (job.type === "character_swap" && job.payload?.outputCategory !== "fanvue" && Array.isArray(job.payload?.characterImageUrls) && f.kind === "image") {
@@ -210,26 +168,41 @@ async function storeOutputAssets(
       if (gErr) throw new Error(`gallery insert failed: ${gErr.message}`);
     }
   }
-  return assetIds;
-}
 
-/** Restore completed provider files after an oversize upload refund, without charging again. */
-export async function recoverRefundedVideoJob(job: JobRow & { provider_meta?: Record<string, unknown> }): Promise<boolean> {
-  if (job.type !== "character_motion_video" || job.status !== "refunded" || !job.provider_job_id || !job.provider) return false;
-  const sb = serviceClient();
-  const { data: current } = await sb.from("generation_jobs").select("status,result,error")
-    .eq("id", job.id).single();
-  if (current?.status !== "refunded" || current.result ||
-    !String((current.error as { message?: string } | null)?.message ?? "").includes("maximum allowed size")) return false;
-  const adapter = router.getAdapter(job.provider);
-  if (!adapter) throw new Error("RECOVERY_PROVIDER_UNAVAILABLE");
-  const output = await adapter.getResult(job.provider_job_id, job.provider_meta, job.type);
-  const assetIds = await storeOutputAssets(job.id, job, output, sb);
-  const { error } = await sb.from("generation_jobs").update({
-    result: { assetIds, meta: output.meta, recoveredAfterRefund: true },
-  }).eq("id", job.id).eq("status", "refunded").is("result", null);
-  if (error) throw new Error(`recovery result update failed: ${error.message}`);
-  return true;
+  // Eredmény-meta visszaírása (állapotváltozás nélkül – a finalizing lease alatt)
+  await mustUpdate("generation_jobs", { result: { assetIds, meta: output.meta } }, jobId);
+
+  // FLOW + CHARGE + COMPLETED egyetlen tranzakciós RPC-ben:
+  // ha a charge vagy a completed elhibázódik, a karakterfolyamat is visszagörget.
+  const refIds = (job.payload as { refIds?: string[] } | null)?.refIds ?? [];
+  // Valódi tréningnél a SÚLYOK URL-je kerül a verzióba (csak sikeres tréning után értelmes LoRA-ref)
+  const weights = (output.meta as { weightsUrl?: string; weights?: unknown } | null)?.weightsUrl
+    ?? (typeof (output.meta as { weights?: unknown } | null)?.weights === "string"
+      ? (output.meta as { weights: string }).weights : null);
+  if (job.type === "character_training" && job.provider !== "mock" && !weights) {
+    throw new Error("TRAINING_WEIGHTS_MISSING");
+  }
+  const { error: txErr } = await sb.rpc("complete_job_transactional", {
+    p_job: jobId,
+    p_first_asset: assetIds[0] ?? null,
+    p_ref_ids: refIds,
+    p_provider: job.provider ?? "mock",
+    p_weights: weights ?? null,
+  });
+  if (txErr) throw new Error(`complete_job_transactional failed: ${txErr.message}`);
+
+  // ZIP-életciklus: sikeres tréning után a dataset törlődik (a provider már nem kéri)
+  if (job.type === "character_training") {
+    const { data: vers } = await sb.from("character_versions")
+      .select("id,dataset_object_path").eq("generation_job_id", jobId);
+    for (const v of (vers ?? []) as Array<{ id: string; dataset_object_path: string | null }>) {
+      if (v.dataset_object_path) {
+        await sb.storage.from("assets").remove([v.dataset_object_path]).catch(() => {});
+        await sb.from("character_versions").update({ dataset_object_path: null }).eq("id", v.id).select("id").then(() => {}, () => {});
+      }
+    }
+  }
+  await notify(job.owner_id, "generation_completed", { jobType: job.type }, `done:${jobId}`).catch(() => {});
 }
 
 export async function failJob(job: JobRow, message: string): Promise<void> {
