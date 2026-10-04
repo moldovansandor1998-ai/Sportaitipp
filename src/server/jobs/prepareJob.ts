@@ -48,7 +48,9 @@ export async function prepareValidatedJobInput(input: {
   }
   if (["video_character_swap", "character_motion_video"].includes(type) && !process.env.WAVESPEED_API_KEY)
     return { type, payload: {}, error: "PROVIDER_MODEL_INVALID", status: 503 };
-  if (["nureta_scene_image", "nureta_scene_video"].includes(type) && !process.env.NURETA_API_KEY)
+  if (type === "nureta_scene_image" && !process.env.WAVESPEED_API_KEY)
+    return { type, payload: {}, error: "PROVIDER_MODEL_INVALID", status: 503 };
+  if (type === "nureta_scene_video" && !process.env.NURETA_API_KEY)
     return { type, payload: {}, error: "PROVIDER_MODEL_INVALID", status: 503 };
 
   // A kliens által küldött LoRA-adatok KIZÁRÓDNEK – csak sikeres szerveroldali feloldás után kerülnek vissza
@@ -251,13 +253,23 @@ export async function prepareValidatedJobInput(input: {
     const { data: version } = await svc.from("character_versions").select("id")
       .eq("id", character.active_version_id).eq("character_id", characterId).eq("status", "approved").single();
     if (!version) return { type, payload: {}, error: "CHARACTER_REQUIRED", status: 409 };
-    payload.prompt = String(payload.prompt).trim();
     payload.outputCategory = "fanvue";
     if (type === "nureta_scene_image") {
       const faces = await resolveCharacterFaces();
       if (!faces.length) return { type, payload: {}, error: "IMAGE_INPUT_REQUIRED", status: 409 };
+      const { data: source } = await svc.from("assets").select("bucket,object_path,media_type,content_type")
+        .eq("id", String(payload.sourceAssetId)).eq("owner_id", input.userId)
+        .eq("media_type", String(payload.sourceMediaType)).maybeSingle();
+      if (!source || (source.media_type === "video" && source.content_type !== "video/mp4"))
+        return { type, payload: {}, error: "SOURCE_IMAGE_REQUIRED", status: 400 };
+      const { data: signed } = await svc.storage.from(source.bucket).createSignedUrl(source.object_path, 7200);
+      if (!signed?.signedUrl) return { type, payload: {}, error: "SOURCE_IMAGE_REQUIRED", status: 502 };
+      payload.sourceUrl = signed.signedUrl;
       payload.referenceUrls = faces;
+      payload.sourceAssetId = String(payload.sourceAssetId);
+      payload.scenePrompt = typeof payload.scenePrompt === "string" ? payload.scenePrompt.trim() : "";
     } else {
+      payload.prompt = String(payload.prompt).trim();
       const { data: preview } = await svc.from("generation_jobs").select("id,type,status")
         .eq("id", String(payload.sceneJobId)).eq("owner_id", input.userId)
         .eq("character_id", characterId).eq("type", "nureta_scene_image")

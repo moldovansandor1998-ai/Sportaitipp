@@ -46,9 +46,16 @@ export const CreateJobSchema = z.object({
   switch (val.type) {
     case "nureta_scene_image":
     case "nureta_scene_video": {
-      if (!val.characterId || typeof p.prompt !== "string" || !p.prompt.trim() || p.prompt.length > 1500)
-        ctx.addIssue({ code: z.ZodIssueCode.custom, message: "Válassz modellt és adj meg legfeljebb 1500 karakteres jelenetleírást." });
-      if (val.type === "nureta_scene_video") {
+      if (!val.characterId) ctx.addIssue({ code: z.ZodIssueCode.custom, message: "Válassz modellt." });
+      if (val.type === "nureta_scene_image") {
+        if (typeof p.sourceAssetId !== "string" || !z.string().uuid().safeParse(p.sourceAssetId).success
+          || !["image", "video"].includes(String(p.sourceMediaType)))
+          ctx.addIssue({ code: z.ZodIssueCode.custom, message: "Válassz vagy tölts fel egy képet vagy MP4 videót." });
+        if (p.scenePrompt !== undefined && (typeof p.scenePrompt !== "string" || p.scenePrompt.length > 500))
+          ctx.addIssue({ code: z.ZodIssueCode.custom, message: "A jelenetkép módosítása legfeljebb 500 karakter lehet." });
+      } else {
+        if (typeof p.prompt !== "string" || !p.prompt.trim() || p.prompt.length > 1500)
+          ctx.addIssue({ code: z.ZodIssueCode.custom, message: "Add meg a videó szövegét (legfeljebb 1500 karakter)." });
         if (!z.string().uuid().safeParse(p.sceneJobId).success || !z.string().uuid().safeParse(p.sceneImageAssetId).success)
           ctx.addIssue({ code: z.ZodIssueCode.custom, message: "Előbb hagyd jóvá a jelenetképet." });
         if (![5, 8, 10, 12, 15].includes(Number(p.duration)))
