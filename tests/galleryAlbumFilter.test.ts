@@ -26,7 +26,7 @@ function row(id: string, albumId: string | null) {
 
 function stub() {
   const galleryUrls: string[] = [];
-  vi.stubGlobal("fetch", vi.fn(async (url: string | URL) => {
+  vi.stubGlobal("fetch", vi.fn(async (url: string | URL, init?: RequestInit) => {
     const u = String(url);
     if (u.includes("/auth/v1/user")) return new Response(JSON.stringify({ user: { id: USER } }), { status: 200 });
     if (u.includes("/rest/v1/albums")) {
@@ -39,7 +39,11 @@ function stub() {
         : [row("44444444-4444-4444-8444-444444444444", OWN_ALBUM), row("55555555-5555-4555-8555-555555555555", null)];
       return new Response(JSON.stringify(filtered), { status: 200 });
     }
-    if (u.includes("/storage/v1/object/sign/")) return new Response(JSON.stringify({ signedURL: "/signed?token=t" }), { status: 200 });
+    if (u.endsWith("/storage/v1/object/sign/assets")) {
+      const paths: string[] = JSON.parse(String(init?.body)).paths;
+      expect(paths.every(path => path.startsWith(`${USER}/`))).toBe(true);
+      return new Response(JSON.stringify(paths.map(path => ({ path, signedURL: `/object/sign/assets/${path}?token=t`, error: null }))), { status: 200 });
+    }
     return new Response("{}", { status: 200 });
   }));
   return galleryUrls;

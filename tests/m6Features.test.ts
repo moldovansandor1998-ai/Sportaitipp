@@ -5,7 +5,7 @@ import { NextRequest } from "next/server";
 
 const SAVED_ENV: Record<string, string | undefined> = {};
 beforeAll(() => {
-  for (const k of ["NEXT_PUBLIC_SUPABASE_URL", "NEXT_PUBLIC_SUPABASE_ANON_KEY", "SUPABASE_SERVICE_ROLE_KEY", "NODE_ENV"]) SAVED_ENV[k] = process.env[k];
+  for (const k of ["NEXT_PUBLIC_SUPABASE_URL", "NEXT_PUBLIC_SUPABASE_ANON_KEY", "SUPABASE_SERVICE_ROLE_KEY", "NODE_ENV", "FAL_KEY"]) SAVED_ENV[k] = process.env[k];
   process.env.NEXT_PUBLIC_SUPABASE_URL = "http://stub";
   process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY = "anon";
   process.env.SUPABASE_SERVICE_ROLE_KEY = "service";
@@ -18,20 +18,20 @@ afterEach(() => vi.unstubAllGlobals());
 vi.mock("@/server/jobs/schedule", () => ({ scheduleKick: () => {} }));
 
 describe("fal.ai adapter – M6 eszközök leképezése", () => {
-  function captureSubmit(jobType: string, payload: Record<string, unknown>): Promise<{ sent: Record<string, unknown>; url: string }> {
-    return new Promise((resolve) => {
+  async function captureSubmit(jobType: string, payload: Record<string, unknown>): Promise<{ sent: Record<string, unknown>; url: string }> {
+    let captured: { sent: Record<string, unknown>; url: string } | undefined;
       vi.stubGlobal("fetch", vi.fn(async (url: string | URL, init?: RequestInit) => {
-        resolve({ sent: JSON.parse(String(init?.body)) as Record<string, unknown>, url: String(url) });
+        captured = { sent: JSON.parse(String(init?.body)) as Record<string, unknown>, url: String(url) };
         return new Response(JSON.stringify({ request_id: "r" }), { status: 200 });
       }));
       process.env.FAL_KEY = "k";
-      void import("@/lib/providers/fal").then(async (m) => {
+      const m = await import("@/lib/providers/fal");
         await new m.FalAdapter().submit({
           jobId: "j", jobType: jobType as never, payload,
           webhookUrl: "https://app/hook", idempotencyKey: "k1",
         });
-      });
-    });
+      if (!captured) throw new Error("Adapter did not submit a request");
+      return captured;
   }
   it("Image-to-Prompt → caption végpont", async () => {
     const { sent, url } = await captureSubmit("video_to_prompt", { imageUrl: "https://fal.media/a.png" });
@@ -47,10 +47,15 @@ describe("fal.ai adapter – M6 eszközök leképezése", () => {
     const { url } = await captureSubmit("background_removal", { imageUrl: "https://fal.media/a.png" });
     expect(url).toContain("fal-ai/birefnet");
   });
-  it("Character Swap → face-swap, base+swap URL", async () => {
-    const { sent, url } = await captureSubmit("character_swap", { imageUrl: "https://fal.media/base.png", swapImageUrl: "https://fal.media/swap.png" });
-    expect(url).toContain("fal-ai/face-swap");
-    expect(sent).toMatchObject({ base_image_url: "https://fal.media/base.png", swap_image_url: "https://fal.media/swap.png" });
+  it("retired Character Swap is rejected before any Fal submission", async () => {
+    const request = vi.fn();
+    vi.stubGlobal("fetch", request);
+    const { FalAdapter } = await import("@/lib/providers/fal");
+    const adapter = new FalAdapter();
+    expect(adapter.supports).not.toContain("character_swap");
+    await expect(adapter.submit({ jobId: "j", jobType: "character_swap", payload: {}, idempotencyKey: "k1" }))
+      .rejects.toThrow("unsupported character_swap");
+    expect(request).not.toHaveBeenCalled();
   });
   it("Talking/Lip-sync → sync-lips, video+audio", async () => {
     const { sent } = await captureSubmit("talking_video", { videoUrl: "https://fal.media/v.mp4", audioUrl: "https://fal.media/a.mp3" });
