@@ -12,6 +12,9 @@ const EDIT_MODELS = {
 const CHARACTER_EDIT_PROMPT = "Refer to image 2 to make the same photograph, but use the face, hair and eyes of the adult woman in image 1. Images 3 and 4, when present, show the same woman's body proportions and further identity views. Image 1 is the identity anchor; image 2 alone determines the pose, clothing, camera angle, setting and objects. Preserve image 1's exact hair length, color, face shape, eye shape and natural skin detail. Keep her consistent natural body proportions from the identity references, with exactly two arms, two hands and five fingers on each hand. Preserve image 2's composition. Photorealistic candid camera image, not illustration or cartoon. Copy no objects or accessories from images 1, 3 or 4. No text, watermark, tattoos, extra limbs, extra hands, plastic skin or altered face. Do not add other people.";
 const SCENE_EDIT_PROMPT = `${CHARACTER_EDIT_PROMPT} Keep every food item, utensil, prop and its position from image 2 exactly recognizable. Preserve the original hand-object contact, framing, clothing, camera position and background. Change only the woman, never replace or invent objects.`;
 const MOTION_ENDPOINT = "kwaivgi/kling-v2.6-pro/motion-control";
+const MOTION_ENDPOINT_IDENTITY = "kwaivgi/kling-v3.0-pro/motion-control";
+const IDENTITY_MOTION_PROMPT = "Animate the exact adult woman in the approved scene image. Preserve her facial identity throughout every frame: the same face shape, jawline, cheeks, eyes, nose, lips, hairline, age and natural skin texture. Keep the approved image's clothing, body proportions, objects, lighting and background. Transfer only the source video's natural gestures and timing. Subtle realistic facial expressions and mouth movement; no face morphing or beauty filter.";
+const IDENTITY_MOTION_NEGATIVE = "different face, sagging face, melted features, altered jaw, changed eyes, asymmetry, waxy or over-smoothed skin, face drift, extra hands, missing objects, transformed objects, distorted hands, altered background";
 const CREATIVE_ENDPOINT = "wavespeed-ai/open-video/image-to-video";
 // Lip-sync the completed video itself. An image-driven avatar regenerates the
 // whole head and torso and can distort proportions in longer speech clips.
@@ -76,7 +79,8 @@ export class WaveSpeedAdapter implements ProviderAdapter {
       if (payload.motionMethod === "scene_preview") return { credits: 40, secondsExpected: 90 };
       if (payload.motionMethod === "talking_scene") return { credits: 1008, secondsExpected: 420 };
       if (payload.motionMethod === "creative") return { credits: 100, secondsExpected: 240 };
-      return { credits: payload.quality === "standard" ? 756 : 1008, secondsExpected: payload.motionMethod === "anchored" ? 420 : 180 };
+      return { credits: payload.quality === "standard" ? 756 : payload.motionMethod === "anchored" ? 1512 : 1008,
+        secondsExpected: payload.motionMethod === "anchored" ? 420 : 180 };
     }
     return { credits: 40, secondsExpected: 60 };
   }
@@ -154,13 +158,14 @@ export class WaveSpeedAdapter implements ProviderAdapter {
         return { providerJobId: data.id, providerMeta: { endpoint: CREATIVE_ENDPOINT, stage: "creative" } };
       }
       if (p.payload.motionMethod === "anchored" && typeof p.payload.sceneImageUrl === "string") {
-        const data = await this.request(`${API}/${MOTION_ENDPOINT}`, {
+        const endpoint = p.payload.quality === "standard" ? MOTION_ENDPOINT : MOTION_ENDPOINT_IDENTITY;
+        const data = await this.request(`${API}/${endpoint}`, {
           image: p.payload.sceneImageUrl, video, character_orientation: "video", keep_original_sound: true,
-          prompt: "Keep the reference scene, objects, clothing, camera and hand-object contact consistent with the approved image. Follow the source video's gestures and timing.",
-          negative_prompt: "extra hands, missing objects, transformed objects, distorted hands, altered background, face drift",
+          prompt: IDENTITY_MOTION_PROMPT,
+          negative_prompt: IDENTITY_MOTION_NEGATIVE,
         });
         if (typeof data.id !== "string") throw new ProviderError("WaveSpeed did not return the motion task ID", false);
-        return { providerJobId: data.id, providerMeta: { endpoint: MOTION_ENDPOINT, stage: "video" } };
+        return { providerJobId: data.id, providerMeta: { endpoint, stage: "video" } };
       }
       if (p.payload.motionMethod === "scene_preview") {
         const sb = serviceClient();
