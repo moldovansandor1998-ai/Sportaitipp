@@ -275,6 +275,12 @@ export default function ToolsPage() {
       async (_id, status, error) => {
         const errorMessage = typeof error === "string" && error.length > 0 ? error : null;
         setJobs((m) => ({ ...m, [key]: { id: jobId, status, error: errorMessage ? { message: errorMessage } : null } }));
+        if (status === "failed" || status === "refunded" || status === "submission_uncertain") {
+          setMsg(current => ({ ...current, [key]: status === "refunded"
+            ? `A generálás nem indult el vagy meghiúsult; a kreditet visszaadtuk. ${errorMessage ?? ""}`
+            : status === "submission_uncertain" ? `A beküldés állapotát ellenőrizni kell. ${errorMessage ?? ""}`
+            : `A generálás meghiúsult. ${errorMessage ?? ""}` }));
+        }
         if (status === "completed") { await loadJobResults(jobId, key); void init(); }
       });
   }
@@ -467,7 +473,7 @@ export default function ToolsPage() {
     }).then((r) => {
       if ("ok" in r && r.ok) {
         setJobs((p) => ({ ...p, [key]: { id: r.value.jobId!, status: "queued", error: null } }));
-        setMsg((p) => ({ ...p, [key]: "Elindult – az eredmény a Galériában." }));
+        setMsg((p) => ({ ...p, [key]: "A kérés sorba állítva. A kész eredmény a Galériába kerül." }));
         poll(r.value.jobId!, key);
       }
     });

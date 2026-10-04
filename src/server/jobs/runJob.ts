@@ -5,6 +5,7 @@ import { serviceClient } from "@/lib/supabase/server";
 import { refundJob } from "@/lib/credits/rpc";
 import { buildRouter } from "@/lib/providers";
 import type { JobType, NormalizedOutput, ProviderFile } from "@/lib/providers/types";
+import { ProviderSubmissionRejectedError } from "@/lib/providers/types";
 import { assertAllowedProviderOutputUrl } from "@/lib/security/ssrf";
 
 const router = buildRouter();
@@ -103,6 +104,10 @@ export async function runClaimedJob(job: JobRow, routerOverride?: ReturnType<typ
             throw new Error("transition to submission_uncertain failed");
           }
         });
+      return;
+    }
+    if (e instanceof ProviderSubmissionRejectedError) {
+      await failJob(job, e.message);
       return;
     }
     // Nem tudjuk biztosan, hogy futott-e: submission_uncertain. NINCS automatikus refund

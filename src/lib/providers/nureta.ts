@@ -1,4 +1,4 @@
-import { Estimate, JobType, NormalizedOutput, ProviderAdapter, ProviderError, SubmitParams, SubmitResult } from "./types";
+import { Estimate, JobType, NormalizedOutput, ProviderAdapter, ProviderError, ProviderSubmissionRejectedError, SubmitParams, SubmitResult } from "./types";
 
 const BASE = "https://developer.nureta.ai";
 const endpoint = (image: boolean) => `${BASE}/api/v3/${image ? "images" : "contents"}/generations/tasks`;
@@ -30,11 +30,19 @@ export class NuretaAdapter implements ProviderAdapter {
     if (!contentType.includes("application/json"))
       throw new ProviderError("A Nureta API nem JSON választ adott; a feladat állapotát ellenőrizni kell.", false, undefined, "outage");
     const data = await response.json() as Record<string, unknown>;
-    if (!response.ok) throw new ProviderError(
-      `Nureta ${response.status}: ${String(data.message ?? data.error ?? "provider error").slice(0, 180)}`,
-      response.status === 429 || response.status >= 500,
-      undefined, response.status === 401 ? "auth" : "invalid_input",
-    );
+    if (!response.ok) {
+      const nested = data.error && typeof data.error === "object" ? data.error as Record<string, unknown> : {};
+      const code = typeof nested.code === "string" ? nested.code : typeof data.code === "string" ? data.code : "";
+      const detail = typeof nested.message === "string" ? nested.message : typeof data.message === "string" ? data.message
+        : typeof data.error === "string" ? data.error : "provider error";
+      const message = `Nureta ${response.status}${code ? ` (${code.slice(0, 80)})` : ""}: ${detail.slice(0, 250)}`;
+      console.error(JSON.stringify({ scope: "provider.rejection", provider: "nureta", status: response.status, code, detail: detail.slice(0, 250) }));
+      const rejectedCreation = init?.method === "POST" && [400, 401, 402, 403, 404, 422].includes(response.status)
+        && typeof data.id !== "string";
+      const ErrorClass = rejectedCreation ? ProviderSubmissionRejectedError : ProviderError;
+      throw new ErrorClass(message, response.status === 429 || response.status >= 500, undefined,
+        response.status === 401 || response.status === 403 && code !== "AccountOverdueError" ? "auth" : "invalid_input");
+    }
     return data;
   }
 
