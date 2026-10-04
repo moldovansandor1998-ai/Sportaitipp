@@ -383,6 +383,7 @@ export async function prepareValidatedJobInput(input: {
         return { type, payload: {}, error: "TTS_VOICE_INVALID", status: 503 };
       payload.replaceVoice = true;
       payload.voiceId = voiceId;
+      payload.naturalHungarianVoice = modelName === "dorika" || modelName === "dóra";
     }
     delete payload.voiceMode;
     payload.quality = payload.quality === "standard" ? "standard" : "pro";
