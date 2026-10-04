@@ -10,7 +10,7 @@ export type PrepError =
   | "validation" | "AGE_VERIFICATION_REQUIRED" | LoraError
   | "CHARACTER_REQUIRED" | "EASY_INPUT_INVALID" | "TTS_VOICE_INVALID"
   | "I2V_MODEL_NOT_ALLOWED" | "URL_NOT_ALLOWED" | "IMAGE_INPUT_REQUIRED" | "SOURCE_IMAGE_REQUIRED"
-  | "TRAINED_EDIT_UNAVAILABLE" | "VIDEO_FORMAT_UNSUPPORTED";
+  | "TRAINED_EDIT_UNAVAILABLE" | "VIDEO_FORMAT_UNSUPPORTED" | "SCENE_PREVIEW_REQUIRED";
 
 export interface PreparedJob {
   type: string;
@@ -333,6 +333,7 @@ export async function prepareValidatedJobInput(input: {
     delete payload.videoAssetId;
   }
   if (type === "character_motion_video") {
+    const sourceVideoAssetId = String(payload.videoAssetId);
     const { data: video } = await svc.from("assets").select("bucket,object_path,content_type")
       .eq("id", String(payload.videoAssetId)).eq("owner_id", input.userId).eq("media_type", "video").single();
     if (!video) return { type, payload: {}, error: "SOURCE_IMAGE_REQUIRED", status: 400 };
@@ -360,8 +361,32 @@ export async function prepareValidatedJobInput(input: {
     payload.videoUrl = signedVideo.signedUrl;
     payload.characterImageUrl = referenceUrls[0];
     payload.characterImageUrls = referenceUrls;
+    if (payload.motionMethod === "anchored") {
+      const { data: preview } = await svc.from("generation_jobs").select("id,payload")
+        .eq("id", String(payload.scenePreviewJobId)).eq("owner_id", input.userId)
+        .eq("character_id", characterId!).eq("type", "character_motion_video")
+        .eq("status", "completed").maybeSingle();
+      const previewPayload = preview?.payload as Record<string, unknown> | undefined;
+      if (previewPayload?.motionMethod !== "scene_preview" || previewPayload.sourceVideoAssetId !== sourceVideoAssetId)
+        return { type, payload: {}, error: "SCENE_PREVIEW_REQUIRED", status: 409 };
+      const { data: approved } = await svc.from("gallery_items").select("assets!inner(bucket,object_path,media_type)")
+        .eq("job_id", preview!.id).eq("owner_id", input.userId)
+        .eq("asset_id", String(payload.sceneImageAssetId)).is("deleted_at", null).maybeSingle();
+      const sceneAsset = approved?.assets as unknown as { bucket: string; object_path: string; media_type: string } | null;
+      if (!sceneAsset || sceneAsset.media_type !== "image")
+        return { type, payload: {}, error: "SCENE_PREVIEW_REQUIRED", status: 409 };
+      const { data: sceneSigned } = await svc.storage.from(sceneAsset.bucket).createSignedUrl(sceneAsset.object_path, 7200);
+      if (!sceneSigned?.signedUrl) return { type, payload: {}, error: "SCENE_PREVIEW_REQUIRED", status: 409 };
+      payload.sceneImageUrl = sceneSigned.signedUrl;
+    }
+    if (payload.motionMethod === "scene_preview") {
+      payload.sourceVideoAssetId = sourceVideoAssetId;
+      payload.scenePrompt = typeof payload.scenePrompt === "string" ? payload.scenePrompt.trim() : "";
+      payload.voiceMode = "original";
+    }
     payload.motionMethod = payload.motionMethod === "talking_scene" ? "talking_scene"
       : payload.motionMethod === "creative" ? "creative"
+      : payload.motionMethod === "scene_preview" ? "scene_preview"
       : payload.motionMethod === "legacy" ? "legacy" : "anchored";
     if (payload.motionMethod === "creative") {
       payload.motionStyle = ["playful", "confident", "casual"].includes(String(payload.motionStyle))
