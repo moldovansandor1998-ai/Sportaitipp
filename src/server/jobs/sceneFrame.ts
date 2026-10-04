@@ -7,7 +7,7 @@ import ffmpegPath from "ffmpeg-static";
 import sharp from "sharp";
 
 /** Pick an early, visible, sharp frame. This avoids using an opening black frame. */
-export async function sceneFrame(video: Buffer): Promise<Buffer> {
+export async function sceneFrame(video: Buffer, preferBest = false): Promise<Buffer> {
   const binary = ffmpegPath;
   if (!binary) throw new Error("FFMPEG_UNAVAILABLE");
   const dir = await mkdtemp(join(tmpdir(), "castora-frame-"));
@@ -32,7 +32,7 @@ export async function sceneFrame(video: Buffer): Promise<Buffer> {
       if (brightness < 28 || contrast < 10) continue;
       // Match the video's opening state: use the first clearly visible frame,
       // instead of a prettier frame several seconds into an action.
-      if (brightness >= 45 && contrast >= 20 && (stats.entropy ?? 0) >= 4) return frame;
+      if (!preferBest && brightness >= 45 && contrast >= 20 && (stats.entropy ?? 0) >= 4) return frame;
       const score = contrast + (stats.entropy ?? 0) * 3 - second * 3;
       if (!best || score > best.score) best = { score, image: frame };
     }
