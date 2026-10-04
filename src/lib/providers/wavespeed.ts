@@ -73,9 +73,10 @@ export class WaveSpeedAdapter implements ProviderAdapter {
     // Video person swap is billed by duration, capped at 30 seconds. Keep the
     // existing conservative reservation until provider usage reconciliation.
     if (jobType === "character_motion_video") {
+      if (payload.motionMethod === "scene_preview") return { credits: 40, secondsExpected: 90 };
       if (payload.motionMethod === "talking_scene") return { credits: 1008, secondsExpected: 420 };
       if (payload.motionMethod === "creative") return { credits: 100, secondsExpected: 240 };
-      return { credits: (payload.quality === "standard" ? 756 : 1008) + (payload.motionMethod === "anchored" ? 40 : 0), secondsExpected: payload.motionMethod === "anchored" ? 420 : 180 };
+      return { credits: payload.quality === "standard" ? 756 : 1008, secondsExpected: payload.motionMethod === "anchored" ? 420 : 180 };
     }
     return { credits: 40, secondsExpected: 60 };
   }
@@ -152,7 +153,16 @@ export class WaveSpeedAdapter implements ProviderAdapter {
         if (typeof data.id !== "string") throw new ProviderError("WaveSpeed did not return a video task ID", false);
         return { providerJobId: data.id, providerMeta: { endpoint: CREATIVE_ENDPOINT, stage: "creative" } };
       }
-      if (p.payload.motionMethod === "anchored") {
+      if (p.payload.motionMethod === "anchored" && typeof p.payload.sceneImageUrl === "string") {
+        const data = await this.request(`${API}/${MOTION_ENDPOINT}`, {
+          image: p.payload.sceneImageUrl, video, character_orientation: "video", keep_original_sound: true,
+          prompt: "Keep the reference scene, objects, clothing, camera and hand-object contact consistent with the approved image. Follow the source video's gestures and timing.",
+          negative_prompt: "extra hands, missing objects, transformed objects, distorted hands, altered background, face drift",
+        });
+        if (typeof data.id !== "string") throw new ProviderError("WaveSpeed did not return the motion task ID", false);
+        return { providerJobId: data.id, providerMeta: { endpoint: MOTION_ENDPOINT, stage: "video" } };
+      }
+      if (p.payload.motionMethod === "scene_preview") {
         const sb = serviceClient();
         const { data: job } = await sb.from("generation_jobs").select("owner_id").eq("id", p.jobId).single();
         if (!job) throw new ProviderError("Video job not found", false);
@@ -171,11 +181,12 @@ export class WaveSpeedAdapter implements ProviderAdapter {
         const endpoint = EDIT_MODELS["seedream-v4.5"];
         const references = Array.isArray(p.payload.characterImageUrls) ? p.payload.characterImageUrls
           .filter((url): url is string => typeof url === "string" && /^https:\/\//.test(url)).slice(1, 3) : [];
+        const extra = typeof p.payload.scenePrompt === "string" ? p.payload.scenePrompt.trim() : "";
         const data = await this.request(`${API}/${endpoint}`, {
-          images: [image, signed.signedUrl, ...references], prompt: SCENE_EDIT_PROMPT, size: "1152*2048",
+          images: [image, signed.signedUrl, ...references], prompt: `${SCENE_EDIT_PROMPT} ${extra}`.trim(), size: "1152*2048",
         });
         if (typeof data.id !== "string") throw new ProviderError("WaveSpeed did not return the scene image task ID", false);
-        return { providerJobId: data.id, providerMeta: { endpoint, stage: "still", jobId: p.jobId, sourceVideoUrl: video } };
+        return { providerJobId: data.id, providerMeta: { endpoint, stage: "scene_preview" } };
       }
       const endpoint = "pixverse/swap";
       const data = await this.request(`${API}/${endpoint}`, {
@@ -224,6 +235,7 @@ export class WaveSpeedAdapter implements ProviderAdapter {
   async getStatus(id: string, meta?: Record<string, unknown>): Promise<"running" | "done" | "failed"> {
     const data = await this.result(id);
     if (data.status === "completed") {
+      // Finish already-submitted jobs from the former one-step flow.
       if (meta?.stage === "still") {
         await this.advanceSceneToVideo(id, meta, data);
         return "running";
@@ -280,7 +292,7 @@ export class WaveSpeedAdapter implements ProviderAdapter {
     const urls = outputs.map((x) => typeof x === "string" ? x : (x as { url?: unknown })?.url)
       .filter((x): x is string => typeof x === "string" && /^https:\/\//.test(x));
     if (urls.length === 0) throw new ProviderError("WaveSpeed returned no output", false, id);
-    const kind = jobType === "video_character_swap" || jobType === "character_motion_video" ? "video" as const : "image" as const;
+    const kind = jobType === "video_character_swap" || (jobType === "character_motion_video" && _meta?.stage !== "scene_preview") ? "video" as const : "image" as const;
     const files: NormalizedOutput["files"] = urls.map((url) => ({ kind, url }));
     if (jobType === "character_motion_video" && _meta?.stage === "video" && typeof _meta.sceneImageUrl === "string")
       files.push({ kind: "image", url: _meta.sceneImageUrl });
