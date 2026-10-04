@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import Image from "next/image";
 import { browserClient } from "@/lib/supabase/client";
 import { zipFiles } from "@/lib/downloadZip";
+import GalleryVideo from "./GalleryVideo";
 
 interface Item {
   galleryItemId: string; assetId: string; mediaType: string; qcStatus: string;
@@ -15,6 +16,9 @@ interface Character { id: string; name: string; }
 
 export default function GalleryPage() {
   const [items, setItems] = useState<Item[] | null>(null);
+  const [recentVideos, setRecentVideos] = useState<Item[]>([]);
+  const [videoCount, setVideoCount] = useState(0);
+  const [videoError, setVideoError] = useState("");
   const [albums, setAlbums] = useState<Album[]>([]);
   const [characters, setCharacters] = useState<Character[]>([]);
   const [characterFilter, setCharacterFilter] = useState<string | null>(null);
@@ -24,7 +28,7 @@ export default function GalleryPage() {
   const [typeFilter, setTypeFilter] = useState("all");
   const [albumFilter, setAlbumFilter] = useState("all");
   const [view, setView] = useState<"available" | "used">("available");
-  const [contentCategory, setContentCategory] = useState<"tiktok" | "fanvue" | "all">("tiktok");
+  const [contentCategory, setContentCategory] = useState<"tiktok" | "fanvue" | "all">("all");
   const loadSequence = useRef(0);
   const [usageError, setUsageError] = useState("");
   const [deleting, setDeleting] = useState(false);
@@ -98,8 +102,31 @@ export default function GalleryPage() {
     if (contentCategory !== "all") qs.set("category", contentCategory);
     if (typeFilter !== "all") qs.set("mediaType", typeFilter);
     qs.set("page", String(page));
-    const res = await fetch(`/api/gallery?${qs}`, { headers: { authorization: `Bearer ${await token()}` } });
-    if (res.ok) {
+    const headers = { authorization: `Bearer ${await token()}` };
+    // Videos must remain discoverable even when newer image batches fill the
+    // current page, or the selected image category excludes scene videos.
+    const videoQs = new URLSearchParams({ mediaType: "video", view: "available", page: "0" });
+    if (characterFilter !== "all") videoQs.set("characterId", characterFilter);
+    const [listing, videosListing] = await Promise.allSettled([
+      fetch(`/api/gallery?${qs}`, { headers }),
+      fetch(`/api/gallery?${videoQs}`, { headers }),
+    ]);
+    const res = listing.status === "fulfilled" ? listing.value : null;
+    const videosRes = videosListing.status === "fulfilled" ? videosListing.value : null;
+    if (sequence === loadSequence.current && characterFilterRef.current === characterFilter) {
+      if (videosRes?.ok) {
+        const videos = await videosRes.json();
+        if (sequence === loadSequence.current) {
+          setRecentVideos(videos.items.slice(0, 6));
+          setVideoCount(videos.total ?? videos.items.length);
+          setVideoError("");
+        }
+      } else {
+        setRecentVideos([]);
+        setVideoError("A videók listája nem tölthető be. Frissítsd a Galériát.");
+      }
+    }
+    if (res?.ok) {
       const body = await res.json();
       if (sequence === loadSequence.current && characterFilterRef.current === characterFilter) {
         setItems(body.items);
@@ -183,6 +210,7 @@ export default function GalleryPage() {
       setItems(current => current?.filter(item => !removed.includes(item.galleryItemId)) ?? null);
       setSelected(new Set(ids.filter(id => !removed.includes(id))));
       setTotal(current => Math.max(0, current - removed.length));
+      void load();
     } catch {
       setUsageError("A képek törlése hálózati hiba miatt sikertelen.");
     } finally {
@@ -198,6 +226,7 @@ export default function GalleryPage() {
       setItems(current => current?.filter(item => item.galleryItemId !== id) ?? null);
       setTotal(current => Math.max(0, current - 1));
       setSelected(current => { const next = new Set(current); next.delete(id); return next; });
+      void load();
     } catch { setUsageError("A kép törlése hálózati hiba miatt sikertelen."); }
     finally { setDeleting(false); }
   }
@@ -306,6 +335,9 @@ export default function GalleryPage() {
     <main>
       <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
         <h1 style={{ fontSize: 22, margin: 0 }}>Galériám</h1>
+        <button className={contentCategory === "all" && typeFilter === "all" ? "" : "ghost"}
+          disabled={contentCategory === "all" && typeFilter === "all"}
+          onClick={() => { setContentCategory("all"); setTypeFilter("all"); setPage(0); setSelected(new Set()); setItems(null); }}>Összes</button>
         <button className={contentCategory === "tiktok" ? "" : "ghost"} disabled={contentCategory === "tiktok" && typeFilter === "all"}
           onClick={() => { setContentCategory("tiktok"); setTypeFilter("all"); setPage(0); setSelected(new Set()); setItems(null); }}>TikTok</button>
         <button className={contentCategory === "fanvue" ? "" : "ghost"} disabled={contentCategory === "fanvue" && typeFilter === "all"}
@@ -318,7 +350,7 @@ export default function GalleryPage() {
         <button className={view === "used" ? "" : "ghost"} disabled={view === "used"}
           onClick={() => { setView("used"); setPage(0); setSelected(new Set()); setItems(null); }}>Felhasznált</button>
         <select aria-label="Modell galériája" value={characterFilter} onChange={(e) => {
-          setItems(null); setPage(0);
+          setItems(null); setRecentVideos([]); setVideoCount(0); setPage(0);
           setSelected(new Set());
           characterFilterRef.current = e.target.value;
           setCharacterFilter(e.target.value);
@@ -335,7 +367,7 @@ export default function GalleryPage() {
           <option value="all">minden album</option>
           {albums.map((a) => <option key={a.id} value={a.id}>{a.name}</option>)}
         </select>
-        <select aria-label="Médiatípus" value={typeFilter} onChange={(e) => { setTypeFilter(e.target.value); setPage(0); setSelected(new Set()); setItems(null); }}>
+        <select aria-label="Médiatípus" value={typeFilter} onChange={(e) => { setTypeFilter(e.target.value); if (e.target.value === "video") { setContentCategory("all"); setAlbumFilter("all"); } setPage(0); setSelected(new Set()); setItems(null); }}>
           <option value="all">mind</option><option value="image">kép</option><option value="video">videó</option><option value="audio">hang</option>
         </select>
         <button className="ghost" onClick={createAlbum}>+ Album</button>
@@ -373,6 +405,16 @@ export default function GalleryPage() {
         </div>
       )}
       {downloadStatus && <p role="status">{downloadStatus}</p>}
+      {videoError && <p role="status">{videoError}</p>}
+      {typeFilter !== "video" && recentVideos.length > 0 && <section aria-label="Legutóbbi videók" style={{ marginTop: 20, marginBottom: 24 }}>
+        <h2 style={{ fontSize: 20 }}>Legutóbbi videók ({videoCount})</h2>
+        <p className="muted">A kiválasztott modell elkészült, használatlan videói, TikTok és Fanvue kategóriából is.</p>
+        <div className="grid">{recentVideos.map(it => <div className="card" key={it.galleryItemId} style={{ padding: 10 }}>
+          <GalleryVideo url={it.url} onRefresh={() => void load()} />
+          <p>{characters.find(c => c.id === it.characterId)?.name ?? "Egyéb"} · {it.contentCategory === "fanvue" ? "Fanvue" : "TikTok"}</p>
+        </div>)}</div>
+        <button className="ghost" onClick={() => { setContentCategory("all"); setTypeFilter("video"); setAlbumFilter("all"); setView("available"); setPage(0); setSelected(new Set()); setItems(null); }}>Összes videó megnyitása ({videoCount})</button>
+      </section>}
       <p className="muted">{view === "available" ? "Az itt felhasználva jelölt képek átkerülnek a Felhasznált képek nézetbe." : "A felhasznált képek megmaradnak, innen letölthetők és visszaállíthatók."}</p>
       <p className="muted">{total} elem · {page + 1}. oldal{selected.size > 0 && ` · ${selected.size} kiválasztva`}</p>
       {total > 24 && <div style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 12 }}>
@@ -394,8 +436,8 @@ export default function GalleryPage() {
                   style={{ width: "100%", height: "auto", borderRadius: 8, cursor: "pointer" }}
                   onClick={() => toggle(it.galleryItemId)} />
               ) : it.url && it.mediaType === "video" ? (
-                <video src={it.url} controls style={{ width: "100%", borderRadius: 8 }} onClick={() => toggle(it.galleryItemId)} />
-              ) : <div className="skeleton" />}
+                <GalleryVideo url={it.url} onRefresh={() => void load()} />
+              ) : it.mediaType === "video" ? <GalleryVideo url={null} onRefresh={() => void load()} /> : <div className="skeleton" />}
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 8 }}>
                 <span className="badge">{characters.find((c) => c.id === it.characterId)?.name ?? "Egyéb"} · {it.contentCategory === "fanvue" ? "Fanvue" : "TikTok"} · {it.mediaType} · {it.mediaType === "video" && it.qcStatus === "approved" ? "Jó alapvideó" : it.qcStatus}{selected.has(it.galleryItemId) && " ✓"}</span>
                 <span style={{ display: "flex", gap: 6 }}>
