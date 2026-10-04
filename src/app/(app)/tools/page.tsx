@@ -66,6 +66,8 @@ export default function ToolsPage() {
   const [scenePrompt, setScenePrompt] = useState("");
   const [sceneChoice, setSceneChoice] = useState<{ jobId: string; assetId: string; videoId: string; characterId: string } | null>(null);
   const [adultScenePrompt, setAdultScenePrompt] = useState("");
+  const [adultSource, setAdultSource] = useState<{ id: string; mediaType: "image" | "video" } | null>(null);
+  const [adultSourcePreview, setAdultSourcePreview] = useState("");
   const [adultVideoPrompt, setAdultVideoPrompt] = useState("");
   const [adultDuration, setAdultDuration] = useState<5 | 8 | 10 | 12 | 15>(5);
   const [adultResolution, setAdultResolution] = useState<"480p" | "720p">("480p");
@@ -158,9 +160,12 @@ export default function ToolsPage() {
       }
     }
     const { data: lastAdultScene } = await getSb().from("generation_jobs")
-      .select("id,character_id").eq("owner_id", user.id).eq("type", "nureta_scene_image")
+      .select("id,character_id,payload").eq("owner_id", user.id).eq("type", "nureta_scene_image")
       .eq("status", "completed").order("created_at", { ascending: false }).limit(1).maybeSingle();
     if (lastAdultScene?.character_id) {
+      const source = lastAdultScene.payload as { sourceAssetId?: string; sourceMediaType?: string } | null;
+      if (source?.sourceAssetId && (source.sourceMediaType === "image" || source.sourceMediaType === "video"))
+        setAdultSource((current) => current ?? { id: source.sourceAssetId!, mediaType: source.sourceMediaType as "image" | "video" });
       const { data: approvedScene } = await getSb().from("gallery_items").select("asset_id")
         .eq("job_id", lastAdultScene.id).eq("owner_id", user.id).eq("qc_status", "approved")
         .is("deleted_at", null).limit(1).maybeSingle();
@@ -272,7 +277,7 @@ export default function ToolsPage() {
     return ((await res.json()) as { assetId: string }).assetId;
   }
 
-  async function uploadVideo() {
+  async function uploadVideo(onUploaded?: (id: string, file: File) => void) {
     const picker = document.createElement("input");
     picker.type = "file"; picker.accept = "video/mp4,.mp4";
     const file = await new Promise<File | null>((resolve) => { picker.onchange = () => resolve(picker.files?.[0] ?? null); picker.click(); });
@@ -295,8 +300,11 @@ export default function ToolsPage() {
         body: JSON.stringify({ objectPath: sign.objectPath, sha256 }) });
       const result = await finalized.json() as { assetId?: string; error?: string };
       if (!finalized.ok || !result.assetId) throw new Error(result.error ?? "Nem sikerült menteni a videót.");
-      setV2vVideo(result.assetId);
-      setVideoPreview(URL.createObjectURL(file));
+      if (onUploaded) onUploaded(result.assetId, file);
+      else {
+        setV2vVideo(result.assetId);
+        setVideoPreview(URL.createObjectURL(file));
+      }
       setMsg((m) => ({ ...m, videoUpload: "Videó feltöltve. Válassz modellt, majd indítsd az átalakítást." }));
     } catch (error) {
       setMsg((m) => ({ ...m, videoUpload: error instanceof Error ? error.message : "Feltöltési hiba" }));
@@ -514,14 +522,40 @@ export default function ToolsPage() {
 
       <section className="card" style={{ marginBottom: 16 }}>
         <h2 style={{ marginTop: 0 }}>Felnőtt jelenet: kép jóváhagyása → videó</h2>
-        <p className="muted">A kiválasztott modell jóváhagyott arcképeiből készül a jelenetkép. A kép ellenőrzése után külön indítható a Nureta-videó.</p>
-        <label htmlFor="adult-scene">Jelenetkép leírása</label>
-        <textarea id="adult-scene" maxLength={1500} value={adultScenePrompt}
-          onChange={(event) => setAdultScenePrompt(event.target.value)} placeholder="Helyszín, póz, öltözék, kellékek és képkivágás" />
-        <button disabled={busyKey !== null || !toolChar || !adultScenePrompt.trim()} onClick={() => {
+        <p className="muted">Válassz képet vagy videót a galériából, vagy tölts fel újat. A forrás képének pózát, helyszínét és tárgyait megtartva a kiválasztott modell kerül rá. Videónál egy jól látható képkockát választunk.</p>
+        <label>Forráskép a galériából</label>
+        <Picker media="image" selected={adultSource?.mediaType === "image" ? adultSource.id : ""}
+          onSelect={(id) => { setAdultSource({ id, mediaType: "image" }); setAdultSourcePreview(gallery.find((g) => g.assetId === id)?.url ?? ""); }} />
+        <label>Forrásvideó a galériából</label>
+        <Picker media="video" selected={adultSource?.mediaType === "video" ? adultSource.id : ""}
+          onSelect={(id) => { setAdultSource({ id, mediaType: "video" }); setAdultSourcePreview(gallery.find((g) => g.assetId === id)?.url ?? ""); }} />
+        <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 8 }}>
+          <button className="ghost" disabled={busyKey !== null} onClick={async () => {
+            const id = await upload("image/*", (file) => setAdultSourcePreview(URL.createObjectURL(file)));
+            if (id) setAdultSource({ id, mediaType: "image" });
+          }}>Kép feltöltése</button>
+          <button className="ghost" disabled={busyKey !== null}
+            onClick={() => void uploadVideo((id, file) => {
+              setAdultSource({ id, mediaType: "video" }); setAdultSourcePreview(URL.createObjectURL(file));
+            })}>Videó feltöltése (MP4)</button>
+        </div>
+        {(msg.videoUpload || msg.upload) && <p role="status" className="muted">{msg.videoUpload || msg.upload}</p>}
+        {adultSource && <p className="muted">Kiválasztott forrás: {adultSource.mediaType === "video" ? "videó" : "kép"}.</p>}
+        {adultSourcePreview && adultSource?.mediaType === "image" && (
+          /* eslint-disable-next-line @next/next/no-img-element -- user-selected local or signed URL */
+          <img src={adultSourcePreview} alt="Kiválasztott forráskép" style={{ maxWidth: "100%", maxHeight: 360, display: "block" }} />
+        )}
+        {adultSourcePreview && adultSource?.mediaType === "video" &&
+          <video src={adultSourcePreview} controls playsInline style={{ maxWidth: "100%", maxHeight: 360, display: "block" }} />}
+        <label htmlFor="adult-scene">Mit változtassunk a jelenetképen? (nem kötelező)</label>
+        <textarea id="adult-scene" maxLength={500} value={adultScenePrompt}
+          onChange={(event) => setAdultScenePrompt(event.target.value)} placeholder="Például: a modell arca legyen pontosabb; a póz és a tárgyak maradjanak" />
+        <button disabled={busyKey !== null || !toolChar || !adultSource} onClick={() => {
           setAdultChoice(null);
           setResults((current) => ({ ...current, adultPreview: [], adultVideo: [] }));
-          run("adultPreview", "nureta_scene_image", { prompt: adultScenePrompt }, { characterId: toolChar });
+          run("adultPreview", "nureta_scene_image", {
+            sourceAssetId: adultSource!.id, sourceMediaType: adultSource!.mediaType, scenePrompt: adultScenePrompt,
+          }, { characterId: toolChar });
         }}>Jelenetkép készítése / újragenerálása</button>
         <Badge k="adultPreview" /><Price k="adultPreview" />
         <Results k="adultPreview" kind="image" />
