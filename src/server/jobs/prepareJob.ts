@@ -338,11 +338,17 @@ export async function prepareValidatedJobInput(input: {
     if (!video) return { type, payload: {}, error: "SOURCE_IMAGE_REQUIRED", status: 400 };
     if (video.content_type !== "video/mp4") return { type, payload: {}, error: "VIDEO_FORMAT_UNSUPPORTED", status: 415 };
     if (payload.motionMethod === "creative" || payload.motionMethod === "talking_scene") {
-      const { data: previous } = await svc.from("gallery_items").select("id")
+      const { data: previous } = await svc.from("gallery_items").select("id,job_id")
         .eq("owner_id", input.userId).eq("asset_id", String(payload.videoAssetId))
         .eq("character_id", characterId!).eq("qc_status", "approved")
         .is("deleted_at", null).limit(1).maybeSingle();
       if (!previous) return { type, payload: {}, error: "SOURCE_IMAGE_REQUIRED", status: 409 };
+      if (previous.job_id) {
+        const { data: sourceJob } = await svc.from("generation_jobs")
+          .select("payload").eq("id", previous.job_id).eq("owner_id", input.userId).maybeSingle();
+        if ((sourceJob?.payload as { motionMethod?: string } | null)?.motionMethod === "talking_scene")
+          return { type, payload: {}, error: "SOURCE_IMAGE_REQUIRED", status: 409 };
+      }
     }
     const { data: character } = await svc.from("characters").select("name,active_version_id")
       .eq("id", characterId!).eq("owner_id", input.userId).single();
