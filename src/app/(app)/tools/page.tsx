@@ -63,6 +63,8 @@ export default function ToolsPage() {
   const [sceneVideo, setSceneVideo] = useState("");
   const [sceneText, setSceneText] = useState("Nekem is van egy másik, vadabb énem. Aki azt mondja, hogy neki nincs, az hazudik. Én szeretem kiélni ezt az oldalamat is. Ha többet szeretnél látni belőlem, figyeld a sztorimat, és kövess be, mert ez még egy új fiók. Puszillak!");
   const [videoPreview, setVideoPreview] = useState("");
+  const [scenePrompt, setScenePrompt] = useState("");
+  const [sceneChoice, setSceneChoice] = useState<{ jobId: string; assetId: string; videoId: string; characterId: string } | null>(null);
 
   const getSb = () => browserClient();
   const token = useCallback(async () => (await getSb().auth.getSession()).data.session?.access_token ?? "", []);
@@ -132,6 +134,23 @@ export default function ToolsPage() {
       }
       const available = items.filter((i) => i.url);
       setApprovedVideos(available);
+    }
+    const { data: lastScene } = await getSb().from("generation_jobs")
+      .select("id,status,payload,character_id").eq("owner_id", user.id)
+      .eq("type", "character_motion_video").eq("status", "completed")
+      .contains("payload", { motionMethod: "scene_preview" })
+      .order("created_at", { ascending: false }).limit(1).maybeSingle();
+    if (lastScene) {
+      const sceneResult = await fetch(`/api/jobs/${lastScene.id}`, { headers: { authorization: `Bearer ${accessToken}` } });
+      if (sceneResult.ok) {
+        const sceneData = await sceneResult.json() as { results: Res[] };
+        const image = sceneData.results.find((item) => item.mediaType === "image");
+        const videoId = (lastScene.payload as { sourceVideoAssetId?: string } | null)?.sourceVideoAssetId;
+        if (image?.assetId && videoId && lastScene.character_id) {
+          setSceneChoice({ jobId: lastScene.id, assetId: image.assetId, videoId, characterId: lastScene.character_id });
+          setResults((current) => ({ ...current, scenePreview: sceneData.results }));
+        }
+      }
     }
     const { data: lastVideo } = lastVideoResult;
     if (lastVideo?.id) setV2vVideo((current) => current || lastVideo.id);
@@ -641,15 +660,39 @@ export default function ToolsPage() {
             <option value="model">A kiválasztott modell hangja</option>
           </select>
           <button disabled={busyKey !== null || !toolChar || !v2vVideo} onClick={() => {
+            setSceneChoice(null);
+            setResults((current) => ({ ...current, scenePreview: [] }));
+            if (motionMethod === "anchored") {
+              run("scenePreview", "character_motion_video", { videoAssetId: v2vVideo, quality: motionQuality,
+                motionMethod: "scene_preview", scenePrompt, voiceMode: "original" }, { characterId: toolChar });
+              return;
+            }
             setResults((current) => ({ ...current, modelMotion: [] }));
             run("modelMotion", "character_motion_video", { videoAssetId: v2vVideo, quality: motionQuality, motionMethod,
               voiceMode: motionVoiceMode }, { characterId: toolChar });
           }}>
-            Szereplő cseréje a kiválasztott modellre
+            {motionMethod === "anchored" ? "Jelenetkép készítése ellenőrzésre" : "Szereplő cseréje a kiválasztott modellre"}
           </button>
           <Badge k="modelMotion" /><Price k="modelMotion" />
         </div>
-        <p className="muted">Az új mód a videó elejéről egy látható jelenetképet választ, ezen alakítja át a szereplőt, majd a képet a referencia mozgással animálja. A kellékekkel való érintkezést és a modell pontos arcát ellenőrizd a kész videóban. Az eredeti hang vagy a kiválasztott modell hangja külön választható.</p>
+        {motionMethod === "anchored" && <>
+          <label htmlFor="scene-prompt">Mit változtassunk a jelenetképen? (nem kötelező)</label>
+          <textarea id="scene-prompt" maxLength={500} value={scenePrompt} onChange={(e) => setScenePrompt(e.target.value)}
+            placeholder="Például: kissé dúsabb alak, természetes arányokkal; a helyszín és a kellékek maradjanak." />
+          <p className="muted">A jelenetkép külön, kisebb költségű lépés. Ha nem tetszik, írd át a kérést és készíts újat. A videó csak a jóváhagyó gombbal indul.</p>
+          <Results k="scenePreview" kind="image" />
+          {msg.scenePreview && <p className="muted" role="status">{msg.scenePreview}</p>}
+          {sceneChoice && sceneChoice.videoId === v2vVideo && sceneChoice.characterId === toolChar &&
+            results.scenePreview?.some((item) => item.assetId === sceneChoice.assetId) && (
+            <button disabled={busyKey !== null || jobs.scenePreview?.status !== "completed" && jobs.scenePreview?.id === sceneChoice.jobId}
+              onClick={() => {
+                setResults((current) => ({ ...current, modelMotion: [] }));
+                run("modelMotion", "character_motion_video", { videoAssetId: v2vVideo, quality: motionQuality,
+                  motionMethod: "anchored", voiceMode: motionVoiceMode,
+                  scenePreviewJobId: sceneChoice.jobId, sceneImageAssetId: sceneChoice.assetId }, { characterId: toolChar });
+              }}>A jelenetkép jó, videó készítése</button>
+          )}
+        </>}
         <Results k="modelMotion" kind="video" />
         {results.modelMotion?.some((item) => item.mediaType === "video" && item.assetId) && (
           <button className="ghost" type="button" style={{ marginTop: 8 }} onClick={() => {
