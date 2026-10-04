@@ -6,6 +6,7 @@ import { serviceClient } from "@/lib/supabase/server";
 import { assertAllowedUrl } from "@/lib/security/ssrf";
 import { resolveCharacterVoice } from "./characterVoice";
 import { isAllowedI2vModel } from "@/lib/providers/modelAllowlist";
+import { characterIdentityVariant } from "@/lib/characterIdentity";
 
 export type PrepError =
   | "validation" | "AGE_VERIFICATION_REQUIRED" | LoraError
@@ -58,6 +59,7 @@ export async function prepareValidatedJobInput(input: {
   delete payload.loraPath;
   delete payload.activeVersionId;
   delete payload.characterName;
+  delete payload.identityPromptVariant;
   if (type !== "character_training") delete payload.triggerWord;
 
   // 1b) projekt-ownership (estimate-ben is – módosítás nélkül)
@@ -91,6 +93,8 @@ export async function prepareValidatedJobInput(input: {
       return { type, payload, error: "CHARACTER_NOT_OWNED", status: 403 };
     }
     finalCharacterId = characterId;
+    const identityVariant = characterIdentityVariant(characterId);
+    if (identityVariant) payload.identityPromptVariant = identityVariant;
   }
   if (type === "image_edit" && payload.galleryEdit === true) {
     if (typeof payload.galleryItemId !== "string" || !/^[0-9a-f-]{36}$/i.test(payload.galleryItemId)
