@@ -203,7 +203,10 @@ export default function ToolsPage() {
     if (lastVideo?.id) setV2vVideo((current) => current || lastVideo.id);
     const { data: chars } = charsResult;
     setCharacters((chars ?? []) as unknown as CharacterRow[]);
-    if (chars?.length === 1) setToolChar((current) => current || chars[0].id);
+    const requestedCharacter = new URLSearchParams(window.location.search).get("characterId");
+    const linkedCharacter = chars?.find((character) => character.id === requestedCharacter);
+    if (linkedCharacter) setToolChar((current) => current || linkedCharacter.id);
+    else if (chars?.length === 1) setToolChar((current) => current || chars[0].id);
     if (c.ok) { const j = await c.json() as Cfg; setCfg(j); if (j.i2vModels[0]) setVModel(j.i2vModels[0].id); }
     // A karakteres képszerkesztés állapota oldalváltás után is visszatölthető.
     const { data: latestEdits } = latestEditsResult;
@@ -715,7 +718,7 @@ export default function ToolsPage() {
         {msg.i2p && <p className="muted">{msg.i2p}</p>}
       </details>
 
-      <div className="card" style={{ marginTop: 12 }}>
+      <div id="character-image" className="card" style={{ marginTop: 12, scrollMarginTop: 24 }}>
         <h3 style={{ marginTop: 0 }}>{characters.find((c) => c.id === toolChar)?.name ?? "Karakter"} arca a feltöltött képen</h3>
         <p className="muted">A kiválasztott karakter arca és haja automatikusan kerül a képre. A póz, a háttér és a tárgyak a feltöltött képhez igazodnak; telefon csak akkor maradhat a képen, ha a forrásképen is látszik.</p>
         <label>Szerkesztő modell <select value={characterEditModel} onChange={(e) => setCharacterEditModel(e.target.value as "seedream-v4.5" | "nano-banana")}>

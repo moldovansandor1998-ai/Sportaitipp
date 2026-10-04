@@ -154,7 +154,12 @@ export default function GeneratePage() {
           {characters.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
         </select>
         {activeChar && (
-          <p className="muted" style={{ margin: "6px 0 0" }}>Aktív verzió: {activeChar.active_version_id ? activeChar.active_version_id.slice(0, 8) + "…" : "–"} · a loraPath-et a szerver állítja be</p>
+          <div style={{ marginTop: 8 }}>
+            <a href={`/tools?characterId=${encodeURIComponent(activeChar.id)}#character-image`}>
+              Kép készítése {activeChar.name} referenciáival · WaveSpeed / Seedream
+            </a>
+            <p className="muted" style={{ margin: "6px 0 0" }}>Feltöltött jelenetképből a karakter mentett arcával és hajával. Az alábbi szöveges generátor Flux LoRA-t használ.</p>
+          </div>
         )}
 
         {mode === "easy" ? (

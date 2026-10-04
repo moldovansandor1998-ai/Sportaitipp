@@ -292,6 +292,8 @@ export default function CharacterDetailPage({ params }: { params: Promise<{ id: 
         Státusz: {character.status} · Kredit: {credits ?? "…"} ·{" "}
         {active ? "Aktív – generálható" : "A generáláshoz active státusz kell (QC → tréning → tesztkép → identity check)"}
       </p>
+      {active && <a href={`/tools?characterId=${encodeURIComponent(id)}#character-image`}
+        className="button">Kép készítése {character.name} referenciáival · WaveSpeed / Seedream</a>}
 
       <div className="card" style={{ marginTop: 16 }}>
         <h3 style={{ marginTop: 0 }}>Referenciafotók ({refs.length})</h3>
