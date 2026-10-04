@@ -69,11 +69,6 @@ export async function GET(req: NextRequest) {
   // The same uploaded scene can be generated for several characters. Show which
   // character's result was already used, without hiding the other results.
   const jobIds = items.map(i => i.job_id).filter((id): id is string => !!id);
-  const { data: sourceJobs } = jobIds.length ? await svc.from("generation_jobs")
-    .select("id,payload").eq("owner_id", user.id).in("id", jobIds) : { data: [] };
-  const talkingSceneJobs = new Set((sourceJobs ?? [])
-    .filter(job => (job.payload as { motionMethod?: string } | null)?.motionMethod === "talking_scene")
-    .map(job => job.id));
   const { data: sources } = jobIds.length ? await svc.from("bulk_generation_items")
     .select("job_id,asset_id").eq("owner_id", user.id).in("job_id", jobIds) : { data: [] };
   const sourceByJob = new Map((sources ?? []).map(s => [s.job_id, s.asset_id]));
@@ -110,7 +105,6 @@ export async function GET(req: NextRequest) {
       contentType: it.assets.content_type,
       bytes: it.assets.bytes,
       qcStatus: it.qc_status,
-      sourceEligible: !it.job_id || !talkingSceneJobs.has(it.job_id),
       characterId: it.character_id,
       albumId: it.album_id,
       usedAt: it.used_at,
@@ -119,5 +113,5 @@ export async function GET(req: NextRequest) {
         ? [...(usedBySource.get(sourceByJob.get(it.job_id)!) ?? [])] : [],
       url: signedByPath.get(it.assets.object_path) ?? null,
     };  });
-  return NextResponse.json({ items: enriched.filter((i) => i !== null && (!approvedVideos || i.sourceEligible)), total: count ?? 0, page, pageSize });
+  return NextResponse.json({ items: enriched.filter((i) => i !== null), total: count ?? 0, page, pageSize });
 }
