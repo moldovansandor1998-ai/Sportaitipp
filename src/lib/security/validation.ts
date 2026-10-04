@@ -170,8 +170,10 @@ export const CreateJobSchema = z.object({
         ctx.addIssue({ code: z.ZodIssueCode.custom, message: "Érvénytelen videóminőség." });
       if (p.voiceMode !== undefined && !["model", "original"].includes(String(p.voiceMode)))
         ctx.addIssue({ code: z.ZodIssueCode.custom, message: "Érvénytelen videóhang-választás." });
-      if (p.motionMethod !== undefined && !["anchored", "legacy", "creative"].includes(String(p.motionMethod)))
+      if (p.motionMethod !== undefined && !["anchored", "legacy", "creative", "talking_scene"].includes(String(p.motionMethod)))
         ctx.addIssue({ code: z.ZodIssueCode.custom, message: "Érvénytelen videókészítési mód." });
+      if (p.motionMethod === "talking_scene" && (typeof p.speechText !== "string" || p.speechText.trim().length < 20 || p.speechText.length > 450))
+        ctx.addIssue({ code: z.ZodIssueCode.custom, message: "A beszélő jelenethez 20–450 karakteres szöveg kell." });
       if (p.motionStyle !== undefined && !["playful", "confident", "casual"].includes(String(p.motionStyle)))
         ctx.addIssue({ code: z.ZodIssueCode.custom, message: "Érvénytelen mozgásstílus." });
       break;
