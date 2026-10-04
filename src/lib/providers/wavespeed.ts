@@ -13,7 +13,9 @@ const CHARACTER_EDIT_PROMPT = "Refer to image 2 to make the same photograph, but
 const SCENE_EDIT_PROMPT = `${CHARACTER_EDIT_PROMPT} Keep every food item, utensil, prop and its position from image 2 exactly recognizable. Preserve the original hand-object contact, framing, clothing, camera position and background. Change only the woman, never replace or invent objects.`;
 const MOTION_ENDPOINT = "kwaivgi/kling-v2.6-pro/motion-control";
 const CREATIVE_ENDPOINT = "wavespeed-ai/open-video/image-to-video";
-const TALKING_SCENE_ENDPOINT = "kwaivgi/kling-v2-ai-avatar-pro";
+// Lip-sync the completed video itself. An image-driven avatar regenerates the
+// whole head and torso and can distort proportions in longer speech clips.
+const TALKING_SCENE_ENDPOINT = "sync/lipsync-3";
 const CREATIVE_PROMPTS: Record<string, string> = {
   playful: "The same adult woman gives a spontaneous playful smile, glances briefly away from the camera, turns back and makes a small natural hand gesture.",
   confident: "The same adult woman shifts her posture naturally, makes calm eye contact, smiles with confidence and gently turns toward the camera.",
@@ -97,11 +99,6 @@ export class WaveSpeedAdapter implements ProviderAdapter {
         const sb = serviceClient();
         const { data: job } = await sb.from("generation_jobs").select("owner_id").eq("id", p.jobId).single();
         if (!job) throw new ProviderError("Video job not found", false);
-        const response = await fetch(video, { signal: AbortSignal.timeout(45_000) });
-        if (!response.ok) throw new ProviderError("A kész modellvideó nem olvasható.", true);
-        const source = Buffer.from(await response.arrayBuffer());
-        if (source.length > 48 * 1024 * 1024) throw new ProviderError("A videó túl nagy.", false);
-        const frame = await sceneFrame(source);
         const text = String(p.payload.speechText ?? "").trim();
         const voiceId = String(p.payload.voiceId ?? "");
         if (text.length < 20 || text.length > 450 || !/^[A-Za-z0-9]{10,40}$/.test(voiceId))
@@ -116,23 +113,14 @@ export class WaveSpeedAdapter implements ProviderAdapter {
         // 128 kb/s CBR MP3: 16 000 bytes/s. A 30 másodperces felső korlát előtt megállunk.
         if (audio.length < 1000 || audio.length > 30 * 16_000)
           throw new ProviderError("A beszéd 30 másodpercnél hosszabb. Rövidítsd a szöveget.", false);
-        const framePath = `${job.owner_id}/${p.jobId}/talking-scene-frame.jpg`;
         const audioPath = `${job.owner_id}/${p.jobId}/talking-scene-voice.mp3`;
-        const [frameUpload, audioUpload] = await Promise.all([
-          sb.storage.from("assets").upload(framePath, frame, { contentType: "image/jpeg", upsert: true }),
-          sb.storage.from("assets").upload(audioPath, audio, { contentType: "audio/mpeg", upsert: true }),
-        ]);
-        if (frameUpload.error || audioUpload.error) throw new ProviderError("A jelenet vagy a hang nem tárolható.", true);
-        const [frameSigned, audioSigned] = await Promise.all([
-          sb.storage.from("assets").createSignedUrl(framePath, 7200),
-          sb.storage.from("assets").createSignedUrl(audioPath, 7200),
-        ]);
-        if (!frameSigned.data?.signedUrl || !audioSigned.data?.signedUrl)
-          throw new ProviderError("A beszélő jelenet bemenete nem elérhető.", true);
-        const style = String(p.payload.motionStyle ?? "playful");
-        const prompt = `${CREATIVE_PROMPTS[style] ?? CREATIVE_PROMPTS.playful} Natural expressive speech matching the provided audio, gentle head and upper-body movement, accurate lip sync. Preserve the same adult woman's exact face, hairstyle and clothing and the original marble-wall location. Avoid interacting with objects; no added people, text or props.`;
+        const { error: audioUpload } = await sb.storage.from("assets")
+          .upload(audioPath, audio, { contentType: "audio/mpeg", upsert: true });
+        if (audioUpload) throw new ProviderError("A hang nem tárolható.", true);
+        const { data: audioSigned } = await sb.storage.from("assets").createSignedUrl(audioPath, 7200);
+        if (!audioSigned?.signedUrl) throw new ProviderError("A beszédhang nem elérhető.", true);
         const data = await this.request(`${API}/${TALKING_SCENE_ENDPOINT}`, {
-          image: frameSigned.data.signedUrl, audio: audioSigned.data.signedUrl, prompt,
+          video, audio: audioSigned.signedUrl, sync_mode: "cut_off",
         });
         if (typeof data.id !== "string") throw new ProviderError("WaveSpeed did not return a talking scene task ID", false);
         return { providerJobId: data.id, providerMeta: { endpoint: TALKING_SCENE_ENDPOINT, stage: "talking_scene" } };
