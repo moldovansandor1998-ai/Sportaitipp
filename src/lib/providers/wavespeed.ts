@@ -13,6 +13,7 @@ const CHARACTER_EDIT_PROMPT = "Refer to image 2 to make the same photograph, but
 const SCENE_EDIT_PROMPT = `${CHARACTER_EDIT_PROMPT} Keep every food item, utensil, prop and its position from image 2 exactly recognizable. Preserve the original hand-object contact, framing, clothing, camera position and background. Change only the woman, never replace or invent objects.`;
 const MOTION_ENDPOINT = "kwaivgi/kling-v2.6-pro/motion-control";
 const CREATIVE_ENDPOINT = "wavespeed-ai/open-video/image-to-video";
+const TALKING_SCENE_ENDPOINT = "kwaivgi/kling-v2-ai-avatar-pro";
 const CREATIVE_PROMPTS: Record<string, string> = {
   playful: "The same adult woman gives a spontaneous playful smile, glances briefly away from the camera, turns back and makes a small natural hand gesture.",
   confident: "The same adult woman shifts her posture naturally, makes calm eye contact, smiles with confidence and gently turns toward the camera.",
@@ -67,6 +68,7 @@ export class WaveSpeedAdapter implements ProviderAdapter {
     // Video person swap is billed by duration, capped at 30 seconds. Keep the
     // existing conservative reservation until provider usage reconciliation.
     if (jobType === "character_motion_video") {
+      if (payload.motionMethod === "talking_scene") return { credits: 1008, secondsExpected: 420 };
       if (payload.motionMethod === "creative") return { credits: 100, secondsExpected: 240 };
       return { credits: (payload.quality === "standard" ? 756 : 1008) + (payload.motionMethod === "anchored" ? 40 : 0), secondsExpected: payload.motionMethod === "anchored" ? 420 : 180 };
     }
@@ -91,6 +93,50 @@ export class WaveSpeedAdapter implements ProviderAdapter {
       const video = p.payload.videoUrl, image = p.payload.characterImageUrl;
       if (typeof video !== "string" || typeof image !== "string")
         throw new ProviderError("Az eredeti videó és a modell referenciafotója kötelező.", false);
+      if (p.payload.motionMethod === "talking_scene") {
+        const sb = serviceClient();
+        const { data: job } = await sb.from("generation_jobs").select("owner_id").eq("id", p.jobId).single();
+        if (!job) throw new ProviderError("Video job not found", false);
+        const response = await fetch(video, { signal: AbortSignal.timeout(45_000) });
+        if (!response.ok) throw new ProviderError("A kész modellvideó nem olvasható.", true);
+        const source = Buffer.from(await response.arrayBuffer());
+        if (source.length > 48 * 1024 * 1024) throw new ProviderError("A videó túl nagy.", false);
+        const frame = await sceneFrame(source);
+        const text = String(p.payload.speechText ?? "").trim();
+        const voiceId = String(p.payload.voiceId ?? "");
+        if (text.length < 20 || text.length > 450 || !/^[A-Za-z0-9]{10,40}$/.test(voiceId))
+          throw new ProviderError("A beszéd szövege vagy hangja érvénytelen.", false);
+        const speech = await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${encodeURIComponent(voiceId)}?output_format=mp3_44100_128`, {
+          method: "POST", headers: { "xi-api-key": process.env.ELEVENLABS_API_KEY ?? "", "content-type": "application/json" },
+          body: JSON.stringify({ text, model_id: "eleven_v4", language_code: "hu" }),
+          signal: AbortSignal.timeout(180_000),
+        });
+        if (!speech.ok) throw new ProviderError(`ElevenLabs beszédhiba: ${speech.status}`, speech.status >= 500);
+        const audio = Buffer.from(await speech.arrayBuffer());
+        // 128 kb/s CBR MP3: 16 000 bytes/s. A 30 másodperces felső korlát előtt megállunk.
+        if (audio.length < 1000 || audio.length > 30 * 16_000)
+          throw new ProviderError("A beszéd 30 másodpercnél hosszabb. Rövidítsd a szöveget.", false);
+        const framePath = `${job.owner_id}/${p.jobId}/talking-scene-frame.jpg`;
+        const audioPath = `${job.owner_id}/${p.jobId}/talking-scene-voice.mp3`;
+        const [frameUpload, audioUpload] = await Promise.all([
+          sb.storage.from("assets").upload(framePath, frame, { contentType: "image/jpeg", upsert: true }),
+          sb.storage.from("assets").upload(audioPath, audio, { contentType: "audio/mpeg", upsert: true }),
+        ]);
+        if (frameUpload.error || audioUpload.error) throw new ProviderError("A jelenet vagy a hang nem tárolható.", true);
+        const [frameSigned, audioSigned] = await Promise.all([
+          sb.storage.from("assets").createSignedUrl(framePath, 7200),
+          sb.storage.from("assets").createSignedUrl(audioPath, 7200),
+        ]);
+        if (!frameSigned.data?.signedUrl || !audioSigned.data?.signedUrl)
+          throw new ProviderError("A beszélő jelenet bemenete nem elérhető.", true);
+        const style = String(p.payload.motionStyle ?? "playful");
+        const prompt = `${CREATIVE_PROMPTS[style] ?? CREATIVE_PROMPTS.playful} Natural expressive speech matching the provided audio, gentle head and upper-body movement, accurate lip sync. Preserve the same adult woman's exact face, hairstyle and clothing and the original marble-wall location. Avoid interacting with objects; no added people, text or props.`;
+        const data = await this.request(`${API}/${TALKING_SCENE_ENDPOINT}`, {
+          image: frameSigned.data.signedUrl, audio: audioSigned.data.signedUrl, prompt,
+        });
+        if (typeof data.id !== "string") throw new ProviderError("WaveSpeed did not return a talking scene task ID", false);
+        return { providerJobId: data.id, providerMeta: { endpoint: TALKING_SCENE_ENDPOINT, stage: "talking_scene" } };
+      }
       if (p.payload.motionMethod === "creative") {
         const sb = serviceClient();
         const { data: job } = await sb.from("generation_jobs").select("owner_id").eq("id", p.jobId).single();
