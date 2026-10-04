@@ -31,7 +31,8 @@ export function buildRouter(extra: ProviderAdapter[] = []): ProviderRouter {
 
   const primaryFor = (jobType: JobType): string => {
     if (real.length > 0) {
-      if (["nureta_scene_image", "nureta_scene_video"].includes(jobType)) return "nureta";
+      if (jobType === "nureta_scene_image") return "wavespeed";
+      if (jobType === "nureta_scene_video") return "nureta";
       if (["character_swap", "video_character_swap", "character_motion_video"].includes(jobType) && real.some((a) => a.name === "wavespeed")) return "wavespeed";
       const fal = real.find((a) => a.name === "fal");
       if (fal && fal.supports.includes(jobType)) return "fal";
