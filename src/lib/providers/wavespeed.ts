@@ -54,7 +54,7 @@ function closestRatio(ratio: number): { ratio: string; width: number; height: nu
 
 export class WaveSpeedAdapter implements ProviderAdapter {
   readonly name = "wavespeed";
-  readonly supports: JobType[] = ["character_swap", "video_character_swap", "character_motion_video", "image_edit"];
+  readonly supports: JobType[] = ["character_swap", "video_character_swap", "character_motion_video", "nureta_scene_image", "image_edit"];
 
   private async request(url: string, body?: Record<string, unknown>): Promise<Record<string, unknown>> {
     const res = await fetch(url, {
@@ -71,6 +71,7 @@ export class WaveSpeedAdapter implements ProviderAdapter {
   }
 
   async estimate(jobType: JobType, payload: Record<string, unknown>): Promise<Estimate> {
+    if (jobType === "nureta_scene_image") return { credits: 40, secondsExpected: 90 };
     // The provider caps billing at 120 seconds; never use client-supplied duration to price a job.
     if (jobType === "video_character_swap") return { credits: 120 * (payload.resolution === "480p" ? 8 : 16), secondsExpected: 180 };
     // Video person swap is billed by duration, capped at 30 seconds. Keep the
@@ -86,6 +87,39 @@ export class WaveSpeedAdapter implements ProviderAdapter {
   }
 
   async submit(p: SubmitParams): Promise<SubmitResult> {
+    if (p.jobType === "nureta_scene_image") {
+      const refs = p.payload.referenceUrls;
+      if (!Array.isArray(refs) || typeof refs[0] !== "string" || typeof p.payload.sourceUrl !== "string")
+        throw new ProviderError("A forrás és a modellképek hiányoznak.", false);
+      let sourceUrl = p.payload.sourceUrl;
+      if (p.payload.sourceMediaType === "video") {
+        const response = await fetch(sourceUrl, { signal: AbortSignal.timeout(45_000) });
+        if (!response.ok) throw new ProviderError("A forrásvideó nem olvasható.", true);
+        const source = Buffer.from(await response.arrayBuffer());
+        if (source.length > 48 * 1024 * 1024) throw new ProviderError("A videó túl nagy.", false);
+        const frame = await sceneFrame(source, true);
+        const { data: job } = await serviceClient().from("generation_jobs")
+          .select("owner_id").eq("id", p.jobId).single();
+        if (!job) throw new ProviderError("A jelenetfeladat nem található.", false);
+        const storage = serviceClient().storage.from("assets");
+        const path = `${job.owner_id}/${p.jobId}/source-frame.jpg`;
+        const { error: uploaded } = await storage.upload(path, frame, { contentType: "image/jpeg", upsert: true });
+        if (uploaded) throw new ProviderError(`Képkocka mentési hiba: ${uploaded.message}`, true);
+        const { data: signed } = await storage.createSignedUrl(path, 7200);
+        if (!signed?.signedUrl) throw new ProviderError("A képkocka nem érhető el.", true);
+        sourceUrl = signed.signedUrl;
+      }
+      const dimensions = closestRatio(await sourceRatio(sourceUrl));
+      const extra = typeof p.payload.scenePrompt === "string" ? p.payload.scenePrompt.trim() : "";
+      const endpoint = EDIT_MODELS["seedream-v4.5"];
+      const data = await this.request(`${API}/${endpoint}`, {
+        images: [refs[0], sourceUrl, ...refs.slice(1, 3)],
+        prompt: `${SCENE_EDIT_PROMPT} ${extra}`.trim(),
+        size: `${dimensions.width}*${dimensions.height}`,
+      });
+      if (typeof data.id !== "string") throw new ProviderError("WaveSpeed jelenetkép azonosító hiányzik.", false);
+      return { providerJobId: data.id, providerMeta: { endpoint, stage: "nureta_source_preview" } };
+    }
     if (p.jobType === "image_edit") {
       if (p.payload.galleryEdit !== true || !Array.isArray(p.payload.imageUrls) || p.payload.imageUrls.length !== 1
           || typeof p.payload.imageUrls[0] !== "string" || typeof p.payload.prompt !== "string")
