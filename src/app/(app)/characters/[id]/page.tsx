@@ -2,6 +2,7 @@
 import { use, useCallback, useEffect, useRef, useState } from "react";
 import { browserClient } from "@/lib/supabase/client";
 import Image from "next/image";
+import { applyCharacterIdentity, characterIdentityVariant } from "@/lib/characterIdentity";
 
 interface CharacterRow { id: string; name: string; status: string; }
 interface RefRow { id: string; asset_id: string; kind: string; qc_status: string; is_primary: boolean; sort_order: number; }
@@ -351,12 +352,12 @@ export default function CharacterDetailPage({ params }: { params: Promise<{ id: 
             onClick={() => manualReview("test_image", latestRealVersion?.id)}>4. Tesztkép kézi jóváhagyása</button>
           <button disabled={busy || !active || !providers?.generation}
             onClick={() => startJob("image_generation", {
-              prompt: "Candid realistic photograph of this adult woman from the waist up, natural body proportions and anatomy, relaxed posture, everyday clothing, authentic skin texture with subtle imperfections, natural window light, unretouched documentary photography, 50mm lens",
+              prompt: applyCharacterIdentity("Candid realistic photograph of this adult woman from the waist up, natural body proportions and anatomy, relaxed posture, everyday clothing, authentic skin texture with subtle imperfections, natural window light, unretouched documentary photography, 50mm lens", characterIdentityVariant(id)),
               imageSize: "portrait_4_3",
             })}>5. Élethű félalak</button>
           <button className="ghost" disabled={busy || !active || !providers?.generation}
             onClick={() => startJob("image_generation", {
-              prompt: "Candid full body photograph of this adult woman standing naturally, entire person visible from head to shoes, realistic human anatomy and proportions, relaxed pose, everyday clothing, authentic skin texture, natural daylight, unretouched documentary photography, 50mm lens",
+              prompt: applyCharacterIdentity("Candid full body photograph of this adult woman standing naturally, entire person visible from head to shoes, realistic human anatomy and proportions, relaxed pose, everyday clothing, authentic skin texture, natural daylight, unretouched documentary photography, 50mm lens", characterIdentityVariant(id)),
               imageSize: "portrait_4_3",
             })}>Élethű teljes alak</button>
         </div>

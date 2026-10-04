@@ -2,6 +2,7 @@ import { ProviderAdapter, ProviderError, type Estimate, type JobType, type Norma
 import sharp from "sharp";
 import { serviceClient } from "@/lib/supabase/server";
 import { sceneFrame } from "@/server/jobs/sceneFrame";
+import { applyCharacterIdentity } from "@/lib/characterIdentity";
 
 const API = "https://api.wavespeed.ai/api/v3";
 const MODEL = "wavespeed-ai/image-face-swap-pro";
@@ -91,13 +92,14 @@ export class WaveSpeedAdapter implements ProviderAdapter {
   }
 
   async submit(p: SubmitParams): Promise<SubmitResult> {
+    const identityPrompt = (prompt: string) => applyCharacterIdentity(prompt, p.payload.identityPromptVariant);
     if (p.jobType === "nureta_scene_video") {
       if (p.payload.videoEngine !== "kling" || typeof p.payload.sceneImageUrl !== "string")
         throw new ProviderError("A jóváhagyott jelenetkép és a Kling motor szükséges.", false);
       const endpoint = "kwaivgi/kling-v3.0-pro/image-to-video";
       const data = await this.request(`${API}/${endpoint}`, {
         image: p.payload.sceneImageUrl, duration: Number(p.payload.duration),
-        prompt: `${String(p.payload.prompt)} ${IDENTITY_MOTION_PROMPT.replace("Transfer only the source video's natural gestures and timing.", "Follow only the requested motion in one continuous shot.")}`,
+        prompt: `${String(p.payload.prompt)} ${identityPrompt(IDENTITY_MOTION_PROMPT).replace("Transfer only the source video's natural gestures and timing.", "Follow only the requested motion in one continuous shot.")}`,
         negative_prompt: IDENTITY_MOTION_NEGATIVE, sound: p.payload.voiceMode === "nureta",
         cfg_scale: 0.5, shot_type: "customize",
       });
@@ -131,7 +133,7 @@ export class WaveSpeedAdapter implements ProviderAdapter {
       const endpoint = EDIT_MODELS["seedream-v4.5"];
       const data = await this.request(`${API}/${endpoint}`, {
         images: [refs[0], sourceUrl, ...refs.slice(1, 3)],
-        prompt: `${SCENE_EDIT_PROMPT} ${extra}`.trim(),
+        prompt: `${identityPrompt(SCENE_EDIT_PROMPT)} ${extra}`.trim(),
         size: `${dimensions.width}*${dimensions.height}`,
       });
       if (typeof data.id !== "string") throw new ProviderError("WaveSpeed jelenetkép azonosító hiányzik.", false);
@@ -201,7 +203,7 @@ export class WaveSpeedAdapter implements ProviderAdapter {
         const { data: signed } = await sb.storage.from("assets").createSignedUrl(framePath, 7200);
         if (!signed?.signedUrl) throw new ProviderError("A kezdőkép nem érhető el.", true);
         const style = typeof p.payload.motionStyle === "string" ? p.payload.motionStyle : "playful";
-        const prompt = `${CREATIVE_PROMPTS[style] ?? CREATIVE_PROMPTS.playful} Keep the exact same face, hair, clothing, body proportions, props, background and camera framing from the image. Subtle believable motion with consistent hands and objects. One continuous 8-second shot. No dialogue, subtitles or extra people.`;
+        const prompt = `${identityPrompt(CREATIVE_PROMPTS[style] ?? CREATIVE_PROMPTS.playful)} Keep the exact same face, hair, clothing, body proportions, props, background and camera framing from the image. Subtle believable motion with consistent hands and objects. One continuous 8-second shot. No dialogue, subtitles or extra people.`;
         const data = await this.request(`${API}/${CREATIVE_ENDPOINT}`, {
           image: signed.signedUrl, prompt, resolution: "1080p", duration: 8,
         });
@@ -212,7 +214,7 @@ export class WaveSpeedAdapter implements ProviderAdapter {
         const endpoint = p.payload.quality === "standard" ? MOTION_ENDPOINT : MOTION_ENDPOINT_IDENTITY;
         const data = await this.request(`${API}/${endpoint}`, {
           image: p.payload.sceneImageUrl, video, character_orientation: "video", keep_original_sound: true,
-          prompt: IDENTITY_MOTION_PROMPT,
+          prompt: identityPrompt(IDENTITY_MOTION_PROMPT),
           negative_prompt: IDENTITY_MOTION_NEGATIVE,
         });
         if (typeof data.id !== "string") throw new ProviderError("WaveSpeed did not return the motion task ID", false);
@@ -239,7 +241,7 @@ export class WaveSpeedAdapter implements ProviderAdapter {
           .filter((url): url is string => typeof url === "string" && /^https:\/\//.test(url)).slice(1, 3) : [];
         const extra = typeof p.payload.scenePrompt === "string" ? p.payload.scenePrompt.trim() : "";
         const data = await this.request(`${API}/${endpoint}`, {
-          images: [image, signed.signedUrl, ...references], prompt: `${SCENE_EDIT_PROMPT} ${extra}`.trim(), size: "1152*2048",
+          images: [image, signed.signedUrl, ...references], prompt: `${identityPrompt(SCENE_EDIT_PROMPT)} ${extra}`.trim(), size: "1152*2048",
         });
         if (typeof data.id !== "string") throw new ProviderError("WaveSpeed did not return the scene image task ID", false);
         return { providerJobId: data.id, providerMeta: { endpoint, stage: "scene_preview" } };
@@ -268,7 +270,7 @@ export class WaveSpeedAdapter implements ProviderAdapter {
       const fanvue = p.payload.outputCategory === "fanvue";
       const dimensions = fanvue ? closestRatio(await sourceRatio(characterImages[1])) : closestRatio(9 / 16);
       const data = await this.request(`${API}/${model}`, {
-        images: characterImages, prompt: CHARACTER_EDIT_PROMPT,
+        images: characterImages, prompt: identityPrompt(CHARACTER_EDIT_PROMPT),
         ...(p.payload.editModel === "nano-banana" ? { aspect_ratio: dimensions.ratio } : { size: `${dimensions.width}*${dimensions.height}` }),
         ...(p.payload.editModel === "nano-banana" ? { output_format: "png" } : {}),
       });
