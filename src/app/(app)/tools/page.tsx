@@ -647,7 +647,7 @@ export default function ToolsPage() {
         {v2vVideo && <p className="muted">Mozgásvideó kiválasztva. Fent válaszd ki a modellt.</p>}
         <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap", marginTop: 8 }}>
           <select aria-label="Videócsere minősége" value={motionQuality} onChange={(e) => setMotionQuality(e.target.value as "pro" | "standard")}>
-            <option value="pro">Magas minőség</option><option value="standard">Alap minőség</option>
+            <option value="pro">Magas minőség · jobb arctartás</option><option value="standard">Alap minőség</option>
           </select>
           <select aria-label="Videókészítés módja" value={motionMethod} onChange={(e) => setMotionMethod(e.target.value as "anchored" | "legacy")}>
             <option value="anchored">Jelenetkép + mozgás (új)</option>
@@ -680,6 +680,7 @@ export default function ToolsPage() {
           <textarea id="scene-prompt" maxLength={500} value={scenePrompt} onChange={(e) => setScenePrompt(e.target.value)}
             placeholder="Például: kissé dúsabb alak, természetes arányokkal; a helyszín és a kellékek maradjanak." />
           <p className="muted">A jelenetkép külön, kisebb költségű lépés. Ha nem tetszik, írd át a kérést és készíts újat. A videó csak a jóváhagyó gombbal indul.</p>
+          <p className="muted">Az arcvonásokat is ellenőrizd a jelenetképen. A magas minőségű videó a részleteket jobban őrző mozgásmodellt használja; a végső arcot és mimikát a kész videóban is nézd meg.</p>
           <Results k="scenePreview" kind="image" />
           {msg.scenePreview && <p className="muted" role="status">{msg.scenePreview}</p>}
           {sceneChoice && sceneChoice.videoId === v2vVideo && sceneChoice.characterId === toolChar &&
