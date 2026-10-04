@@ -28,12 +28,14 @@ describe("character motion video", () => {
         sceneImageUrl: "https://example.com/approved.jpg", motionMethod: "anchored", quality: "pro" },
     });
     expect(result.providerMeta?.stage).toBe("video");
-    expect(String(send.mock.calls[0][0])).toContain("motion-control");
+    expect(String(send.mock.calls[0][0])).toContain("kling-v3.0-pro/motion-control");
     const body = JSON.parse(String(send.mock.calls[0][1]?.body));
     expect(body).toMatchObject({ image: "https://example.com/approved.jpg", video: "https://example.com/motion.mp4", character_orientation: "video", keep_original_sound: true });
+    expect(body.prompt).toContain("facial identity");
     send.mockImplementationOnce(async () => new Response(JSON.stringify({ data: { status: "completed", outputs: ["https://example.com/result.mp4"] } }), { status: 200 }));
     const output = await adapter.getResult("prediction-1", result.providerMeta, "character_motion_video");
     expect(output.files).toEqual([{ kind: "video", url: "https://example.com/result.mp4" }]);
+    expect((await adapter.estimate("character_motion_video", { motionMethod: "anchored", quality: "pro" })).credits).toBe(1512);
   });
 
   it("finishes a preview as an image without submitting motion", async () => {
