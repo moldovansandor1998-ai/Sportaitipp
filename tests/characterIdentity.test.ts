@@ -46,4 +46,18 @@ describe("stored character gender", () => {
     expect(saBody.prompt).not.toContain("woman");
     expect(saBody.images).toEqual([payload.referenceUrls[0],payload.sourceUrl,payload.referenceUrls[1]]);
   });
+  it("keeps the same motion settings while using the selected male identity", async () => {
+    const send = vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response(JSON.stringify({ data: { id: "motion" } })));
+    await new WaveSpeedAdapter().submit({ jobId: "j", jobType: "character_motion_video", idempotencyKey: "k",
+      payload: { motionMethod: "anchored", quality: "pro", videoUrl: "https://example.com/source.mp4",
+        characterImageUrl: "https://example.com/man.jpg", sceneImageUrl: "https://example.com/man.jpg",
+        identityPromptVariant: characterIdentityVariant("new-marcell", "male") } });
+    const body = JSON.parse(String(send.mock.calls[0][1]?.body));
+    expect(body.prompt).toContain("exact adult man");
+    expect(body.prompt).not.toContain("woman");
+    expect(body).toMatchObject({ image: "https://example.com/man.jpg", video: "https://example.com/source.mp4",
+      character_orientation: "video", keep_original_sound: true });
+    expect(String(send.mock.calls[0][0])).toContain("kling-v3.0-pro/motion-control");
+  });
+
 });
