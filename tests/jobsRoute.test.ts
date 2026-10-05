@@ -112,6 +112,13 @@ const ACTIVE = { id: CHAR, owner_id: USER, status: "active", active_version_id: 
 const FAL_VER = { id: VER, provider: "fal", provider_model_ref: "https://v3.fal.media/w/x.bin", status: "approved" };
 
 describe("POST /api/jobs – route handler (fetch-stub)", () => {
+  it.each(["male", "female"])("resolves %s identity from the owned character, ignoring client overrides", async (gender) => {
+    const { calls } = harness({ character: { ...ACTIVE, gender }, version: FAL_VER });
+    const res = await post({ type: "image_generation", characterId: CHAR,
+      payload: { prompt: "portrait", identityPromptVariant: gender === "male" ? "female" : "male" } });
+    expect(res.status).toBe(202);
+    expect(calls.lastJobPayload?.identityPromptVariant).toBe(gender === "male" ? "male" : undefined);
+  });
   it("image_generation karakter nélkül → 400, nincs hold", async () => {
     const { calls } = harness({});
     const res = await post({ type: "image_generation", payload: { prompt: "x" } });
