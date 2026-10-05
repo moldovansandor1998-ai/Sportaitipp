@@ -216,7 +216,7 @@ export default function ModelStudio() {
       {!xConfigured && <p className="error">Az X fejlesztői alkalmazás kulcsai még hiányoznak. Az összekötés addig nem indítható.</p>}
       {typeof window !== "undefined" && new URLSearchParams(window.location.search).get("x") === "failed"
         && <p className="error">Az X összekötése nem sikerült. Ellenőrizd az engedélyezést és próbáld újra.</p>}
-      {characters.filter(c => ["Zsófia", "Petra", "Dorika", "Laura", "Dorina"].includes(c.name)).map(character => {
+      {characters.map(character => {
         const linked = xAccounts.find(a => a.character_id === character.id);
         const fanvue = accounts.find(a => a.character_id === character.id && a.platform === "fanvue" && a.account_url);
         const recent = xHistory.find(p => p.character_id === character.id);
