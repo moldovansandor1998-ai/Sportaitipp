@@ -5,7 +5,7 @@ import { WaveSpeedAdapter } from "@/lib/providers/wavespeed";
 afterEach(() => vi.restoreAllMocks());
 const otherIds = ["05274aae-99fa-4352-9181-519f25a54963", "5ef31ec2-58fb-4564-af6d-f3679340db48",
   "cd49b5cd-6bec-49af-bb6c-275843750e75", "407d6aa7-c688-4164-bf89-58f26e84cdf2", "14d3cc62-004b-43f5-a355-4939e4741e5f"];
-describe("SA-only identity correction", () => {
+describe("stored character gender", () => {
   it("preserves every existing model's prompt byte for byte", () => {
     const prompt = "Animate the exact adult woman. Preserve her facial identity.";
     for (const id of otherIds) {
@@ -18,8 +18,15 @@ describe("SA-only identity correction", () => {
     expect(variant).toBe("male");
     const prompt = applyCharacterIdentity("The adult woman keeps her face. Change only the woman.", variant);
     expect(prompt).not.toMatch(/woman| her /);
-    expect(prompt).toContain("beard");
-    expect(prompt).toContain("short haircut");
+    expect(prompt).toContain("facial hair (or lack of it)");
+    expect(prompt).toContain("hair length");
+  });
+  it("uses saved gender for new characters without a special ID", () => {
+    expect(characterIdentityVariant("new-marcell", "male")).toBe("male");
+    expect(characterIdentityVariant("new-woman", "female")).toBeUndefined();
+    const original = "The adult woman keeps her face.";
+    expect(applyCharacterIdentity(original, characterIdentityVariant("new-woman", "female"))).toBe(original);
+    expect(applyCharacterIdentity(original, characterIdentityVariant("new-marcell", "male"))).toContain("adult man");
   });
   it("changes only the identity prompt in the actual scene API request", async () => {
     const jpg = await sharp({ create: { width: 64, height: 64, channels: 3, background: "white" } }).jpeg().toBuffer();

@@ -88,12 +88,12 @@ export async function prepareValidatedJobInput(input: {
   let finalCharacterId: string | undefined;
   if (characterId) {
     const { data: ownedCharacter, error: ownershipError } = await svc.from("characters")
-      .select("id").eq("id", characterId).eq("owner_id", input.userId).single();
+      .select("id,gender").eq("id", characterId).eq("owner_id", input.userId).single();
     if (ownershipError || !ownedCharacter) {
       return { type, payload, error: "CHARACTER_NOT_OWNED", status: 403 };
     }
     finalCharacterId = characterId;
-    const identityVariant = characterIdentityVariant(characterId);
+    const identityVariant = characterIdentityVariant(characterId, ownedCharacter.gender);
     if (identityVariant) payload.identityPromptVariant = identityVariant;
   }
   if (type === "image_edit" && payload.galleryEdit === true) {

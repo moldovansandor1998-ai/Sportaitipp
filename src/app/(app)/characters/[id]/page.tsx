@@ -4,7 +4,7 @@ import { browserClient } from "@/lib/supabase/client";
 import Image from "next/image";
 import { applyCharacterIdentity, characterIdentityVariant } from "@/lib/characterIdentity";
 
-interface CharacterRow { id: string; name: string; status: string; }
+interface CharacterRow { id: string; name: string; status: string; gender?: "female" | "male"; }
 interface RefRow { id: string; asset_id: string; kind: string; qc_status: string; is_primary: boolean; sort_order: number; }
 interface VersionRow {
   id: string; version_no: number; status: string; provider: string | null; identity_score: number | null;
@@ -278,6 +278,20 @@ export default function CharacterDetailPage({ params }: { params: Promise<{ id: 
 
   if (!character) return <div className="skeleton" />;
 
+  async function saveGender(gender: "female" | "male") {
+    setBusy(true); setError(null);
+    try {
+      const sb = browserClient();
+      const { data: { user } } = await sb.auth.getUser();
+      if (!user) throw new Error("Jelentkezz be újra.");
+      const { data, error: saveError } = await sb.from("characters").update({ gender })
+        .eq("id", id).eq("owner_id", user.id).select("id").single();
+      if (saveError || !data) throw new Error(saveError?.message ?? "A mentés nem sikerült.");
+      await load();
+    } catch (err) { setError(err instanceof Error ? err.message : "A mentés nem sikerült."); }
+    finally { setBusy(false); }
+  }
+
   const approvedRefs = refs.filter((r) => r.qc_status === "approved");
   const preparedVersion = versions.find((v) => v.status === "prepared" && !v.generation_job_id);
   const trainingInProgress = versions.some((v) => v.status === "training")
@@ -289,6 +303,13 @@ export default function CharacterDetailPage({ params }: { params: Promise<{ id: 
   return (
     <main>
       <h1 style={{ fontSize: 22, marginTop: 0 }}>{character.name}</h1>
+      <label htmlFor="character-gender">Karakter neme</label>
+      <select id="character-gender" disabled={busy}
+        value={character.gender ?? (characterIdentityVariant(id) === "male" ? "male" : "female")}
+        onChange={(e) => void saveGender(e.target.value as "female" | "male")}>
+        <option value="female">Nő</option>
+        <option value="male">Férfi</option>
+      </select>
       <p className="muted">
         Státusz: {character.status} · Kredit: {credits ?? "…"} ·{" "}
         {active ? "Aktív – generálható" : "A generáláshoz active státusz kell (QC → tréning → tesztkép → identity check)"}
@@ -352,12 +373,12 @@ export default function CharacterDetailPage({ params }: { params: Promise<{ id: 
             onClick={() => manualReview("test_image", latestRealVersion?.id)}>4. Tesztkép kézi jóváhagyása</button>
           <button disabled={busy || !active || !providers?.generation}
             onClick={() => startJob("image_generation", {
-              prompt: applyCharacterIdentity("Candid realistic photograph of this adult woman from the waist up, natural body proportions and anatomy, relaxed posture, everyday clothing, authentic skin texture with subtle imperfections, natural window light, unretouched documentary photography, 50mm lens", characterIdentityVariant(id)),
+              prompt: applyCharacterIdentity("Candid realistic photograph of this adult woman from the waist up, natural body proportions and anatomy, relaxed posture, everyday clothing, authentic skin texture with subtle imperfections, natural window light, unretouched documentary photography, 50mm lens", characterIdentityVariant(id, character.gender)),
               imageSize: "portrait_4_3",
             })}>5. Élethű félalak</button>
           <button className="ghost" disabled={busy || !active || !providers?.generation}
             onClick={() => startJob("image_generation", {
-              prompt: applyCharacterIdentity("Candid full body photograph of this adult woman standing naturally, entire person visible from head to shoes, realistic human anatomy and proportions, relaxed pose, everyday clothing, authentic skin texture, natural daylight, unretouched documentary photography, 50mm lens", characterIdentityVariant(id)),
+              prompt: applyCharacterIdentity("Candid full body photograph of this adult woman standing naturally, entire person visible from head to shoes, realistic human anatomy and proportions, relaxed pose, everyday clothing, authentic skin texture, natural daylight, unretouched documentary photography, 50mm lens", characterIdentityVariant(id, character.gender)),
               imageSize: "portrait_4_3",
             })}>Élethű teljes alak</button>
         </div>

@@ -4,6 +4,7 @@ import { useRouter } from "next/navigation";
 import { browserClient } from "@/lib/supabase/client";
 
 export default function NewCharacterPage() {
+  const [gender, setGender] = useState<"" | "female" | "male">("");
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
   const [consentType, setConsentType] = useState("ai_persona");
@@ -12,13 +13,14 @@ export default function NewCharacterPage() {
   const router = useRouter();
 
   async function create() {
+    if (!gender) { setError("Válaszd ki, hogy női vagy férfi karaktert készítesz."); return; }
     setLoading(true); setError(null);
     const getSb = () => browserClient();
     const { data: { user } } = await getSb().auth.getUser();
     if (!user) { router.push("/login"); return; }
 
     const { data, error: err } = await getSb().from("characters").insert({
-      owner_id: user.id, name, description: description || null,
+      owner_id: user.id, name, gender, description: description || null,
       consent_type: consentType, status: "collecting_refs",
     }).select("id").single();
 
@@ -33,6 +35,12 @@ export default function NewCharacterPage() {
       <div className="card">
         <label>Karakter neve</label>
         <input value={name} onChange={(e) => setName(e.target.value)} maxLength={80} />
+        <label htmlFor="character-gender">Karakter neme</label>
+        <select id="character-gender" value={gender} onChange={(e) => setGender(e.target.value as "" | "female" | "male")} required>
+          <option value="" disabled>Válassz…</option>
+          <option value="female">Nő</option>
+          <option value="male">Férfi</option>
+        </select>
         <label>Leírás (opcionális)</label>
         <textarea value={description} onChange={(e) => setDescription(e.target.value)} rows={3} maxLength={2000} />
         <label>Jogalap</label>
@@ -45,7 +53,7 @@ export default function NewCharacterPage() {
           <p className="error">Dokumentált hozzájárulás szükséges – az admin QC-vel hagyja jóvá. (Feltöltés a 2. mérföldkőben.)</p>
         )}
         {error && <p className="error">{error}</p>}
-        <button onClick={create} disabled={loading || !name.trim()} style={{ marginTop: 16 }}>Létrehozás</button>
+        <button onClick={create} disabled={loading || !name.trim() || !gender} style={{ marginTop: 16 }}>Létrehozás</button>
       </div>
     </main>
   );
