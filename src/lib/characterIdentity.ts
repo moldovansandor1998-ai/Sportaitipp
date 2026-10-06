@@ -8,7 +8,7 @@ export function characterIdentityVariant(characterId?: string, gender?: unknown)
   return gender === "male" || characterId === SA_CHARACTER_ID ? "male" : undefined;
 }
 export function applyCharacterIdentity(prompt: string, variant: unknown): string {
-  if (variant === "zsofia-blue-eyes") return prompt + " The character has natural blue irises in both eyes. Keep both eyes blue and consistent with each other in every image and frame, including close-ups and changes in lighting. Do not copy the source person's eye color. Do not make her eyes brown, green, gray, hazel or different colors.";
+  if (variant === "zsofia-blue-eyes") return prompt + " Match the identity references' natural muted gray-blue irises in both eyes, with realistic iris texture, normal dark pupils and subtle reflections appropriate to the scene lighting. Preserve their low saturation; do not intensify or brighten the blue, use vivid cyan, neon or glowing eyes, or create a colored-contact-lens appearance. The eye shade may appear darker in dim light. Preserve the identity references' short shoulder-length ash-blonde hair with darker roots: the ends sit at the shoulders, never extend down the chest. Use the identity references for hair length and color, not the source scene person's hair. Keep pose, clothing and scene composition from the source.";
   if (variant !== "male") return prompt;
   return prompt.replaceAll("adult woman", "adult man")
     .replaceAll("same woman's", "same man's")

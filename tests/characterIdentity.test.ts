@@ -13,7 +13,9 @@ describe("stored character gender", () => {
     const body = JSON.parse(String(send.mock.calls[0][1]?.body));
     expect(body.images).toEqual(images);
     expect(body.prompt).toContain("Images 3, 4 and 5");
-    expect(body.prompt).toContain("natural blue irises in both eyes");
+    expect(body.prompt).toContain("Preserve their low saturation");
+    expect(body.prompt).toContain("short shoulder-length ash-blonde hair");
+    expect(body.prompt).toContain("natural muted gray-blue irises in both eyes");
     expect(String(send.mock.calls[0][0])).toContain("seedream-v4.5/edit");
   });
   it("requires blue eyes only for Zsofia, including when saved as female", () => {
@@ -21,7 +23,7 @@ describe("stored character gender", () => {
     for (const gender of [undefined, "female"]) {
       const variant = characterIdentityVariant("14d3cc62-004b-43f5-a355-4939e4741e5f", gender);
       expect(variant).toBe("zsofia-blue-eyes");
-      expect(applyCharacterIdentity(prompt, variant)).toContain("natural blue irises in both eyes");
+      expect(applyCharacterIdentity(prompt, variant)).toContain("natural muted gray-blue irises in both eyes");
     }
     for (const id of otherIds) expect(applyCharacterIdentity(prompt, characterIdentityVariant(id, "female"))).toBe(prompt);
   });
@@ -34,8 +36,8 @@ describe("stored character gender", () => {
     const original = JSON.parse(String(send.mock.calls[0][1]?.body));
     const zsofia = JSON.parse(String(send.mock.calls[1][1]?.body));
     expect({...zsofia,prompt:original.prompt}).toEqual(original);
-    expect(zsofia.prompt).toContain("natural blue irises in both eyes");
-    expect(original.prompt).not.toContain("natural blue irises");
+    expect(zsofia.prompt).toContain("natural muted gray-blue irises in both eyes");
+    expect(original.prompt).not.toContain("natural muted gray-blue irises");
   });
   it("preserves every existing model's prompt byte for byte", () => {
     const prompt = "Animate the exact adult woman. Preserve her facial identity.";
