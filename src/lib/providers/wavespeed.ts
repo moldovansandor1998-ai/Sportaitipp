@@ -132,8 +132,8 @@ export class WaveSpeedAdapter implements ProviderAdapter {
       const extra = typeof p.payload.scenePrompt === "string" ? p.payload.scenePrompt.trim() : "";
       const endpoint = EDIT_MODELS["seedream-v4.5"];
       const data = await this.request(`${API}/${endpoint}`, {
-        images: [refs[0], sourceUrl, ...refs.slice(1, 3)],
-        prompt: `${identityPrompt(SCENE_EDIT_PROMPT)} ${extra}`.trim(),
+        images: [refs[0], sourceUrl, ...refs.slice(1, p.payload.identityPromptVariant === "zsofia-brown-eyes" ? 4 : 3)],
+        prompt: `${identityPrompt(p.payload.identityPromptVariant === "zsofia-brown-eyes" && refs.length === 4 ? SCENE_EDIT_PROMPT.replace("Images 3 and 4", "Images 3, 4 and 5") : SCENE_EDIT_PROMPT)} ${extra}`.trim(),
         size: `${dimensions.width}*${dimensions.height}`,
       });
       if (typeof data.id !== "string") throw new ProviderError("WaveSpeed jelenetkép azonosító hiányzik.", false);
@@ -265,12 +265,12 @@ export class WaveSpeedAdapter implements ProviderAdapter {
     }
     const characterImages = p.payload.characterImageUrls;
     if (Array.isArray(characterImages) && characterImages.length >= 2
-        && characterImages.length <= 4 && characterImages.every((url) => typeof url === "string" && url.startsWith("https://"))) {
+        && characterImages.length <= (p.payload.identityPromptVariant === "zsofia-brown-eyes" ? 5 : 4) && characterImages.every((url) => typeof url === "string" && url.startsWith("https://"))) {
       const model = p.payload.editModel === "nano-banana" ? EDIT_MODELS["nano-banana"] : EDIT_MODELS["seedream-v4.5"];
       const fanvue = p.payload.outputCategory === "fanvue";
       const dimensions = fanvue ? closestRatio(await sourceRatio(characterImages[1])) : closestRatio(9 / 16);
       const data = await this.request(`${API}/${model}`, {
-        images: characterImages, prompt: identityPrompt(CHARACTER_EDIT_PROMPT),
+        images: characterImages, prompt: identityPrompt(p.payload.identityPromptVariant === "zsofia-brown-eyes" && characterImages.length === 5 ? CHARACTER_EDIT_PROMPT.replace("Images 3 and 4", "Images 3, 4 and 5") : CHARACTER_EDIT_PROMPT),
         ...(p.payload.editModel === "nano-banana" ? { aspect_ratio: dimensions.ratio } : { size: `${dimensions.width}*${dimensions.height}` }),
         ...(p.payload.editModel === "nano-banana" ? { output_format: "png" } : {}),
       });

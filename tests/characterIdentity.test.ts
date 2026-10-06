@@ -6,6 +6,16 @@ afterEach(() => vi.restoreAllMocks());
 const otherIds = ["05274aae-99fa-4352-9181-519f25a54963", "5ef31ec2-58fb-4564-af6d-f3679340db48",
   "cd49b5cd-6bec-49af-bb6c-275843750e75", "407d6aa7-c688-4164-bf89-58f26e84cdf2"];
 describe("stored character gender", () => {
+  it("sends all four Zsofia identity references with the source scene in position two", async () => {
+    const send = vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response(JSON.stringify({data:{id:"swap-four"}})));
+    const images = ["https://example.com/face1.jpg", "https://example.com/source.jpg", "https://example.com/face2.jpg", "https://example.com/half1.jpg", "https://example.com/half2.jpg"];
+    await new WaveSpeedAdapter().submit({jobId:"j",jobType:"character_swap",idempotencyKey:"k",payload:{characterImageUrls:images,editModel:"seedream-v4.5",outputCategory:"tiktok",identityPromptVariant:"zsofia-brown-eyes"}});
+    const body = JSON.parse(String(send.mock.calls[0][1]?.body));
+    expect(body.images).toEqual(images);
+    expect(body.prompt).toContain("Images 3, 4 and 5");
+    expect(body.prompt).toContain("natural brown irises in both eyes");
+    expect(String(send.mock.calls[0][0])).toContain("seedream-v4.5/edit");
+  });
   it("requires brown eyes only for Zsofia, including when saved as female", () => {
     const prompt = "Preserve the adult woman's face.";
     for (const gender of [undefined, "female"]) {
