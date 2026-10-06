@@ -244,7 +244,7 @@ export async function prepareValidatedJobInput(input: {
     const identityFace = pool.find((r) => r.kind === "face" && r.is_primary) ?? pool.find((r) => r.kind === "face");
     if (!identityFace) return [];
     // Zsofia's owner selected a four-photo identity set; keep other models' selection unchanged.
-    if (payload.identityPromptVariant === "zsofia-brown-eyes") {
+    if (payload.identityPromptVariant === "zsofia-blue-eyes") {
       return resolveImages([identityFace, ...pool.filter((r) => r.asset_id !== identityFace.asset_id)].slice(0, 4).map((r) => r.asset_id));
     }
     add(identityFace);

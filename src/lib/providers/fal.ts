@@ -242,7 +242,7 @@ export class FalAdapter implements ProviderAdapter {
   }
 
   async submit(p: SubmitParams): Promise<SubmitResult> {
-    const payload = p.payload.identityPromptVariant === "zsofia-brown-eyes" && typeof p.payload.prompt === "string"
+    const payload = p.payload.identityPromptVariant === "zsofia-blue-eyes" && typeof p.payload.prompt === "string"
       ? { ...p.payload, prompt: applyCharacterIdentity(p.payload.prompt, p.payload.identityPromptVariant) }
       : p.payload;
     const s = p.jobType === "image_edit" && p.payload.useTrainedCharacter === true

@@ -2,13 +2,13 @@
 export type CharacterGender = "female" | "male";
 const SA_CHARACTER_ID = "0b3d1a82-288d-43f0-b91f-b0cf0c2261e8";
 const ZSOFIA_CHARACTER_ID = "14d3cc62-004b-43f5-a355-4939e4741e5f";
-export function characterIdentityVariant(characterId?: string, gender?: unknown): "male" | "zsofia-brown-eyes" | undefined {
-  if (characterId === ZSOFIA_CHARACTER_ID) return "zsofia-brown-eyes";
+export function characterIdentityVariant(characterId?: string, gender?: unknown): "male" | "zsofia-blue-eyes" | undefined {
+  if (characterId === ZSOFIA_CHARACTER_ID) return "zsofia-blue-eyes";
   if (gender === "female") return undefined;
   return gender === "male" || characterId === SA_CHARACTER_ID ? "male" : undefined;
 }
 export function applyCharacterIdentity(prompt: string, variant: unknown): string {
-  if (variant === "zsofia-brown-eyes") return prompt + " The character has natural brown irises in both eyes. Keep both eyes brown and consistent with each other in every image and frame, including close-ups and changes in lighting. Do not copy the source person's eye color. Do not make her eyes blue, green, gray, hazel or different colors.";
+  if (variant === "zsofia-blue-eyes") return prompt + " The character has natural blue irises in both eyes. Keep both eyes blue and consistent with each other in every image and frame, including close-ups and changes in lighting. Do not copy the source person's eye color. Do not make her eyes brown, green, gray, hazel or different colors.";
   if (variant !== "male") return prompt;
   return prompt.replaceAll("adult woman", "adult man")
     .replaceAll("same woman's", "same man's")
