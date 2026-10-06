@@ -8,6 +8,7 @@
 //  - Webhook payload: status "OK" → done, "ERROR" → failed; kimenet a payload mezőben.
 // Működéséhez FAL_KEY kell; kulcs nélkül nem regisztrálódik.
 import { createHash, createPublicKey, verify as edVerify, KeyObject } from "crypto";
+import { applyCharacterIdentity } from "@/lib/characterIdentity";
 import {
   Estimate, JobType, NormalizedOutput, ProviderAdapter, ProviderError,
   SubmitParams, SubmitResult, ProviderErrorCategory,
@@ -241,6 +242,9 @@ export class FalAdapter implements ProviderAdapter {
   }
 
   async submit(p: SubmitParams): Promise<SubmitResult> {
+    const payload = p.payload.identityPromptVariant === "zsofia-brown-eyes" && typeof p.payload.prompt === "string"
+      ? { ...p.payload, prompt: applyCharacterIdentity(p.payload.prompt, p.payload.identityPromptVariant) }
+      : p.payload;
     const s = p.jobType === "image_edit" && p.payload.useTrainedCharacter === true
       ? TRAINED_CHARACTER_EDIT : this.spec(p.jobType);
     if (s === TRAINED_CHARACTER_EDIT && (!str(p.payload.loraPath) || !str(p.payload.imageUrl))) {
@@ -252,7 +256,7 @@ export class FalAdapter implements ProviderAdapter {
     const res = await fetch(url.toString(), {
       method: "POST",
       headers: { authorization: `Key ${this.key()}`, "content-type": "application/json" },
-      body: JSON.stringify(s.mapInput(p.payload)),
+      body: JSON.stringify(s.mapInput(payload)),
     });
     if (!res.ok) {
       const { retryable, category } = classify(res.status);

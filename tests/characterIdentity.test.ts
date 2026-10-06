@@ -4,8 +4,29 @@ import { characterIdentityVariant, applyCharacterIdentity } from "@/lib/characte
 import { WaveSpeedAdapter } from "@/lib/providers/wavespeed";
 afterEach(() => vi.restoreAllMocks());
 const otherIds = ["05274aae-99fa-4352-9181-519f25a54963", "5ef31ec2-58fb-4564-af6d-f3679340db48",
-  "cd49b5cd-6bec-49af-bb6c-275843750e75", "407d6aa7-c688-4164-bf89-58f26e84cdf2", "14d3cc62-004b-43f5-a355-4939e4741e5f"];
+  "cd49b5cd-6bec-49af-bb6c-275843750e75", "407d6aa7-c688-4164-bf89-58f26e84cdf2"];
 describe("stored character gender", () => {
+  it("requires brown eyes only for Zsofia, including when saved as female", () => {
+    const prompt = "Preserve the adult woman's face.";
+    for (const gender of [undefined, "female"]) {
+      const variant = characterIdentityVariant("14d3cc62-004b-43f5-a355-4939e4741e5f", gender);
+      expect(variant).toBe("zsofia-brown-eyes");
+      expect(applyCharacterIdentity(prompt, variant)).toContain("natural brown irises in both eyes");
+    }
+    for (const id of otherIds) expect(applyCharacterIdentity(prompt, characterIdentityVariant(id, "female"))).toBe(prompt);
+  });
+  it("adds the eye-color instruction to Zsofia's image swap without changing the request settings", async () => {
+    const send = vi.spyOn(globalThis, "fetch").mockImplementation(async () => new Response(JSON.stringify({data:{id:"swap"}})));
+    const payload = {characterImageUrls:["https://example.com/face.jpg","https://example.com/source.jpg"],editModel:"seedream-v4.5",outputCategory:"tiktok"};
+    for (const variant of [undefined, characterIdentityVariant("14d3cc62-004b-43f5-a355-4939e4741e5f", "female")]) {
+      await new WaveSpeedAdapter().submit({jobId:"j",jobType:"character_swap",idempotencyKey:"k",payload:{...payload,identityPromptVariant:variant}});
+    }
+    const original = JSON.parse(String(send.mock.calls[0][1]?.body));
+    const zsofia = JSON.parse(String(send.mock.calls[1][1]?.body));
+    expect({...zsofia,prompt:original.prompt}).toEqual(original);
+    expect(zsofia.prompt).toContain("natural brown irises in both eyes");
+    expect(original.prompt).not.toContain("natural brown irises");
+  });
   it("preserves every existing model's prompt byte for byte", () => {
     const prompt = "Animate the exact adult woman. Preserve her facial identity.";
     for (const id of otherIds) {
