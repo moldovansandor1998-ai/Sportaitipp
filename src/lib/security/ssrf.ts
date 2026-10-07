@@ -45,7 +45,8 @@ export function assertAllowedUrl(raw: string): URL {
 /** A provider's returned file may use its own CDN; client inputs never inherit this allowance. */
 export function assertAllowedProviderOutputUrl(raw: string, provider?: string | null): URL {
   const url = new URL(raw);
-  if (provider === "nureta" && url.hostname === "57e7777c531440a7095f6b86d24d79f6.r2.cloudflarestorage.com") {
+  if ((provider === "nureta" && url.hostname === "57e7777c531440a7095f6b86d24d79f6.r2.cloudflarestorage.com")
+      || (provider === "wavespeed" && url.hostname === "cdn.cachegalaxy.com")) {
     if (url.protocol !== "https:") throw new Error("URL_SCHEME_NOT_ALLOWED");
     if (url.username || url.password) throw new Error("URL_CREDENTIALS_NOT_ALLOWED");
     if (url.port) throw new Error("URL_HOST_NOT_ALLOWED");

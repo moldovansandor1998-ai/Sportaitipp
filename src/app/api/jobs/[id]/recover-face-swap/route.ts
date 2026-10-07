@@ -3,7 +3,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { serviceClient } from "@/lib/supabase/server";
 import { buildRouter } from "@/lib/providers";
-import { assertAllowedUrl } from "@/lib/security/ssrf";
+import { assertAllowedProviderOutputUrl } from "@/lib/security/ssrf";
 import { sniffImage } from "@/lib/trainingDataset";
 
 export const runtime = "nodejs";
@@ -31,7 +31,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     const url = output.files.find((f) => f.kind === "image")?.url;
     if (!url) return NextResponse.json({ error: "IMAGE_MISSING" }, { status: 502 });
     outputHost = new URL(url).hostname;
-    const safe = assertAllowedUrl(url);
+    const safe = assertAllowedProviderOutputUrl(url, job.provider);
     const response = await fetch(safe, { redirect: "error", signal: AbortSignal.timeout(30000) });
     if (!response.ok || Number(response.headers.get("content-length") ?? 0) > 12 * 1024 * 1024)
       return NextResponse.json({ error: "DOWNLOAD_FAILED" }, { status: 502 });

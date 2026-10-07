@@ -273,17 +273,18 @@ async function storeOutputAssets(
   return assetIds;
 }
 
-/** Restore completed files without resubmitting or charging; URL recovery is limited to marked E2E tests. */
+/** Restore completed files without resubmitting or charging; URL recovery is limited to WaveSpeed images and marked Nureta E2E tests. */
 export async function recoverRefundedVideoJob(job: JobRow & { provider_meta?: Record<string, unknown> }): Promise<boolean> {
   const sceneTest = job.type === "nureta_scene_video" && job.provider === "nureta"
     && typeof job.payload?.verificationRun === "string" && job.payload.verificationRun.startsWith("castora-e2e-");
-  if ((!sceneTest && job.type !== "character_motion_video") || job.status !== "refunded" || !job.provider_job_id || !job.provider) return false;
+  const imageRecovery = job.provider === "wavespeed" && ["character_swap", "nureta_scene_image"].includes(job.type);
+  if ((!sceneTest && !imageRecovery && job.type !== "character_motion_video") || job.status !== "refunded" || !job.provider_job_id || !job.provider) return false;
   const sb = serviceClient();
   const { data: current } = await sb.from("generation_jobs").select("status,result,error")
     .eq("id", job.id).single();
   const message = String((current?.error as { message?: string } | null)?.message ?? "");
   if (current?.status !== "refunded" || current.result ||
-    !(sceneTest ? message === "URL_HOST_NOT_ALLOWED" : message.includes("maximum allowed size"))) return false;
+    !((sceneTest || imageRecovery) ? message === "URL_HOST_NOT_ALLOWED" : message.includes("maximum allowed size"))) return false;
   const adapter = router.getAdapter(job.provider);
   if (!adapter) throw new Error("RECOVERY_PROVIDER_UNAVAILABLE");
   const output = await adapter.getResult(job.provider_job_id, job.provider_meta, job.type);

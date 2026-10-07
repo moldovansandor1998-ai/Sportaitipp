@@ -171,6 +171,15 @@ export async function POST(req: NextRequest) {
     catch (error) { console.error(JSON.stringify({ scope: "cron.recoverGallery", jobId: job.id, error: String(error) })); }
     if (recovered >= 2) break;
   }
+  // Restore WaveSpeed images already generated on its new output CDN, without a new charge.
+  const { data: imageRecoveries } = await sb.from("generation_jobs").select("*")
+    .eq("status", "refunded").eq("provider", "wavespeed")
+    .in("type", ["character_swap", "nureta_scene_image"]).eq("error->>message", "URL_HOST_NOT_ALLOWED")
+    .is("result", null).order("created_at", { ascending: false }).limit(3);
+  for (const job of (imageRecoveries ?? []) as (JobRow & { provider_meta?: Record<string, unknown> })[]) {
+    try { if (await recoverRefundedVideoJob(job)) recovered++; }
+    catch (error) { console.error(JSON.stringify({ scope: "cron.recoverImage", jobId: job.id, error: String(error) })); }
+  }
   const { data: sceneTests } = await sb.from("generation_jobs").select("*")
     .eq("status", "refunded").eq("type", "nureta_scene_video").eq("provider", "nureta")
     .eq("error->>message", "URL_HOST_NOT_ALLOWED").like("payload->>verificationRun", "castora-e2e-%")
