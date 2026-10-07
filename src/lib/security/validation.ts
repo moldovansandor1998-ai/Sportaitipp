@@ -62,7 +62,10 @@ export const CreateJobSchema = z.object({
           ctx.addIssue({ code: z.ZodIssueCode.custom, message: "Válassz hangot a videóhoz." });
         if (p.speechText !== undefined && (typeof p.speechText !== "string" || p.speechText.length > 450))
           ctx.addIssue({ code: z.ZodIssueCode.custom, message: "A modell beszédszövege legfeljebb 450 karakter lehet." });
-        if (!z.string().uuid().safeParse(p.sceneJobId).success || !z.string().uuid().safeParse(p.sceneImageAssetId).success)
+        if ((p.sceneInputMode !== undefined && p.sceneInputMode !== "upload")
+          || !z.string().uuid().safeParse(p.sceneImageAssetId).success
+          || (p.sceneInputMode !== "upload" && !z.string().uuid().safeParse(p.sceneJobId).success)
+          || (p.sceneInputMode === "upload" && p.sceneJobId !== undefined))
           ctx.addIssue({ code: z.ZodIssueCode.custom, message: "Előbb hagyd jóvá a jelenetképet." });
         if (![5, 8, 10, 12, 15].includes(Number(p.duration)))
           ctx.addIssue({ code: z.ZodIssueCode.custom, message: "A videó hossza 5, 8, 10, 12 vagy 15 másodperc lehet." });

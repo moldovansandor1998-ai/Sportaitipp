@@ -79,7 +79,7 @@ export default function ToolsPage() {
   const [adultResolution, setAdultResolution] = useState<"480p" | "720p">("480p");
   const [adultVoiceMode, setAdultVoiceMode] = useState<"source" | "model" | "nureta">("nureta");
   const [adultSpeechText, setAdultSpeechText] = useState("");
-  const [adultChoice, setAdultChoice] = useState<{ jobId: string; assetId: string; characterId: string } | null>(null);
+  const [adultChoice, setAdultChoice] = useState<{ jobId?: string; assetId: string; characterId: string; inputMode?: "upload" } | null>(null);
 
   const chooseAdultSource = (id: string, mediaType: "image" | "video", preview: string) => {
     setAdultSource({ id, mediaType });
@@ -311,7 +311,7 @@ export default function ToolsPage() {
   async function upload(accept: string, onFile?: (file: File) => void): Promise<string | null> {
     const input = document.createElement("input");
     input.type = "file"; input.accept = accept;
-    const file = await new Promise<File | null>((r) => { input.onchange = () => r(input.files?.[0] ?? null); input.click(); });
+    const file = await new Promise<File | null>((r) => { input.onchange = () => r(input.files?.[0] ?? null); input.oncancel = () => r(null); input.click(); });
     if (!file) return null;
     const form = new FormData(); form.append("file", file);
     const res = await fetch("/api/assets/import", { method: "POST", headers: { authorization: `Bearer ${await token()}` }, body: form });
@@ -583,6 +583,19 @@ export default function ToolsPage() {
               chooseAdultSource(id, "video", URL.createObjectURL(file));
             })}>Videó feltöltése (MP4)</button>
         </div>
+        <button className="ghost" style={{ marginTop: 8 }} disabled={busyKey !== null || !toolChar} onClick={async () => {
+          setBusyKey("adultUpload");
+          try {
+            let preview = "";
+            const id = await upload("image/*", (file) => { preview = URL.createObjectURL(file); });
+            if (!id) return;
+            chooseAdultSource(id, "image", preview);
+            setAdultChoice({ assetId: id, characterId: toolChar, inputMode: "upload" });
+            setMsg((current) => ({ ...current, adultPreview: "Saját kép kiválasztva. Közvetlenül ebből készül a videó." }));
+          } catch (error) {
+            setMsg((current) => ({ ...current, upload: error instanceof Error ? error.message : "Feltöltési hiba" }));
+          } finally { setBusyKey(null); }
+        }}>Saját kép feltöltése közvetlen videókészítéshez</button>
         {(msg.videoUpload || msg.upload) && <p role="status" className="muted">{msg.videoUpload || msg.upload}</p>}
         {adultSource && <p className="muted">Kiválasztott forrás: {adultSource.mediaType === "video" ? "videó" : "kép"}.</p>}
         {adultSourcePreview && adultSource?.mediaType === "image" && (
@@ -623,8 +636,8 @@ export default function ToolsPage() {
             } finally { setBusyKey(null); }
           }}>Ezt a jelenetképet jóváhagyom</button>
         )}
-        {adultChoice?.characterId === toolChar && results.adultPreview?.some((item) => item.assetId === adultChoice.assetId) && <>
-          <p className="muted">Jóváhagyott kép kiválasztva. A videó ebből a képből indul; az arcot és a kellékeket a kész videóban is ellenőrizd.</p>
+        {adultChoice?.characterId === toolChar && (adultChoice.inputMode === "upload" || results.adultPreview?.some((item) => item.assetId === adultChoice.assetId)) && <>
+          <p className="muted">{adultChoice.inputMode === "upload" ? "Saját feltöltött kép kiválasztva." : "Jóváhagyott kép kiválasztva."} A videó ebből a képből indul; az arcot és a kellékeket a kész videóban is ellenőrizd.</p>
           <label htmlFor="scene-video-engine">Videómotor</label>
           <select id="scene-video-engine" value={sceneVideoEngine}
             onChange={(event) => setSceneVideoEngine(event.target.value as "nureta" | "kling")}>
@@ -663,10 +676,11 @@ export default function ToolsPage() {
               || adultVoiceMode === "model" && adultSource?.mediaType !== "video" && !adultSpeechText.trim()}
               onClick={() =>
               run("adultVideo", "nureta_scene_video", {
-                prompt: adultVideoPrompt, videoEngine: sceneVideoEngine, sceneJobId: adultChoice.jobId,
+                prompt: adultVideoPrompt, videoEngine: sceneVideoEngine,
+                ...(adultChoice.inputMode === "upload" ? { sceneInputMode: "upload" } : { sceneJobId: adultChoice.jobId }),
                 sceneImageAssetId: adultChoice.assetId, duration: adultDuration, resolution: adultResolution,
                 voiceMode: adultVoiceMode, speechText: adultSpeechText,
-              }, { characterId: toolChar })}>Jóváhagyott képből videó készítése</button>
+              }, { characterId: toolChar })}>{adultChoice.inputMode === "upload" ? "Feltöltött képből videó készítése" : "Jóváhagyott képből videó készítése"}</button>
           </div>
         </>}
         <Badge k="adultVideo" /><Price k="adultVideo" />

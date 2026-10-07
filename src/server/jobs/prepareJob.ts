@@ -282,12 +282,13 @@ export async function prepareValidatedJobInput(input: {
       delete payload.sourceVideoUrl; delete payload.sourceVideoAssetId; delete payload.voiceId; delete payload.naturalHungarianVoice;
       payload.videoEngine = payload.videoEngine === "kling" ? "kling" : "nureta";
       payload.prompt = String(payload.prompt).trim();
-      const { data: preview } = await svc.from("generation_jobs").select("id,type,status,payload")
+      const directUpload = payload.sceneInputMode === "upload";
+      const { data: preview } = directUpload ? { data: null } : await svc.from("generation_jobs").select("id,type,status,payload")
         .eq("id", String(payload.sceneJobId)).eq("owner_id", input.userId)
         .eq("character_id", characterId).eq("type", "nureta_scene_image")
         .eq("status", "completed").maybeSingle();
-      if (!preview) return { type, payload: {}, error: "SCENE_PREVIEW_REQUIRED", status: 409 };
-      const origin = preview.payload as { sourceAssetId?: string; sourceMediaType?: string } | null;
+      if (!directUpload && !preview) return { type, payload: {}, error: "SCENE_PREVIEW_REQUIRED", status: 409 };
+      const origin = (directUpload ? { sourceMediaType: "image" } : preview!.payload) as { sourceAssetId?: string; sourceMediaType?: string } | null;
       const sourceMediaType = origin?.sourceMediaType;
       if (payload.voiceMode === "source" || payload.voiceMode === "model" && sourceMediaType === "video") {
         if (sourceMediaType !== "video" || !origin?.sourceAssetId)
@@ -311,12 +312,16 @@ export async function prepareValidatedJobInput(input: {
           return { type, payload: {}, error: "TTS_VOICE_INVALID", status: 400 };
         payload.speechText = String(payload.speechText ?? "").trim();
       }
-      const { data: chosen } = await svc.from("gallery_items")
+      const { data: uploadedImage } = directUpload ? await svc.from("assets")
+        .select("bucket,object_path,media_type").eq("id", String(payload.sceneImageAssetId))
+        .eq("owner_id", input.userId).eq("source", "upload").eq("media_type", "image").maybeSingle()
+        : { data: null };
+      const { data: chosen } = directUpload ? { data: null } : await svc.from("gallery_items")
         .select("assets!inner(bucket,object_path,media_type)")
-        .eq("owner_id", input.userId).eq("job_id", preview.id)
+        .eq("owner_id", input.userId).eq("job_id", preview!.id)
         .eq("asset_id", String(payload.sceneImageAssetId)).eq("qc_status", "approved")
         .is("deleted_at", null).maybeSingle();
-      const asset = chosen?.assets as unknown as { bucket: string; object_path: string; media_type: string } | null;
+      const asset = (directUpload ? uploadedImage : chosen?.assets) as unknown as { bucket: string; object_path: string; media_type: string } | null;
       if (asset?.media_type !== "image") return { type, payload: {}, error: "SCENE_PREVIEW_REQUIRED", status: 409 };
       const { data: signed } = await svc.storage.from(asset.bucket).createSignedUrl(asset.object_path, 7200);
       if (!signed?.signedUrl) return { type, payload: {}, error: "SCENE_PREVIEW_REQUIRED", status: 409 };
