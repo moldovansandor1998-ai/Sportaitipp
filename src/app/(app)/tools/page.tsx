@@ -1,6 +1,3 @@
-Warning: truncated output (original token count: 20149)
-Total output lines: 1093
-
 "use client";
 // AI eszközök – minden eszköz VALÓDI folyamattal: assetválasztó/feltöltés, paraméterek,
 // árbecslés, indítás, progress, eredmény (player/letöltés/galéria), retry.
@@ -618,7 +615,15 @@ export default function ToolsPage() {
           setBusyKey("adultUpload");
           try {
             let preview = "";
-            const id = await upload("image/*", (file) => { preview = …149 tokens truncated…z</button>
+            const id = await upload("image/*", (file) => { preview = URL.createObjectURL(file); });
+            if (!id) return;
+            chooseAdultSource(id, "image", preview);
+            setAdultChoice({ assetId: id, characterId: toolChar, inputMode: "upload" });
+            setMsg((current) => ({ ...current, adultPreview: "Saját kép kiválasztva. Közvetlenül ebből készül a videó." }));
+          } catch (error) {
+            setMsg((current) => ({ ...current, upload: error instanceof Error ? error.message : "Feltöltési hiba" }));
+          } finally { setBusyKey(null); }
+        }}>Saját kép feltöltése közvetlen videókészítéshez</button>
         {(msg.videoUpload || msg.upload) && <p role="status" className="muted">{msg.videoUpload || msg.upload}</p>}
         {adultSource && <p className="muted">Kiválasztott forrás: {adultSource.mediaType === "video" ? "videó" : "kép"}.</p>}
         {adultSourcePreview && adultSource?.mediaType === "image" && (
