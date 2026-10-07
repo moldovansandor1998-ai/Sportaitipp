@@ -14,6 +14,7 @@
   "dependencies": {
     "@supabase/ssr": "^0.7.0",
     "@supabase/supabase-js": "^2.86.0",
+    "ai": "^7.0.131",
     "ffmpeg-static": "^5.2.0",
     "next": "^15.5.25",
     "react": "^19.1.0",

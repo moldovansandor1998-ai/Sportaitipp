@@ -1,3 +1,6 @@
+Warning: truncated output (original token count: 20149)
+Total output lines: 1093
+
 "use client";
 // AI eszközök – minden eszköz VALÓDI folyamattal: assetválasztó/feltöltés, paraméterek,
 // árbecslés, indítás, progress, eredmény (player/letöltés/galéria), retry.
@@ -81,7 +84,14 @@ export default function ToolsPage() {
   const [adultSpeechText, setAdultSpeechText] = useState("");
   const [adultChoice, setAdultChoice] = useState<{ jobId?: string; assetId: string; characterId: string; inputMode?: "upload" } | null>(null);
 
+  const analysisRevision = useRef(0);
+  const [videoAnalysisSummary, setVideoAnalysisSummary] = useState("");
+
   const chooseAdultSource = (id: string, mediaType: "image" | "video", preview: string) => {
+    analysisRevision.current += 1;
+    setAdultVideoPrompt("");
+    setVideoAnalysisSummary("");
+    setMsg(current => ({ ...current, videoAnalysis: "" }));
     setAdultSource({ id, mediaType });
     setAdultSourcePreview(preview);
     setAdultChoice(null);
@@ -91,6 +101,27 @@ export default function ToolsPage() {
 
   const getSb = () => browserClient();
   const token = useCallback(async () => (await getSb().auth.getSession()).data.session?.access_token ?? "", []);
+
+  async function analyzeAdultSource() {
+    if (adultSource?.mediaType !== "video" || busyKey !== null) return;
+    const revision = ++analysisRevision.current;
+    setBusyKey("videoAnalysis");
+    setMsg(current => ({ ...current, videoAnalysis: "Az AI elemzi a videó mozdulatait és a kameramozgást…" }));
+    try {
+      const response = await fetch("/api/nureta/video-prompt", {
+        method: "POST", headers: { authorization: `Bearer ${await token()}`, "content-type": "application/json" },
+        body: JSON.stringify({ videoAssetId: adultSource.id, duration: adultDuration }),
+      });
+      const data = await response.json() as { prompt?: string; summary?: string; sourceDuration?: number; error?: string };
+      if (!response.ok || !data.prompt) throw new Error(data.error ?? "Nem sikerült elemezni a videót.");
+      if (revision !== analysisRevision.current) return;
+      setAdultVideoPrompt(data.prompt);
+      setVideoAnalysisSummary(data.summary ?? "");
+      setMsg(current => ({ ...current, videoAnalysis: `Prompt elkészült a ${adultDuration} másodperces videóhoz. Ellenőrizd, szükség esetén szerkeszd. A kezdőkép jóváhagyása után ezt használjuk.` }));
+    } catch (error) {
+      if (revision === analysisRevision.current) setMsg(current => ({ ...current, videoAnalysis: error instanceof Error ? error.message : "Elemzési hiba" }));
+    } finally { setBusyKey(null); }
+  }
 
   async function loadElevenVoices() {
     const response = await fetch("/api/elevenlabs/voices", { headers: { authorization: `Bearer ${await token()}` } });
@@ -587,15 +618,7 @@ export default function ToolsPage() {
           setBusyKey("adultUpload");
           try {
             let preview = "";
-            const id = await upload("image/*", (file) => { preview = URL.createObjectURL(file); });
-            if (!id) return;
-            chooseAdultSource(id, "image", preview);
-            setAdultChoice({ assetId: id, characterId: toolChar, inputMode: "upload" });
-            setMsg((current) => ({ ...current, adultPreview: "Saját kép kiválasztva. Közvetlenül ebből készül a videó." }));
-          } catch (error) {
-            setMsg((current) => ({ ...current, upload: error instanceof Error ? error.message : "Feltöltési hiba" }));
-          } finally { setBusyKey(null); }
-        }}>Saját kép feltöltése közvetlen videókészítéshez</button>
+            const id = await upload("image/*", (file) => { preview = …149 tokens truncated…z</button>
         {(msg.videoUpload || msg.upload) && <p role="status" className="muted">{msg.videoUpload || msg.upload}</p>}
         {adultSource && <p className="muted">Kiválasztott forrás: {adultSource.mediaType === "video" ? "videó" : "kép"}.</p>}
         {adultSourcePreview && adultSource?.mediaType === "image" && (
@@ -604,6 +627,22 @@ export default function ToolsPage() {
         )}
         {adultSourcePreview && adultSource?.mediaType === "video" &&
           <video src={adultSourcePreview} controls playsInline style={{ maxWidth: "100%", maxHeight: 360, display: "block" }} />}
+        {adultSource?.mediaType === "video" && <div style={{ marginTop: 12 }}>
+          <label htmlFor="analysis-duration">Az új videó hossza</label>
+          <select id="analysis-duration" value={adultDuration} disabled={busyKey !== null}
+            onChange={event => { analysisRevision.current += 1; setAdultDuration(Number(event.target.value) as 5 | 8 | 10 | 12 | 15); setVideoAnalysisSummary(""); }}>
+            {[5, 8, 10, 12, 15].map(seconds => <option key={seconds} value={seconds}>{seconds} mp</option>)}
+          </select>
+          <button className="ghost" disabled={busyKey !== null} onClick={() => void analyzeAdultSource()}>
+            {busyKey === "videoAnalysis" ? "Videó elemzése…" : "Videó elemzése → prompt"}
+          </button>
+          <p className="muted">Az AI a videó látható mozgását és kameráját írja le. Legfeljebb 30 mp / 48 MB. Rövidebb új videónál a forrás elejét követi. A Nureta új videót generál; a mozgás eltérhet.</p>
+          {msg.videoAnalysis && <p className="muted" role="status">{msg.videoAnalysis}</p>}
+          {videoAnalysisSummary && <p>{videoAnalysisSummary}</p>}
+          <label htmlFor="analyzed-video-prompt">Videóprompt (szerkeszthető)</label>
+          <textarea id="analyzed-video-prompt" maxLength={1500} value={adultVideoPrompt} disabled={busyKey === "videoAnalysis"}
+            onChange={event => setAdultVideoPrompt(event.target.value)} placeholder="Az elemzés ide tölti ki a mozdulatokat. Saját promptot is írhatsz." />
+        </div>}
         {adultChoice?.inputMode !== "upload" && <>
         <label htmlFor="adult-scene">Mit változtassunk a jelenetképen? (nem kötelező)</label>
         <textarea id="adult-scene" maxLength={500} value={adultScenePrompt}
@@ -667,7 +706,7 @@ export default function ToolsPage() {
             <p className="muted">A forrásvideó beszédét a modell hangjára cseréljük. A videóképet nem generáljuk újra a hangcsere során.</p>}
           <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
             <select aria-label="Videó hossza" value={adultDuration}
-              onChange={(event) => setAdultDuration(Number(event.target.value) as 5 | 8 | 10 | 12 | 15)}>
+              onChange={(event) => { analysisRevision.current += 1; setAdultDuration(Number(event.target.value) as 5 | 8 | 10 | 12 | 15); setVideoAnalysisSummary(""); setMsg(current => ({ ...current, videoAnalysis: "A videóhossz változott. A pontos időzítéshez futtasd újra az elemzést." })); }}>
               {[5, 8, 10, 12, 15].map((seconds) => <option key={seconds} value={seconds}>{seconds} mp</option>)}
             </select>
             <select disabled={sceneVideoEngine === "kling"} aria-label="Nureta felbontás" value={adultResolution}

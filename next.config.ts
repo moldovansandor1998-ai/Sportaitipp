@@ -5,6 +5,7 @@ const nextConfig: NextConfig = {
   // .next/server/chunks points at a binary that does not exist on Vercel.
   serverExternalPackages: ["ffmpeg-static"],
   outputFileTracingIncludes: {
+    "/api/nureta/video-prompt": ["./node_modules/ffmpeg-static/ffmpeg"],
     "/api/jobs/*": ["./node_modules/ffmpeg-static/ffmpeg"],
     "/api/webhooks/provider/*": ["./node_modules/ffmpeg-static/ffmpeg"],
   },
