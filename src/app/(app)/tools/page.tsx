@@ -564,7 +564,7 @@ export default function ToolsPage() {
       </div>
 
       <section className="card" style={{ marginBottom: 16 }}>
-        <h2 style={{ marginTop: 0 }}>Jelenetkép jóváhagyása → videó</h2>
+        <h2 style={{ marginTop: 0 }}>{adultChoice?.inputMode === "upload" ? "Saját képből videó" : "Jelenetkép jóváhagyása → videó"}</h2>
         <p className="muted">Válassz képet vagy videót a galériából, vagy tölts fel újat. A forrás képének pózát, helyszínét és tárgyait megtartva a kiválasztott modell kerül rá. Videónál egy jól látható képkockát választunk.</p>
         <label>Forráskép a galériából</label>
         <Picker media="image" selected={adultSource?.mediaType === "image" ? adultSource.id : ""}
@@ -604,6 +604,7 @@ export default function ToolsPage() {
         )}
         {adultSourcePreview && adultSource?.mediaType === "video" &&
           <video src={adultSourcePreview} controls playsInline style={{ maxWidth: "100%", maxHeight: 360, display: "block" }} />}
+        {adultChoice?.inputMode !== "upload" && <>
         <label htmlFor="adult-scene">Mit változtassunk a jelenetképen? (nem kötelező)</label>
         <textarea id="adult-scene" maxLength={500} value={adultScenePrompt}
           onChange={(event) => setAdultScenePrompt(event.target.value)} placeholder="Például: a modell arca legyen pontosabb; a póz és a tárgyak maradjanak" />
@@ -636,8 +637,9 @@ export default function ToolsPage() {
             } finally { setBusyKey(null); }
           }}>Ezt a jelenetképet jóváhagyom</button>
         )}
+        </>}
         {adultChoice?.characterId === toolChar && (adultChoice.inputMode === "upload" || results.adultPreview?.some((item) => item.assetId === adultChoice.assetId)) && <>
-          <p className="muted">{adultChoice.inputMode === "upload" ? "Saját feltöltött kép kiválasztva." : "Jóváhagyott kép kiválasztva."} A videó ebből a képből indul; az arcot és a kellékeket a kész videóban is ellenőrizd.</p>
+          <p className="muted">{adultChoice.inputMode === "upload" ? "Közvetlen videókészítés: add meg a mozgást, majd indítsd a videót." : "Jóváhagyott kép kiválasztva. A videó ebből a képből indul."}</p>
           <label htmlFor="scene-video-engine">Videómotor</label>
           <select id="scene-video-engine" value={sceneVideoEngine}
             onChange={(event) => setSceneVideoEngine(event.target.value as "nureta" | "kling")}>
