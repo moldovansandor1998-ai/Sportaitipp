@@ -1,3 +1,4 @@
+import { withVideoContinuity } from "@/lib/videoContinuity";
 import { Estimate, JobType, NormalizedOutput, ProviderAdapter, ProviderError, ProviderSubmissionRejectedError, SubmitParams, SubmitResult } from "./types";
 
 const BASE = "https://developer.nureta.ai";
@@ -55,7 +56,7 @@ export class NuretaAdapter implements ProviderAdapter {
       model: p.payload.resolution === "720p" ? "seahorse-720p" : "seahorse-480p",
       duration: Number(p.payload.duration), ratio: "9:16",
       generate_audio: p.payload.voiceMode === "nureta",
-      content: [{ type: "text", text: String(p.payload.prompt) },
+      content: [{ type: "text", text: withVideoContinuity(String(p.payload.prompt)) },
         { type: "image_url", image_url: { url: refs[0] }, role: "first_frame" }],
     };
     // Polling is deliberate: no webhook secret, and never fall back to another paid provider.

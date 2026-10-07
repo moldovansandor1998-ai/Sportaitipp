@@ -1,3 +1,4 @@
+import { withVideoContinuity } from "@/lib/videoContinuity";
 import { ProviderAdapter, ProviderError, type Estimate, type JobType, type NormalizedOutput, type SubmitParams, type SubmitResult } from "./types";
 import sharp from "sharp";
 import { serviceClient } from "@/lib/supabase/server";
@@ -99,7 +100,7 @@ export class WaveSpeedAdapter implements ProviderAdapter {
       const endpoint = "kwaivgi/kling-v3.0-pro/image-to-video";
       const data = await this.request(`${API}/${endpoint}`, {
         image: p.payload.sceneImageUrl, duration: Number(p.payload.duration),
-        prompt: `${String(p.payload.prompt)} ${identityPrompt(IDENTITY_MOTION_PROMPT).replace("Transfer only the source video's natural gestures and timing.", "Follow only the requested motion in one continuous shot.")}`,
+        prompt: `${withVideoContinuity(String(p.payload.prompt))} ${identityPrompt(IDENTITY_MOTION_PROMPT).replace("Transfer only the source video's natural gestures and timing.", "Follow only the requested motion in one continuous shot.")}`,
         negative_prompt: IDENTITY_MOTION_NEGATIVE, sound: p.payload.voiceMode === "nureta",
         cfg_scale: 0.5, shot_type: "customize",
       });
