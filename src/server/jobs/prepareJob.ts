@@ -1,3 +1,4 @@
+import { resolveMotionStartImage } from "./motionStartImage";
 import "server-only";
 import { CreateJobSchema, JobTypeSchema, TTS_VOICES } from "@/lib/security/validation";
 import { resolveCharacterLora, type LoraError } from "@/lib/jobs/characterLora";
@@ -451,23 +452,11 @@ export async function prepareValidatedJobInput(input: {
     payload.videoUrl = signedVideo.signedUrl;
     payload.characterImageUrl = referenceUrls[0];
     payload.characterImageUrls = referenceUrls;
+    delete payload.sceneImageUrl;
     if (payload.motionMethod === "anchored") {
-      const { data: preview } = await svc.from("generation_jobs").select("id,payload")
-        .eq("id", String(payload.scenePreviewJobId)).eq("owner_id", input.userId)
-        .eq("character_id", characterId!).eq("type", "character_motion_video")
-        .eq("status", "completed").maybeSingle();
-      const previewPayload = preview?.payload as Record<string, unknown> | undefined;
-      if (previewPayload?.motionMethod !== "scene_preview" || previewPayload.sourceVideoAssetId !== sourceVideoAssetId)
-        return { type, payload: {}, error: "SCENE_PREVIEW_REQUIRED", status: 409 };
-      const { data: approved } = await svc.from("gallery_items").select("assets!inner(bucket,object_path,media_type)")
-        .eq("job_id", preview!.id).eq("owner_id", input.userId)
-        .eq("asset_id", String(payload.sceneImageAssetId)).is("deleted_at", null).maybeSingle();
-      const sceneAsset = approved?.assets as unknown as { bucket: string; object_path: string; media_type: string } | null;
-      if (!sceneAsset || sceneAsset.media_type !== "image")
-        return { type, payload: {}, error: "SCENE_PREVIEW_REQUIRED", status: 409 };
-      const { data: sceneSigned } = await svc.storage.from(sceneAsset.bucket).createSignedUrl(sceneAsset.object_path, 7200);
-      if (!sceneSigned?.signedUrl) return { type, payload: {}, error: "SCENE_PREVIEW_REQUIRED", status: 409 };
-      payload.sceneImageUrl = sceneSigned.signedUrl;
+      const sceneImageUrl = await resolveMotionStartImage(svc, input.userId, characterId!, sourceVideoAssetId, payload);
+      if (!sceneImageUrl) return { type, payload: {}, error: "SCENE_PREVIEW_REQUIRED", status: 409 };
+      payload.sceneImageUrl = sceneImageUrl;
     }
     if (payload.motionMethod === "scene_preview") {
       payload.sourceVideoAssetId = sourceVideoAssetId;

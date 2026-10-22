@@ -210,8 +210,15 @@ export const CreateJobSchema = z.object({
         ctx.addIssue({ code: z.ZodIssueCode.custom, message: "Érvénytelen videóhang-választás." });
       if (p.motionMethod !== undefined && !["anchored", "scene_preview", "legacy", "creative", "talking_scene"].includes(String(p.motionMethod)))
         ctx.addIssue({ code: z.ZodIssueCode.custom, message: "Érvénytelen videókészítési mód." });
-      if (p.motionMethod === "anchored" && (!z.string().uuid().safeParse(p.scenePreviewJobId).success || !z.string().uuid().safeParse(p.sceneImageAssetId).success))
-        ctx.addIssue({ code: z.ZodIssueCode.custom, message: "Előbb készíts és hagyj jóvá egy jelenetképet." });
+      if (p.sceneInputMode !== undefined && (p.sceneInputMode !== "upload" || p.motionMethod !== "anchored"))
+        ctx.addIssue({ code: z.ZodIssueCode.custom, message: "Érvénytelen indulókép-választás." });
+      if (p.motionMethod === "anchored") {
+        const validImage = z.string().uuid().safeParse(p.sceneImageAssetId).success;
+        const validSource = p.sceneInputMode === "upload" ? p.scenePreviewJobId === undefined
+          : z.string().uuid().safeParse(p.scenePreviewJobId).success;
+        if (!validImage || !validSource)
+          ctx.addIssue({ code: z.ZodIssueCode.custom, message: "Tölts fel saját indulóképet, vagy készíts és hagyj jóvá egy jelenetképet." });
+      }
       if (p.scenePrompt !== undefined && (typeof p.scenePrompt !== "string" || p.scenePrompt.length > 500))
         ctx.addIssue({ code: z.ZodIssueCode.custom, message: "A jelenetkép kérése legfeljebb 500 karakter lehet." });
       if (p.motionMethod === "talking_scene" && (typeof p.speechText !== "string" || p.speechText.trim().length < 20 || p.speechText.length > 450))

@@ -68,6 +68,8 @@ export default function ToolsPage() {
   const [sceneVideo, setSceneVideo] = useState("");
   const [sceneText, setSceneText] = useState("Nekem is van egy másik, vadabb énem. Aki azt mondja, hogy neki nincs, az hazudik. Én szeretem kiélni ezt az oldalamat is. Ha többet szeretnél látni belőlem, figyeld a sztorimat, és kövess be, mert ez még egy új fiók. Puszillak!");
   const [videoPreview, setVideoPreview] = useState("");
+  const [motionStartMode, setMotionStartMode] = useState<"generated" | "upload">("generated");
+  const [motionStartImage, setMotionStartImage] = useState<{ assetId: string; preview: string; characterId: string } | null>(null);
   const [scenePrompt, setScenePrompt] = useState("");
   const [sceneChoice, setSceneChoice] = useState<{ jobId: string; assetId: string; videoId: string; characterId: string } | null>(null);
   const [adultScenePrompt, setAdultScenePrompt] = useState("");
@@ -266,6 +268,7 @@ export default function ToolsPage() {
   useEffect(() => {
     setSceneVideo("");
     setVariationVideo("");
+    setMotionStartImage(null);
   }, [toolChar]);
   useEffect(() => { void init(); }, [init]);
   useEffect(() => {
@@ -920,6 +923,32 @@ export default function ToolsPage() {
         {msg.videoUpload && <p className="muted">{msg.videoUpload}</p>}
         {videoPreview && <video controls src={videoPreview} style={{ display: "block", maxWidth: "100%", maxHeight: 320, marginTop: 8 }} />}
         {v2vVideo && <p className="muted">Mozgásvideó kiválasztva. Fent válaszd ki a modellt.</p>}
+        {motionMethod === "anchored" && <div style={{ marginTop: 12 }}>
+          <label htmlFor="motion-start-mode">Indulókép</label>
+          <select id="motion-start-mode" value={motionStartMode} disabled={busyKey !== null}
+            onChange={event => setMotionStartMode(event.target.value as "generated" | "upload")}>
+            <option value="generated">Jelenetkép generálása a videóból</option>
+            <option value="upload">Saját indulókép feltöltése</option>
+          </select>
+          {motionStartMode === "upload" && <>
+            <p className="muted">A videó ebből a képből indul, a mozgást a feltöltött mozgásvideó adja. A képet nem generáljuk újra. Korábbi videó képkockáját is feltöltheted.</p>
+            <button className="ghost" type="button" disabled={busyKey !== null || !toolChar} onClick={async () => {
+              setBusyKey("motionStartUpload");
+              try {
+                let preview = "";
+                const id = await upload("image/*", file => { preview = URL.createObjectURL(file); });
+                if (id) { setMotionStartImage({ assetId: id, preview, characterId: toolChar }); setMsg(current => ({ ...current, motionStart: "Indulókép feltöltve. Ellenőrizd, majd indítsd a videót." })); }
+              } catch (error) {
+                setMsg(current => ({ ...current, motionStart: error instanceof Error ? error.message : "Képfeltöltési hiba" }));
+              } finally { setBusyKey(null); }
+            }}>Saját indulókép feltöltése</button>
+            {motionStartImage?.characterId === toolChar && (
+              /* eslint-disable-next-line @next/next/no-img-element -- uploaded local preview */
+              <img src={motionStartImage.preview} alt="Saját indulókép a mozgásvideóhoz" style={{ display: "block", maxWidth: "100%", maxHeight: 360, marginTop: 8 }} />
+            )}
+            {msg.motionStart && <p className="muted" role="status">{msg.motionStart}</p>}
+          </>}
+        </div>}
         <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap", marginTop: 8 }}>
           <select aria-label="Videócsere minősége" value={motionQuality} onChange={(e) => setMotionQuality(e.target.value as "pro" | "standard")}>
             <option value="pro">Magas minőség · jobb arctartás</option><option value="standard">Alap minőség</option>
@@ -934,7 +963,16 @@ export default function ToolsPage() {
             <option value="original">Eredeti videó hangja</option>
             <option value="model">A kiválasztott modell hangja</option>
           </select>
-          <button disabled={busyKey !== null || !toolChar || !v2vVideo} onClick={() => {
+          <button disabled={busyKey !== null || !toolChar || !v2vVideo
+            || motionMethod === "anchored" && motionStartMode === "upload" && motionStartImage?.characterId !== toolChar} onClick={() => {
+            if (motionMethod === "anchored" && motionStartMode === "upload") {
+              if (!motionStartImage || motionStartImage.characterId !== toolChar) return;
+              setResults(current => ({ ...current, modelMotion: [] }));
+              run("modelMotion", "character_motion_video", { videoAssetId: v2vVideo, quality: motionQuality,
+                motionMethod: "anchored", voiceMode: motionVoiceMode, sceneInputMode: "upload",
+                sceneImageAssetId: motionStartImage.assetId }, { characterId: toolChar });
+              return;
+            }
             setSceneChoice(null);
             setResults((current) => ({ ...current, scenePreview: [] }));
             if (motionMethod === "anchored") {
@@ -946,11 +984,11 @@ export default function ToolsPage() {
             run("modelMotion", "character_motion_video", { videoAssetId: v2vVideo, quality: motionQuality, motionMethod,
               voiceMode: motionVoiceMode }, { characterId: toolChar });
           }}>
-            {motionMethod === "anchored" ? "Jelenetkép készítése ellenőrzésre" : "Szereplő cseréje a kiválasztott modellre"}
+            {motionMethod === "anchored" ? motionStartMode === "upload" ? "Feltöltött képből videó készítése" : "Jelenetkép készítése ellenőrzésre" : "Szereplő cseréje a kiválasztott modellre"}
           </button>
           <Badge k="modelMotion" /><Price k="modelMotion" />
         </div>
-        {motionMethod === "anchored" && <>
+        {motionMethod === "anchored" && motionStartMode === "generated" && <>
           <label htmlFor="scene-prompt">Mit változtassunk a jelenetképen? (nem kötelező)</label>
           <textarea id="scene-prompt" maxLength={500} value={scenePrompt} onChange={(e) => setScenePrompt(e.target.value)}
             placeholder="Például: kissé dúsabb alak, természetes arányokkal; a helyszín és a kellékek maradjanak." />
