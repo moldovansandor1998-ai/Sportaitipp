@@ -61,6 +61,7 @@ export async function prepareValidatedJobInput(input: {
   delete payload.activeVersionId;
   delete payload.characterName;
   delete payload.identityPromptVariant;
+  delete payload.billableSeconds;
   if (type !== "character_training") delete payload.triggerWord;
 
   // 1b) projekt-ownership (estimate-ben is – módosítás nélkül)
@@ -511,6 +512,11 @@ export async function prepareValidatedJobInput(input: {
     }
     if (!vUrl || !aUrl) return { type, payload, error: "SOURCE_IMAGE_REQUIRED", status: 400 };
     payload.videoUrl = vUrl; payload.audioUrl = aUrl;
+    try {
+      const { mediaDuration } = await import("./mediaDuration");
+      // The longer input can determine the provider's output/billable duration.
+      payload.billableSeconds = Math.max(...await Promise.all([mediaDuration(vUrl), mediaDuration(aUrl)]));
+    } catch { return { type, payload: {}, error: "VIDEO_FORMAT_UNSUPPORTED", status: 400 }; }
     delete payload.videoAssetId; delete payload.audioAssetId;
   }
   if (type === "motion_control") {

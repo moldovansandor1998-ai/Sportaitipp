@@ -43,6 +43,19 @@ export const CreateJobSchema = z.object({
 }).superRefine((val, ctx) => {
   // Jobtípusonkénti payload-validáció – hiány esetén 400, kredit NEM vonódik le
   const p = val.payload as Record<string, unknown>;
+  const bounded = (key: string, min: number, max: number) => {
+    if (p[key] !== undefined && (!Number.isInteger(Number(p[key])) || Number(p[key]) < min || Number(p[key]) > max))
+      ctx.addIssue({ code: z.ZodIssueCode.custom, message: `${key}: ${min}–${max} közötti egész szám szükséges.` });
+  };
+  if (["image_generation", "test_image"].includes(val.type)) {
+    bounded("numImages", 1, 4); bounded("steps", 1, 50);
+    if (p.imageSize !== undefined && !["square_hd", "square", "portrait_4_3", "portrait_16_9", "landscape_4_3", "landscape_16_9"].includes(String(p.imageSize)))
+      ctx.addIssue({ code: z.ZodIssueCode.custom, message: "Nem támogatott képméret." });
+  }
+  if (val.type === "character_training") bounded("steps", 100, 4000);
+  if (["video_to_video", "motion_control"].includes(val.type) && p.duration !== undefined && ![5, 10].includes(Number(p.duration)))
+    ctx.addIssue({ code: z.ZodIssueCode.custom, message: "A videó hossza 5 vagy 10 másodperc lehet." });
+  if (val.type === "upscale") bounded("scale", 1, 4);
   switch (val.type) {
     case "nureta_scene_image":
     case "nureta_scene_video": {

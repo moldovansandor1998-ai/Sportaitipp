@@ -236,9 +236,21 @@ export class FalAdapter implements ProviderAdapter {
     return s;
   }
 
-  async estimate(jobType: JobType): Promise<Estimate> {
+  async estimate(jobType: JobType, payload: Record<string, unknown> = {}): Promise<Estimate> {
     const s = this.spec(jobType);
-    return { credits: s.estimate, secondsExpected: jobType === "character_training" ? 900 : 120 };
+    let credits = s.estimate;
+    if (jobType === "image_generation") credits *= Number(payload.numImages ?? 1);
+    if (jobType === "character_training") credits = Math.ceil(credits * Number(payload.steps ?? 1000) / 1000);
+    if (["video_from_image", "video_to_video", "motion_control"].includes(jobType)) credits *= Number(payload.duration ?? 5) / 5;
+    if (jobType === "tts") credits *= Math.max(1, Math.ceil(String(payload.text ?? "").length / 200));
+    if (jobType === "lip_sync" || jobType === "talking_video") {
+      const seconds = Number(payload.billableSeconds);
+      if (!Number.isInteger(seconds) || seconds < 1 || seconds > 300) throw new ProviderError("A média hossza nem ellenőrizhető.", false);
+      // Official sync-3 tariff: $8/minute; 330 credits per provider dollar.
+      credits = Math.ceil(seconds * (8 / 60) * 330);
+    }
+    if (!Number.isSafeInteger(credits) || credits < 1) throw new ProviderError("Érvénytelen kreditár.", false);
+    return { credits, secondsExpected: jobType === "character_training" ? 900 : 120 };
   }
 
   async submit(p: SubmitParams): Promise<SubmitResult> {

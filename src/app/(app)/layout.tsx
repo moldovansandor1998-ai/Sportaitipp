@@ -16,7 +16,7 @@ const NAV = [
   { href: "/jobs", icon: "⚙", label: "Feladataim" },
   { href: "/admin", icon: "♛", label: "Admin" },
   { href: "/calendar", icon: "▤", label: "Content Calendar" },
-  { href: "/plans", icon: "◈", label: "Plans" },
+  { href: "/plans", icon: "◈", label: "Kreditvásárlás" },
   { href: "/settings", icon: "☰", label: "Account Settings" },
 ];
 // Mérföldkő-szintek: a menü az implementáltakat mutatja; a többi a 3–6. mérföldkőben érkezik.
@@ -48,6 +48,18 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
       if (cfg.ok) setProviderMode(((await cfg.json()) as { mode: string }).mode);
     })();
   }, [pathname]);
+
+  useEffect(() => {
+    const refreshCredits = async () => {
+      const sb = browserClient();
+      const { data: { user } } = await sb.auth.getUser();
+      if (!user) return;
+      const { data } = await sb.from("credit_accounts").select("balance").eq("user_id", user.id).single();
+      if (data) setCredits(data.balance);
+    };
+    window.addEventListener("castora:credits-changed", refreshCredits);
+    return () => window.removeEventListener("castora:credits-changed", refreshCredits);
+  }, []);
 
   async function logout() {
     await browserClient().auth.signOut();

@@ -100,9 +100,12 @@ export class ReplicateAdapter implements ProviderAdapter {
     return s;
   }
 
-  async estimate(jobType: JobType): Promise<Estimate> {
+  async estimate(jobType: JobType, payload: Record<string, unknown> = {}): Promise<Estimate> {
     const s = this.spec(jobType);
-    return { credits: s.estimate, secondsExpected: s.kind === "training" ? 1200 : 180 };
+    let credits = s.estimate;
+    if (jobType === "character_training") credits = Math.ceil(credits * Number(payload.steps ?? 1000) / 1000);
+    if (jobType === "video_from_image") credits *= Number(payload.duration ?? 5) / 5;
+    return { credits, secondsExpected: s.kind === "training" ? 1200 : 180 };
   }
 
   async submit(p: SubmitParams): Promise<SubmitResult> {
