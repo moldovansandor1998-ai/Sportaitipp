@@ -19,6 +19,9 @@ export async function resolveCharacterVoice(sb: ReturnType<typeof serviceClient>
   if (error) throw new Error("CHARACTER_VOICE_LOOKUP_FAILED");
   if (!data) return null;
   if (data.elevenlabs_voice_id) return { voiceId: data.elevenlabs_voice_id as string, hungarianTts: data.elevenlabs_hungarian_tts === true };
+  // These environment mappings belong to the original account. A new user's
+  // character called Petra/Laura/etc. must not inherit the owner's voice.
+  if (ownerId !== "56413297-fc33-4c66-ba2f-25371a40202e") return { hungarianTts: false };
   const legacy = legacyCharacterVoice(data.name);
   if (!legacy.voiceId) return legacy;
   const { error: saveError } = await sb.from("characters").update({ elevenlabs_voice_id: legacy.voiceId,

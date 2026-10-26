@@ -3,6 +3,15 @@ import { legacyCharacterVoice, resolveCharacterVoice } from "@/server/jobs/chara
 import type { serviceClient } from "@/lib/supabase/server";
 afterEach(() => vi.unstubAllEnvs());
 describe("Saved character voices", () => {
+  it("does not copy the original owner's voice to another user's namesake", async () => {
+    vi.stubEnv("ELEVENLABS_PETRA_VOICE_ID", "private-owner-voice");
+    const chain = { select: vi.fn(), eq: vi.fn(), maybeSingle: vi.fn(), update: vi.fn() };
+    chain.select.mockReturnValue(chain); chain.eq.mockReturnValue(chain);
+    chain.maybeSingle.mockResolvedValue({ data: { name: "Petra", elevenlabs_voice_id: null }, error: null });
+    const sb = { from: vi.fn().mockReturnValue(chain) } as unknown as ReturnType<typeof serviceClient>;
+    expect(await resolveCharacterVoice(sb, "other-character", "another-user")).toEqual({ hungarianTts: false });
+    expect(chain.update).not.toHaveBeenCalled();
+  });
   it("retains the existing swapped Zsofia/Dorika assignments", () => {
     vi.stubEnv("ELEVENLABS_DORA_VOICE_ID", "zsofia-voice");
     vi.stubEnv("ELEVENLABS_ZSOFI_VOICE_ID", "dorika-voice");

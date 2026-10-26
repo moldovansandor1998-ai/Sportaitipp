@@ -51,6 +51,8 @@ Hosting, storage, support, taxes, free signup credits, bundled helper calls, pos
 
 Production RLS is enabled on characters, character references/voices and credit accounts. User-scoped queries use owner_id. Generation preparation rejects characters belonging to another account. Administrators have intentional wider read access; normal registered users do not inherit the owner's characters.
 
+Legacy name-based ElevenLabs environment mappings are restricted to the original owner account. A new user's namesake character does not inherit those voices; their own model voice must be configured separately. Existing explicit voice assignments continue working.
+
 Validation:
 - TypeScript typecheck and full unit/integration suite.
 - `tests/cryptoPayments.test.ts`: authentic token, receipt identity, success/finality, recipient, exact integer amount, order time window, provider outage and quantity pricing.
