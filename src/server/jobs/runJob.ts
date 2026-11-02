@@ -43,7 +43,8 @@ export async function runClaimedJob(job: JobRow, routerOverride?: ReturnType<typ
   }
   if ((job.type === "nureta_scene_image" && job.payload?.sourceAssetId)
     || (job.type === "nureta_scene_video" && job.payload?.sceneImageAssetId)
-    || (job.type === "lip_sync" && job.payload?.nuretaPostprocess === true)) {
+    || (job.type === "lip_sync" && (job.payload?.nuretaPostprocess === true || job.payload?.videoRedub === true))
+    || (job.type === "tts" && job.payload?.videoRedubSpeech === true)) {
     try {
       const { prepareValidatedJobInput } = await import("./prepareJob");
       const prepared = await prepareValidatedJobInput({ userId: job.owner_id, type: job.type,
@@ -80,8 +81,8 @@ export async function runClaimedJob(job: JobRow, routerOverride?: ReturnType<typ
       throw new Error(`record_provider_submission failed: ${recErr?.message ?? "race"}`);
     }
     await mustUpdate("generation_jobs", { status: "processing" }, job.id);
-    if (adapter.name === "mock") {
-      const output = await adapter.getResult(providerJobId, undefined, job.type as JobType);
+    if (adapter.name === "mock" || (adapter.name === "video_redub" && job.type === "tts")) {
+      const output = await adapter.getResult(providerJobId, providerMeta, job.type as JobType);
       await finalizeJob(job.id, output);
     }
     // Éles provider: itt a kérés véget ér, a folytatást a provider webhookja indítja.
@@ -188,6 +189,13 @@ async function storeOutputAssets(
     if (f.url) console.info(JSON.stringify({ scope: "asset.download", jobId, provider: job.provider,
       kind: f.kind, host: new URL(f.url).hostname }));
     let { buf, contentType } = await fileToBuffer(f, job.provider);
+    if (job.type === "lip_sync" && job.payload?.videoRedub === true && f.kind === "video") {
+      const { inspectMediaBytes } = await import("./mediaDuration");
+      const media = await inspectMediaBytes(buf);
+      if (!media.hasVideo || !media.hasAudio || media.seconds < Number(job.payload.billableSeconds) - 1
+        || media.seconds > Number(job.payload.billableSeconds) + 2)
+        throw new Error("A szájszinkron eredményének hossza eltér a teljes beszédtől. Az eredmény nem fogadható el.");
+    }
     const verify = f.kind === "video" && typeof job.payload?.verificationRun === "string"
       && job.payload.verificationRun.startsWith("castora-e2e-");
     const beforeSound = verify ? await (await import("./inspectVideo")).inspectVideo(buf) : null;

@@ -35,7 +35,8 @@ export async function POST(req: NextRequest) {
   }
   try {
     const estimate = await router.estimate(type as never, prepared.payload);
-    return NextResponse.json({ credits: estimate.credits, secondsExpected: estimate.secondsExpected });
+    return NextResponse.json({ credits: estimate.credits, secondsExpected: estimate.secondsExpected,
+      ...(prepared.payload.videoRedub === true ? { sourceSeconds: prepared.payload.sourceSeconds, speechSeconds: prepared.payload.billableSeconds } : {}) });
   } catch (e: unknown) {
     if (e instanceof ProviderError) {
       return NextResponse.json({ error: "PROVIDER_ESTIMATE_FAILED", retryable: e.retryable }, { status: 502 });

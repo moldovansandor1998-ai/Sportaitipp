@@ -46,7 +46,7 @@ export function assertAllowedUrl(raw: string): URL {
 export function assertAllowedProviderOutputUrl(raw: string, provider?: string | null): URL {
   const url = new URL(raw);
   if ((provider === "nureta" && url.hostname === "57e7777c531440a7095f6b86d24d79f6.r2.cloudflarestorage.com")
-      || (provider === "wavespeed" && url.hostname === "cdn.cachegalaxy.com")) {
+      || (["wavespeed", "video_redub"].includes(provider ?? "") && url.hostname === "cdn.cachegalaxy.com")) {
     if (url.protocol !== "https:") throw new Error("URL_SCHEME_NOT_ALLOWED");
     if (url.username || url.password) throw new Error("URL_CREDENTIALS_NOT_ALLOWED");
     if (url.port) throw new Error("URL_HOST_NOT_ALLOWED");

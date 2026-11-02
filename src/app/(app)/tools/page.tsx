@@ -9,6 +9,7 @@ import { createAttemptTracker, type AttemptTracker } from "@/lib/jobs/attemptKey
 import { createSubmitGuard, type SubmitGuard } from "@/lib/jobs/submitGuard";
 import { guardedRun } from "@/lib/jobs/guardedRun";
 import { startJobWithTracker } from "@/lib/jobs/startJob";
+import VideoRedub from "@/components/VideoRedub";
 
 interface GalItem { galleryItemId: string; assetId: string; mediaType: string; url: string | null; characterId?: string | null; }
 interface CharacterRow { id: string; name: string; }
@@ -593,6 +594,22 @@ export default function ToolsPage() {
         </select>
         <p className="muted" style={{ marginBottom: 0 }}>Válaszd ki, kinek kell szerepelnie az új képen.</p>
       </div>
+
+      <VideoRedub key={toolChar} characterId={toolChar} characterName={characters.find(c => c.id === toolChar)?.name ?? ""}
+        token={token} gallery={gallery} busy={busyKey !== null} uploadVideo={uploadVideo}
+        speechJob={jobs[`redubSpeech:${toolChar}`]} speechResults={results[`redubSpeech:${toolChar}`] ?? []}
+        videoJob={jobs[`redubVideo:${toolChar}`]} videoResults={results[`redubVideo:${toolChar}`] ?? []}
+        message={msg[`redubVideo:${toolChar}`] || msg[`redubSpeech:${toolChar}`] || msg.videoUpload}
+        onRun={(stage, payload) => {
+          const key = `${stage === "speech" ? "redubSpeech" : "redubVideo"}:${toolChar}`;
+          setResults(current => ({ ...current, [key]: [] }));
+          setJobs(current => { const next = { ...current }; delete next[key]; return next; });
+          if (stage === "speech") {
+            setResults(current => ({ ...current, [`redubVideo:${toolChar}`]: [] }));
+            setMsg(current => ({ ...current, [`redubVideo:${toolChar}`]: "" }));
+          }
+          run(key, stage === "speech" ? "tts" : "lip_sync", payload, { characterId: toolChar });
+        }} />
 
       <section className="card" style={{ marginBottom: 16 }}>
         <h2 style={{ marginTop: 0 }}>{adultChoice?.inputMode === "upload" ? "Saját képből videó" : "Jelenetkép jóváhagyása → videó"}</h2>

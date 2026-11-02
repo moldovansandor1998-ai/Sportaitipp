@@ -13,7 +13,7 @@ export type PrepError =
   | "validation" | "AGE_VERIFICATION_REQUIRED" | LoraError
   | "CHARACTER_REQUIRED" | "EASY_INPUT_INVALID" | "TTS_VOICE_INVALID"
   | "I2V_MODEL_NOT_ALLOWED" | "URL_NOT_ALLOWED" | "IMAGE_INPUT_REQUIRED" | "SOURCE_IMAGE_REQUIRED"
-  | "TRAINED_EDIT_UNAVAILABLE" | "VIDEO_FORMAT_UNSUPPORTED" | "SCENE_PREVIEW_REQUIRED";
+  | "TRAINED_EDIT_UNAVAILABLE" | "VIDEO_FORMAT_UNSUPPORTED" | "SCENE_PREVIEW_REQUIRED" | "REDUB_DURATION_LIMIT";
 
 export interface PreparedJob {
   type: string;
@@ -155,6 +155,11 @@ export async function prepareValidatedJobInput(input: {
         }
       }
     }
+  }
+
+  if ((type === "tts" && payload.videoRedubSpeech === true) || (type === "lip_sync" && payload.videoRedub === true)) {
+    const { prepareVideoRedub } = await import("./videoRedub");
+    return prepareVideoRedub(input.userId, characterId!, type, payload, finalProjectId);
   }
 
   // 4) Easy prompt szerveroldali felépítése

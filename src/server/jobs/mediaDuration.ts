@@ -23,22 +23,31 @@ export async function mediaDuration(url: string): Promise<number> {
       chunks.push(value);
     }
   } finally { await reader.cancel().catch(() => {}); }
-  if (!ffmpegPath || !size) throw new Error("MEDIA_UNAVAILABLE");
+  return mediaDurationBytes(Buffer.concat(chunks));
+}
+
+/** Probe downloaded output as well as inputs, without decoding an entire long video. */
+export async function mediaDurationBytes(bytes: Buffer): Promise<number> {
+  return (await inspectMediaBytes(bytes)).seconds;
+}
+
+export async function inspectMediaBytes(bytes: Buffer): Promise<{ seconds: number; hasAudio: boolean; hasVideo: boolean }> {
+  if (!ffmpegPath || !bytes.length) throw new Error("MEDIA_UNAVAILABLE");
   const dir = await mkdtemp(join(tmpdir(), "castora-duration-"));
   try {
     const file = join(dir, "input");
-    await writeFile(file, Buffer.concat(chunks));
+    await writeFile(file, bytes);
     let output = "";
     await new Promise<void>((resolve, reject) => {
       const child = spawn(ffmpegPath!, ["-hide_banner", "-i", file, "-t", "0", "-f", "null", "-"]);
       const timer = setTimeout(() => { child.kill("SIGKILL"); reject(new Error("MEDIA_PROBE_TIMEOUT")); }, 15_000);
       child.stderr.on("data", (c: Buffer) => { output = (output + c.toString()).slice(-12000); });
       child.on("error", e => { clearTimeout(timer); reject(e); });
-      child.on("close", code => { clearTimeout(timer); code === 0 ? resolve() : reject(new Error("MEDIA_INVALID")); });
+      child.on("close", code => { clearTimeout(timer); if (code === 0) resolve(); else reject(new Error("MEDIA_INVALID")); });
     });
     const match = output.match(/Duration: (\d+):(\d+):(\d+\.\d+)/);
     const seconds = match ? Number(match[1]) * 3600 + Number(match[2]) * 60 + Number(match[3]) : 0;
     if (!seconds || seconds > 300) throw new Error("MEDIA_DURATION_LIMIT");
-    return Math.ceil(seconds);
+    return { seconds: Math.ceil(seconds), hasAudio: /Stream.*Audio:/.test(output), hasVideo: /Stream.*Video:/.test(output) };
   } finally { await rm(dir, { recursive: true, force: true }); }
 }

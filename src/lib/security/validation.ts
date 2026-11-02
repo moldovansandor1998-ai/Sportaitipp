@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { REDUB_MAX_TEXT, REDUB_DELIVERIES } from "@/lib/videoRedub";
 
 export const CreateCharacterSchema = z.object({
   name: z.string().trim().min(1).max(80),
@@ -186,6 +187,12 @@ export const CreateJobSchema = z.object({
     }
     case "talking_video":
     case "lip_sync": {
+      if (p.videoRedub === true) {
+        if (val.type !== "lip_sync" || p.nuretaPostprocess === true || !val.characterId
+          || !z.string().uuid().safeParse(p.videoAssetId).success || !z.string().uuid().safeParse(p.speechJobId).success)
+          ctx.addIssue({ code: z.ZodIssueCode.custom, message: "Modell, saját videó és elkészült modellhang szükséges." });
+        break;
+      }
       if (val.type === "lip_sync" && p.nuretaPostprocess === true) {
         if (!val.characterId || !z.string().uuid().safeParse(p.videoAssetId).success
           || !["keep", "model", "speech"].includes(String(p.audioMode)))
@@ -255,6 +262,12 @@ export const CreateJobSchema = z.object({
       break;
     }
     case "tts": {
+      if (p.videoRedubSpeech === true) {
+        if (!val.characterId || typeof p.text !== "string" || !p.text.trim() || p.text.length > REDUB_MAX_TEXT
+          || p.delivery !== undefined && !REDUB_DELIVERIES.includes(p.delivery as typeof REDUB_DELIVERIES[number]))
+          ctx.addIssue({ code: z.ZodIssueCode.custom, message: `Modell és legfeljebb ${REDUB_MAX_TEXT} karakteres szöveg szükséges.` });
+        break;
+      }
       req(p, "text", ctx, val.type);
       if (p.voice !== undefined && !TTS_VOICES.some((v) => v.id === p.voice)) {
         ctx.addIssue({ code: z.ZodIssueCode.custom, message: `tts: ismeretlen voice '${String(p.voice)}'` });

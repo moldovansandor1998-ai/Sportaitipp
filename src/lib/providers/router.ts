@@ -47,10 +47,12 @@ export class ProviderRouter {
     // Gallery edits use the source-preserving WaveSpeed model exclusively.
     // Other image edits keep their existing provider order.
     const galleryEdit = jobType === "image_edit" && payload?.galleryEdit === true;
+    const redub = (jobType === "tts" && payload?.videoRedubSpeech === true) || (jobType === "lip_sync" && payload?.videoRedub === true);
     const primaryName = this.primaryFor(jobType);
     const keyed = this.adapters
-      .filter((a) => a.supports.includes(jobType) && (jobType !== "image_edit" || (galleryEdit ? a.name === "wavespeed" : a.name !== "wavespeed"))
-        && (jobType !== "lip_sync" || (payload?.nuretaPostprocess === true ? a.name === "nureta_lipsync" : a.name !== "nureta_lipsync"))
+      .filter((a) => a.supports.includes(jobType) && (redub ? a.name === "video_redub" : a.name !== "video_redub")
+        && (jobType !== "image_edit" || (galleryEdit ? a.name === "wavespeed" : a.name !== "wavespeed"))
+        && (jobType !== "lip_sync" || (redub ? a.name === "video_redub" : payload?.nuretaPostprocess === true ? a.name === "nureta_lipsync" : a.name !== "nureta_lipsync"))
         && (jobType !== "nureta_scene_image" || a.name === "wavespeed")
         && (jobType !== "nureta_scene_video" || a.name === (payload?.videoEngine === "kling" ? "wavespeed" : "nureta")))
       .map((a) => ({ a, open: this.isOpen(a.name) ? 1 : 0, primary: a.name === primaryName ? 0 : 1 }));
