@@ -597,6 +597,16 @@ export default function ToolsPage() {
 
       <VideoRedub key={toolChar} characterId={toolChar} characterName={characters.find(c => c.id === toolChar)?.name ?? ""}
         token={token} gallery={gallery} busy={busyKey !== null} uploadVideo={uploadVideo}
+        restoreSpeech={async (jobId, characterId) => {
+          const response = await fetch(`/api/jobs/${encodeURIComponent(jobId)}`, { headers: { authorization: `Bearer ${await token()}` } });
+          const data = await response.json() as { job?: { id: string; status: string; type: string }; results?: Res[] };
+          if (!response.ok || data.job?.status !== "completed" || data.job.type !== "tts" || !data.results?.some(item => item.mediaType === "audio" && item.url))
+            throw new Error("Az elkészült hang nem érhető el.");
+          const key = `redubSpeech:${characterId}`;
+          setResults(current => ({ ...current, [key]: data.results! }));
+          setJobs(current => ({ ...current, [key]: { id: jobId, status: "completed", error: null } }));
+          setMsg(current => ({ ...current, [key]: "", [`redubVideo:${characterId}`]: "" }));
+        }}
         speechJob={jobs[`redubSpeech:${toolChar}`]} speechResults={results[`redubSpeech:${toolChar}`] ?? []}
         videoJob={jobs[`redubVideo:${toolChar}`]} videoResults={results[`redubVideo:${toolChar}`] ?? []}
         message={msg[`redubVideo:${toolChar}`] || msg[`redubSpeech:${toolChar}`] || msg.videoUpload}

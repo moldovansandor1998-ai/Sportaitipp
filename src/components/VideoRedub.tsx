@@ -13,6 +13,7 @@ interface Props {
   speechJob?: Job; speechResults: Media[]; videoJob?: Job; videoResults: Media[];
   message?: string;
   onRun: (stage: "speech" | "video", payload: Record<string, unknown>) => void;
+  restoreSpeech: (jobId: string, characterId: string) => Promise<void>;
   uploadVideo: (onUploaded: (id: string, file: File) => void) => Promise<void>;
 }
 const active = (job?: Job) => !!job && !["completed", "failed", "refunded", "cancelled", "submission_uncertain"].includes(job.status);
@@ -67,6 +68,28 @@ export default function VideoRedub(props: Props) {
     finally { setQuoting(false); }
   }
 
+  async function restoreSpeech() {
+    if (locked || !props.characterId) return;
+    setQuoting(true); setMessage("");
+    const revision = ++quoteRevision.current;
+    try {
+      const response = await fetch(`/api/video-redub/speech?characterId=${encodeURIComponent(props.characterId)}`, {
+        headers: { authorization: `Bearer ${await props.token()}` }, cache: "no-store",
+      });
+      const data = await response.json() as { jobId?: string; text?: string; delivery?: RedubDelivery; error?: string };
+      if (!response.ok || !data.jobId || !data.text) throw new Error(data.error === "NO_COMPLETED_SPEECH"
+        ? "Ehhez a modellhez még nincs visszatölthető, elkészült beszéd." : errors[data.error ?? ""] ?? "A korábbi hang nem tölthető vissza.");
+      if (quoteRevision.current !== revision) return;
+      await props.restoreSpeech(data.jobId, props.characterId);
+      const savedDelivery = data.delivery ?? "natural";
+      setText(data.text); setDelivery(savedDelivery);
+      setSpeechSignature(JSON.stringify([props.characterId, data.text.trim(), savedDelivery]));
+      setSpeechQuote(null); setVideoQuote(null);
+      setMessage("Az elkészült hang visszatöltve. Új hanggenerálás és újabb kreditlevonás nélkül használhatod a szájszinkronhoz.");
+    } catch (error) { setMessage(error instanceof Error ? error.message : "Visszatöltési hiba."); }
+    finally { setQuoting(false); }
+  }
+
   return <section className="card" style={{ marginBottom: 16 }} aria-labelledby="redub-title">
     <h2 id="redub-title" style={{ marginTop: 0 }}>Új szöveg a kész videóra · hang és szájszinkron</h2>
     <p className="muted">Tölts fel egy kész modellvideót, vagy válassz a galériából. Az új szöveg a kiválasztott modell saját hangján szólal meg, és a szájmozgást is hozzá igazítjuk. A meglévő felvételt használjuk, új jelenetkép nélkül.</p>
@@ -107,6 +130,7 @@ export default function VideoRedub(props: Props) {
       <option value="energetic">Lendületes, lelkes</option>
     </select>
     <h3>1. Saját modellhang elkészítése és meghallgatása</h3>
+    <p><button type="button" className="ghost" disabled={locked || !props.characterId} onClick={() => void restoreSpeech()}>Legutóbbi elkészült hang visszatöltése · ingyenes</button></p>
     <button type="button" className="ghost" disabled={locked || !props.characterId || !text.trim()} onClick={() => void quote("speech")}>Hangkészítés árának lekérése</button>
     {speechQuote?.key === signature && <button type="button" disabled={locked} style={{ marginLeft: 8 }} onClick={() => {
       setSpeechSignature(signature); setVideoQuote(null);
