@@ -17,6 +17,9 @@ interface Props {
 }
 const active = (job?: Job) => !!job && !["completed", "failed", "refunded", "cancelled", "submission_uncertain"].includes(job.status);
 const errors: Record<string, string> = {
+  ELEVENLABS_AUTH_FAILED: "Az ElevenLabs nem fogadja el az API-kulcsot. Az adminnak újra be kell állítania a kapcsolatot. Kreditfoglalás nem történt.",
+  ELEVENLABS_QUOTA_EXCEEDED: "Elfogyott az ElevenLabs beszédkerete. A szolgáltatói keretet fel kell tölteni. Kreditfoglalás nem történt.",
+  ELEVENLABS_PAYMENT_ISSUE: "Az ElevenLabs-fiók számlázását rendezni kell. Kreditfoglalás nem történt.",
   TTS_VOICE_INVALID: "A modell hangja nincs beállítva, megváltozott, vagy a hozzá tartozó beszéd még nem készült el.",
   REDUB_DURATION_LIMIT: "Legfeljebb 3 perces videó és beszéd használható. Nem vágjuk le a szöveg végét.",
   VIDEO_FORMAT_UNSUPPORTED: "A videó vagy a hang nem olvasható. MP4 videót tölts fel, legfeljebb 48 MB méretben.",

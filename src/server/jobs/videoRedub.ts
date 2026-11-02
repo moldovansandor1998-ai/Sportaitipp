@@ -4,6 +4,7 @@ import { resolveCharacterVoice } from "./characterVoice";
 import { mediaDuration } from "./mediaDuration";
 import { REDUB_MAX_SECONDS } from "@/lib/videoRedub";
 import type { PreparedJob } from "./prepareJob";
+import { elevenLabsSpeechHealth } from "@/lib/providers/elevenLabsStatus";
 
 /** Only owned asset IDs and a completed, same-character speech job are accepted. */
 export async function prepareVideoRedub(ownerId: string, characterId: string, type: "tts" | "lip_sync",
@@ -11,6 +12,12 @@ export async function prepareVideoRedub(ownerId: string, characterId: string, ty
   const bad = (error: PreparedJob["error"], status = 400): PreparedJob => ({ type, payload: {}, error, status });
   if (!process.env.ELEVENLABS_API_KEY || (type === "lip_sync" && !process.env.WAVESPEED_API_KEY))
     return bad("PROVIDER_MODEL_INVALID", 503);
+  if (type === "tts") {
+    const health = await elevenLabsSpeechHealth();
+    if (["invalid_api_key", "authentication_error"].includes(health.code ?? "")) return bad("ELEVENLABS_AUTH_FAILED", 503);
+    if (health.code === "quota_exceeded") return bad("ELEVENLABS_QUOTA_EXCEEDED", 503);
+    if (health.code === "payment_issue") return bad("ELEVENLABS_PAYMENT_ISSUE", 503);
+  }
   const sb = serviceClient();
   const voice = await resolveCharacterVoice(sb, characterId, ownerId);
   if (!voice?.voiceId) return bad("TTS_VOICE_INVALID", 409);

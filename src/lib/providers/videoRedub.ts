@@ -1,6 +1,7 @@
 import { serviceClient } from "@/lib/supabase/server";
 import { redubSpeechText, REDUB_MAX_SECONDS, type RedubDelivery } from "@/lib/videoRedub";
 import { mediaDuration } from "@/server/jobs/mediaDuration";
+import { elevenLabsErrorCode, elevenLabsErrorMessage } from "./elevenLabsStatus";
 import { WaveSpeedAdapter } from "./wavespeed";
 import { ProviderError, ProviderSubmissionRejectedError, type ProviderAdapter, type JobType,
   type SubmitParams, type NormalizedOutput } from "./types";
@@ -37,12 +38,13 @@ export class VideoRedubAdapter implements ProviderAdapter {
   }
   private async speech(p: SubmitParams) {
     const response = await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${encodeURIComponent(String(p.payload.voiceId))}?output_format=mp3_44100_128`, {
-      method: "POST", headers: { "xi-api-key": process.env.ELEVENLABS_API_KEY ?? "", "content-type": "application/json" },
+      method: "POST", headers: { "xi-api-key": process.env.ELEVENLABS_API_KEY?.trim() ?? "", "content-type": "application/json" },
       body: JSON.stringify({ text: redubSpeechText(String(p.payload.text), p.payload.delivery as RedubDelivery),
         model_id: "eleven_v4", language_code: "hu" }), signal: AbortSignal.timeout(90_000),
     });
     if (!response.ok) {
-      const message = `A modell hangja nem készült el (ElevenLabs ${response.status}).`;
+      const code = await elevenLabsErrorCode(response);
+      const message = elevenLabsErrorMessage(code, response.status);
       if ([400,401,402,403,404,422].includes(response.status)) throw new ProviderSubmissionRejectedError(message, false);
       throw new ProviderError(message, true);
     }

@@ -8,10 +8,11 @@ import { ProviderRouter } from "@/lib/providers/router";
 import { redubSpeechText } from "@/lib/videoRedub";
 import { assertAllowedProviderOutputUrl, assertAllowedUrl } from "@/lib/security/ssrf";
 
-const mocks = vi.hoisted(() => ({ service: vi.fn(), voice: vi.fn(), duration: vi.fn() }));
+const mocks = vi.hoisted(() => ({ service: vi.fn(), voice: vi.fn(), duration: vi.fn(), health: vi.fn() }));
 vi.mock("@/lib/supabase/server", () => ({ serviceClient: mocks.service }));
 vi.mock("@/server/jobs/characterVoice", () => ({ resolveCharacterVoice: mocks.voice }));
 vi.mock("@/server/jobs/mediaDuration", () => ({ mediaDuration: mocks.duration }));
+vi.mock("@/lib/providers/elevenLabsStatus", async original => ({ ...(await original<object>()), elevenLabsSpeechHealth: mocks.health }));
 afterEach(() => { vi.restoreAllMocks(); vi.unstubAllEnvs(); mocks.voice.mockReset(); mocks.duration.mockReset(); });
 const characterId = "05274aae-99fa-4352-9181-519f25a54963";
 const videoAssetId = "a6368963-29eb-4e97-bc76-18a2c857249f";
@@ -31,6 +32,7 @@ function database(rows: unknown[]) {
   const sign = vi.fn(async (path: string) => ({ data: { signedUrl: `https://owned.supabase.co/${path}` } }));
   mocks.service.mockReturnValue({ from, storage: { from: () => ({ upload, createSignedUrl: sign }) } });
   mocks.voice.mockResolvedValue({ voiceId: "savedCharacterVoice" });
+  mocks.health.mockResolvedValue({ available: true, configured: true });
   vi.stubEnv("ELEVENLABS_API_KEY", "test"); vi.stubEnv("WAVESPEED_API_KEY", "test");
   return { filters, sign };
 }
@@ -62,6 +64,20 @@ describe("existing video + full model speech + lipsync", () => {
     expect(prepared.payload).toEqual({ videoRedubSpeech: true, text: script.trim(), voiceId: "savedCharacterVoice", delivery: "girly" });
     expect(mocks.voice).toHaveBeenCalledWith(expect.anything(), characterId, "owner");
     expect(redubSpeechText(script, "girly")).toContain(script.trim());
+  });
+  it("rejects known invalid credentials before resolving assets or holding generation credits", async () => {
+    database([]);
+    mocks.voice.mockClear();
+    mocks.health.mockResolvedValue({ configured: true, available: false, code: "invalid_api_key" });
+    const prepared = await prepareVideoRedub("owner", characterId, "tts", { videoRedubSpeech: true, text: script });
+    expect(prepared.error).toBe("ELEVENLABS_AUTH_FAILED");
+    expect(mocks.voice).not.toHaveBeenCalled();
+  });
+  it("explains the actual 401 quota reason instead of mislabeling it as a generic authentication failure", async () => {
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response(JSON.stringify({ detail: { status: "quota_exceeded", message: "private account data" } }), { status: 401 }));
+    await expect(new VideoRedubAdapter().submit({ jobId: "job", jobType: "tts", idempotencyKey: "once", payload: {
+      videoRedubSpeech: true, text: script, voiceId: "savedCharacterVoice",
+    } })).rejects.toThrow("Elfogyott az ElevenLabs beszédkerete");
   });
   it("generates the complete Hungarian script with the stored voice, before any paid lipsync request", async () => {
     database([{ owner_id: "owner" }]);
