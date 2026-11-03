@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { REDUB_MAX_TEXT, REDUB_DELIVERIES } from "@/lib/videoRedub";
+import { TALKING_MOTIONS } from "@/lib/imageTalking";
 
 export const CreateCharacterSchema = z.object({
   name: z.string().trim().min(1).max(80),
@@ -187,6 +188,14 @@ export const CreateJobSchema = z.object({
     }
     case "talking_video":
     case "lip_sync": {
+      if (p.imageTalking === true) {
+        if (val.type !== "talking_video" || !val.characterId || p.videoRedub === true || p.nuretaPostprocess === true
+          || !z.string().uuid().safeParse(p.imageAssetId).success || !z.string().uuid().safeParse(p.speechJobId).success
+          || p.motion !== undefined && !TALKING_MOTIONS.includes(p.motion as typeof TALKING_MOTIONS[number])
+          || p.resolution !== undefined && !["480p", "720p"].includes(String(p.resolution)))
+          ctx.addIssue({ code: z.ZodIssueCode.custom, message: "Modell, kiindulókép, elkészült modellhang és támogatott előadásmód szükséges." });
+        break;
+      }
       if (p.videoRedub === true) {
         if (val.type !== "lip_sync" || p.nuretaPostprocess === true || !val.characterId
           || !z.string().uuid().safeParse(p.videoAssetId).success || !z.string().uuid().safeParse(p.speechJobId).success)

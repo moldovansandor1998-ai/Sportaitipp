@@ -5,6 +5,7 @@ import { WaveSpeedAdapter } from "./wavespeed";
 import { NuretaAdapter } from "./nureta";
 import { NuretaLipSyncAdapter } from "./nuretaLipSync";
 import { VideoRedubAdapter } from "./videoRedub";
+import { ImageTalkingAdapter } from "./imageTalking";
 import { ProviderRouter } from "./router";
 import { JobType, ProviderAdapter, ProviderError } from "./types";
 
@@ -20,6 +21,7 @@ export function buildRouter(extra: ProviderAdapter[] = []): ProviderRouter {
   if (process.env.NURETA_API_KEY) real.push(new NuretaAdapter());
   if (process.env.WAVESPEED_API_KEY) real.push(new NuretaLipSyncAdapter());
   if (process.env.ELEVENLABS_API_KEY) real.push(new VideoRedubAdapter());
+  if (process.env.WAVESPEED_API_KEY) real.push(new ImageTalkingAdapter());
 
   // PRODUCTION-ben a mock SEMMILYEN kapcsolóval nem engedélyezhető.
   const isProd = process.env.NODE_ENV === "production";

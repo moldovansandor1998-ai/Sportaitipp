@@ -44,7 +44,8 @@ export async function runClaimedJob(job: JobRow, routerOverride?: ReturnType<typ
   if ((job.type === "nureta_scene_image" && job.payload?.sourceAssetId)
     || (job.type === "nureta_scene_video" && job.payload?.sceneImageAssetId)
     || (job.type === "lip_sync" && (job.payload?.nuretaPostprocess === true || job.payload?.videoRedub === true))
-    || (job.type === "tts" && job.payload?.videoRedubSpeech === true)) {
+    || (job.type === "tts" && job.payload?.videoRedubSpeech === true)
+    || (job.type === "talking_video" && job.payload?.imageTalking === true)) {
     try {
       const { prepareValidatedJobInput } = await import("./prepareJob");
       const prepared = await prepareValidatedJobInput({ userId: job.owner_id, type: job.type,
@@ -189,7 +190,8 @@ async function storeOutputAssets(
     if (f.url) console.info(JSON.stringify({ scope: "asset.download", jobId, provider: job.provider,
       kind: f.kind, host: new URL(f.url).hostname }));
     let { buf, contentType } = await fileToBuffer(f, job.provider);
-    if (job.type === "lip_sync" && job.payload?.videoRedub === true && f.kind === "video") {
+    if (((job.type === "lip_sync" && job.payload?.videoRedub === true)
+      || (job.type === "talking_video" && job.payload?.imageTalking === true)) && f.kind === "video") {
       const { inspectMediaBytes } = await import("./mediaDuration");
       const media = await inspectMediaBytes(buf);
       if (!media.hasVideo || !media.hasAudio || media.seconds < Number(job.payload.billableSeconds) - 1

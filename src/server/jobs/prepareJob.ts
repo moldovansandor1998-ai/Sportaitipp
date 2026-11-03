@@ -158,6 +158,10 @@ export async function prepareValidatedJobInput(input: {
     }
   }
 
+  if (type === "talking_video" && payload.imageTalking === true) {
+    const { prepareImageTalking } = await import("./imageTalking");
+    return prepareImageTalking(input.userId, characterId!, payload, finalProjectId);
+  }
   if ((type === "tts" && payload.videoRedubSpeech === true) || (type === "lip_sync" && payload.videoRedub === true)) {
     const { prepareVideoRedub } = await import("./videoRedub");
     return prepareVideoRedub(input.userId, characterId!, type, payload, finalProjectId);

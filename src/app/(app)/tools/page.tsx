@@ -340,11 +340,15 @@ export default function ToolsPage() {
       });
   }
 
-  async function upload(accept: string, onFile?: (file: File) => void): Promise<string | null> {
+  async function upload(accept: string, onFile?: (file: File) => void, maxBytes?: number): Promise<string | null> {
     const input = document.createElement("input");
     input.type = "file"; input.accept = accept;
     const file = await new Promise<File | null>((r) => { input.onchange = () => r(input.files?.[0] ?? null); input.oncancel = () => r(null); input.click(); });
     if (!file) return null;
+    if (maxBytes && file.size > maxBytes) {
+      setMsg(current => ({ ...current, upload: `Ehhez a feltöltéshez legfeljebb ${Math.floor(maxBytes / 1024 / 1024)} MB méretű képet válassz.` }));
+      return null;
+    }
     const form = new FormData(); form.append("file", file);
     const res = await fetch("/api/assets/import", { method: "POST", headers: { authorization: `Bearer ${await token()}` }, body: form });
     if (!res.ok) { setMsg((m) => ({ ...m, upload: "Import hiba" })); return null; }
@@ -594,6 +598,43 @@ export default function ToolsPage() {
         </select>
         <p className="muted" style={{ marginBottom: 0 }}>Válaszd ki, kinek kell szerepelnie az új képen.</p>
       </div>
+
+      <VideoRedub mode="image" key={`image-${toolChar}`} characterId={toolChar} characterName={characters.find(c => c.id === toolChar)?.name ?? ""}
+        token={token} gallery={gallery} busy={busyKey !== null} uploadVideo={uploadVideo}
+        uploadImage={async callback => {
+          setBusyKey("imageTalkUpload");
+          setMsg(current => ({ ...current, imageTalkUpload: "" }));
+          try {
+            let file: File | undefined;
+            const id = await upload("image/jpeg,image/png,image/webp", selected => { file = selected; }, 4 * 1024 * 1024);
+            if (id && file) callback(id, file);
+          } catch (error) {
+            setMsg(current => ({ ...current, imageTalkUpload: error instanceof Error ? error.message : "Képfeltöltési hiba" }));
+          } finally { setBusyKey(null); }
+        }}
+        restoreSpeech={async (jobId, characterId) => {
+          const response = await fetch(`/api/jobs/${encodeURIComponent(jobId)}`, { headers: { authorization: `Bearer ${await token()}` } });
+          const data = await response.json() as { job?: { id: string; status: string; type: string }; results?: Res[] };
+          if (!response.ok || data.job?.status !== "completed" || data.job.type !== "tts" || !data.results?.some(item => item.mediaType === "audio" && item.url))
+            throw new Error("Az elkészült hang nem érhető el.");
+          const key = `imageTalkSpeech:${characterId}`;
+          setResults(current => ({ ...current, [key]: data.results! }));
+          setJobs(current => ({ ...current, [key]: { id: jobId, status: "completed", error: null } }));
+          setMsg(current => ({ ...current, [key]: "", [`imageTalkVideo:${characterId}`]: "" }));
+        }}
+        speechJob={jobs[`imageTalkSpeech:${toolChar}`]} speechResults={results[`imageTalkSpeech:${toolChar}`] ?? []}
+        videoJob={jobs[`imageTalkVideo:${toolChar}`]} videoResults={results[`imageTalkVideo:${toolChar}`] ?? []}
+        message={msg[`imageTalkVideo:${toolChar}`] || msg[`imageTalkSpeech:${toolChar}`] || msg.imageTalkUpload || msg.upload}
+        onRun={(stage, payload) => {
+          const key = `${stage === "speech" ? "imageTalkSpeech" : "imageTalkVideo"}:${toolChar}`;
+          setResults(current => ({ ...current, [key]: [] }));
+          setJobs(current => { const next = { ...current }; delete next[key]; return next; });
+          if (stage === "speech") {
+            setResults(current => ({ ...current, [`imageTalkVideo:${toolChar}`]: [] }));
+            setMsg(current => ({ ...current, [`imageTalkVideo:${toolChar}`]: "" }));
+          }
+          run(key, stage === "speech" ? "tts" : "talking_video", payload, { characterId: toolChar });
+        }} />
 
       <VideoRedub key={toolChar} characterId={toolChar} characterName={characters.find(c => c.id === toolChar)?.name ?? ""}
         token={token} gallery={gallery} busy={busyKey !== null} uploadVideo={uploadVideo}

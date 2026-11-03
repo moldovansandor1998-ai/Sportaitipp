@@ -48,9 +48,11 @@ export class ProviderRouter {
     // Other image edits keep their existing provider order.
     const galleryEdit = jobType === "image_edit" && payload?.galleryEdit === true;
     const redub = (jobType === "tts" && payload?.videoRedubSpeech === true) || (jobType === "lip_sync" && payload?.videoRedub === true);
+    const imageTalking = jobType === "talking_video" && payload?.imageTalking === true;
     const primaryName = this.primaryFor(jobType);
     const keyed = this.adapters
-      .filter((a) => a.supports.includes(jobType) && (redub ? a.name === "video_redub" : a.name !== "video_redub")
+      .filter((a) => a.supports.includes(jobType) && (imageTalking ? a.name === "image_talking" : a.name !== "image_talking")
+        && (redub ? a.name === "video_redub" : a.name !== "video_redub")
         && (jobType !== "image_edit" || (galleryEdit ? a.name === "wavespeed" : a.name !== "wavespeed"))
         && (jobType !== "lip_sync" || (redub ? a.name === "video_redub" : payload?.nuretaPostprocess === true ? a.name === "nureta_lipsync" : a.name !== "nureta_lipsync"))
         && (jobType !== "nureta_scene_image" || a.name === "wavespeed")
