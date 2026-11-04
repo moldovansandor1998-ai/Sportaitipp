@@ -7,8 +7,6 @@ import ffmpegPath from "ffmpeg-static";
 import { inspectVideo } from "../src/server/jobs/inspectVideo";
 import { addVideoSoundtrack } from "../src/server/jobs/videoSoundtrack";
 
-vi.mock("ffmpeg-static", () => ({ default: "/usr/bin/ffmpeg" }));
-
 async function ffmpeg(args: string[]): Promise<void> {
   const binary = ffmpegPath;
   if (!binary) throw new Error("FFMPEG_UNAVAILABLE");

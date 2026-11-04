@@ -1,18 +1,20 @@
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, it } from "vitest";
 import { spawn } from "node:child_process";
 import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import sharp from "sharp";
+import ffmpegPath from "ffmpeg-static";
 import { sceneFrame } from "@/server/jobs/sceneFrame";
 import { ProviderSubmissionRejectedError } from "@/lib/providers/types";
-vi.mock("ffmpeg-static", () => ({ default: "/usr/bin/ffmpeg" }));
 async function clip(filter: string, duration = "1") {
+  const binary = ffmpegPath;
+  if (!binary) throw new Error("FFMPEG_UNAVAILABLE");
   const dir = await mkdtemp(join(tmpdir(), "frame-test-"));
   try {
     const path = join(dir, "source.mp4");
     await new Promise<void>((resolve, reject) => {
-      const child = spawn("/usr/bin/ffmpeg", ["-v", "error", "-f", "lavfi", "-i", filter,
+      const child = spawn(binary, ["-v", "error", "-f", "lavfi", "-i", filter,
         "-t", duration, "-c:v", "libx264", "-pix_fmt", "yuv420p", "-y", path]);
       child.on("error", reject); child.on("close", code => code === 0 ? resolve() : reject(new Error("fixture")));
     });
