@@ -2,6 +2,7 @@
 import { use, useCallback, useEffect, useRef, useState } from "react";
 import { browserClient } from "@/lib/supabase/client";
 import Image from "next/image";
+import RedditAutomation from "@/components/RedditAutomation";
 import { applyCharacterIdentity, characterIdentityVariant } from "@/lib/characterIdentity";
 
 interface CharacterRow { id: string; name: string; status: string; gender?: "female" | "male"; }
@@ -316,6 +317,8 @@ export default function CharacterDetailPage({ params }: { params: Promise<{ id: 
       </p>
       {active && <a href={`/tools?characterId=${encodeURIComponent(id)}#character-image`}
         className="button">Kép készítése {character.name} referenciáival · WaveSpeed / Seedream</a>}
+
+      <RedditAutomation characterId={id} />
 
       <div className="card" style={{ marginTop: 16 }}>
         <h3 style={{ marginTop: 0 }}>Referenciafotók ({refs.length})</h3>
