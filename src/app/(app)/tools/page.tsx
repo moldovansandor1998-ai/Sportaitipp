@@ -14,7 +14,7 @@ import VideoRedub from "@/components/VideoRedub";
 interface GalItem { galleryItemId: string; assetId: string; mediaType: string; url: string | null; characterId?: string | null; }
 interface CharacterRow { id: string; name: string; }
 interface JobRow { id: string; status: string; error: { message?: string } | null; }
-interface Res { assetId: string; galleryItemId: string; mediaType: string; url: string | null; }
+interface Res { assetId: string; galleryItemId: string; mediaType: string; url: string | null; motionPart?: { index: number; total: number } | null; }
 interface Cfg { mode: string; faceSwapConfigured: boolean; i2vModels: Array<{ id: string; label: string }>; }
 interface NuretaVideo { assetId: string; jobId: string; characterId: string; createdAt: string; duration: number; }
 
@@ -232,6 +232,14 @@ export default function ToolsPage() {
     }
     const { data: lastVideo } = lastVideoResult;
     if (lastVideo?.id) setV2vVideo((current) => current || lastVideo.id);
+    const { data: latestMotion } = await getSb().from("generation_jobs").select("id,status,error")
+      .eq("owner_id", user.id).eq("type", "character_motion_video").contains("payload", { motionMethod: "anchored" })
+      .order("created_at", { ascending: false }).limit(1).maybeSingle();
+    if (latestMotion) {
+      setJobs(current => ({ ...current, modelMotion: latestMotion as JobRow }));
+      await loadJobResults(latestMotion.id, "modelMotion");
+      if (["queued", "submitted", "processing"].includes(latestMotion.status)) poll(latestMotion.id, "modelMotion");
+    }
     const { data: chars } = charsResult;
     setCharacters((chars ?? []) as unknown as CharacterRow[]);
     const requestedCharacter = new URLSearchParams(window.location.search).get("characterId");
@@ -323,7 +331,12 @@ export default function ToolsPage() {
         await fetch(`/api/jobs/${jobId}/refresh`, {
           method: "POST", headers: { authorization: `Bearer ${await token()}` },
         });
-        const { data } = await getSb().from("generation_jobs").select("status,error,result").eq("id", jobId).single();
+        const { data } = await getSb().from("generation_jobs").select("status,error,result,provider_meta").eq("id", jobId).single();
+        const sequence = data?.provider_meta as { motionSequence?: boolean; index?: number; segments?: unknown[]; parts?: unknown[] } | null;
+        if (sequence?.motionSequence && data?.status === "processing") {
+          setMsg(current => ({ ...current, [key]: `${Math.min((sequence.index ?? 0) + 1, sequence.segments?.length ?? 1)}/${sequence.segments?.length ?? 1}. videórész készül. ${sequence.parts?.length ?? 0} rész már a galériában. A folytatás automatikus, az oldalt bezárhatod.` }));
+          if (sequence.parts?.length) await loadJobResults(jobId, key);
+        }
         const j = data as { status: string; error: { message?: string } | null; result: { meta?: { caption?: string } } | null } | null;
         return { status: j?.status ?? "unknown", error: j?.error?.message ?? null };
       },
@@ -336,7 +349,10 @@ export default function ToolsPage() {
             : status === "submission_uncertain" ? `A beküldés állapotát ellenőrizni kell. ${errorMessage ?? ""}`
             : `A generálás meghiúsult. ${errorMessage ?? ""}` }));
         }
-        if (status === "completed") { await loadJobResults(jobId, key); void init(); }
+        if (status === "completed") {
+          setMsg(current => ({ ...current, [key]: "Elkészült, az eredmény a Galériában is megtalálható." }));
+          await loadJobResults(jobId, key); void init();
+        }
       });
   }
 
@@ -520,7 +536,12 @@ export default function ToolsPage() {
         const headers = { authorization: `Bearer ${await token()}`, "content-type": "application/json" };
         const bodyObj = { type, characterId: extra?.characterId, payload };
         const est = await fetch("/api/jobs/estimate", { method: "POST", headers, body: JSON.stringify(bodyObj) });
-        if (!est.ok) throw new Error("Árbecslés hiba – a job nem indult.");
+        if (!est.ok) {
+          const detail = await est.json().catch(() => ({})) as { error?: string };
+          throw new Error(detail.error === "MOTION_DURATION_LIMIT" ? "3 másodperc és 5 perc közötti mozgásvideót válassz. A hosszabb videó automatikusan több részben készül el."
+            : detail.error === "VIDEO_FORMAT_UNSUPPORTED" ? "A videó nem olvasható. Legfeljebb 48 MB-os MP4 fájlt válassz."
+            : `Az indítás előtti ellenőrzés nem sikerült: ${detail.error ?? est.status}. A generálás nem indult el.`);
+        }
         const estBody = await est.json().catch(() => { throw new Error("Árbecslés-válasz feldolgozása sikertelen."); });
         if (typeof (estBody as { credits?: number }).credits !== "number") throw new Error("Árbecslés-válasz érvénytelen.");
         setPrices((p) => ({ ...p, [key]: (estBody as { credits: number }).credits }));
@@ -570,6 +591,7 @@ export default function ToolsPage() {
     <>
       {(results[k] ?? []).filter((r) => r.mediaType === kind).map((r) => (
         <div key={r.galleryItemId} style={{ marginTop: 10 }}>
+          {r.motionPart && <p className="muted">{r.motionPart.index}/{r.motionPart.total}. videórész</p>}
           {kind === "video" ? <video src={r.url ?? ""} controls style={{ width: "100%", borderRadius: 8 }} />
             : (
               /* eslint-disable-next-line @next/next/no-img-element -- signed URL */
@@ -986,7 +1008,8 @@ export default function ToolsPage() {
       <div className="card" style={{ marginTop: 12 }}>
         <h3 style={{ marginTop: 0 }}>Video-to-Video · Image-to-Video</h3>
         <h4>Szereplőcsere a feltöltött videóban</h4>
-        <p className="muted">A videó elejéről választott látható képkockán a kiválasztott modellre cseréljük a szereplőt, majd a forrásvideó mozgását használjuk. MP4, legfeljebb 30 másodperc és 48 MB. A kész videóban ellenőrizd az arcot, a kellékeket és a mozdulatokat.</p>
+        <p className="muted">A videó elejéről választott látható képkockán a kiválasztott modellre cseréljük a szereplőt, majd a forrásvideó mozgását használjuk. MP4, 3 másodperc–5 perc, legfeljebb 48 MB.</p>
+        {motionMethod === "anchored" && <p className="muted">A hosszabb videó legfeljebb 30 másodperces részekben készül el. Minden folytatás az előző elkészült rész utolsó képkockájából indul. A részek sorszámozva, külön kerülnek a Galériába; te vághatod össze őket. A kreditár a teljes hosszra vonatkozik.</p>}
         <button className="ghost" type="button" disabled={busyKey !== null} onClick={() => void uploadVideo()}>Mozgásvideó feltöltése (MP4, max. 48 MB)</button>
         {msg.videoUpload && <p className="muted">{msg.videoUpload}</p>}
         {videoPreview && <video controls src={videoPreview} style={{ display: "block", maxWidth: "100%", maxHeight: 320, marginTop: 8 }} />}

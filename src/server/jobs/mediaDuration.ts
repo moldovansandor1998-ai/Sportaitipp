@@ -31,7 +31,7 @@ export async function mediaDurationBytes(bytes: Buffer): Promise<number> {
   return (await inspectMediaBytes(bytes)).seconds;
 }
 
-export async function inspectMediaBytes(bytes: Buffer): Promise<{ seconds: number; hasAudio: boolean; hasVideo: boolean }> {
+export async function inspectMediaBytes(bytes: Buffer): Promise<{ seconds: number; durationSeconds: number; hasAudio: boolean; hasVideo: boolean }> {
   if (!ffmpegPath || !bytes.length) throw new Error("MEDIA_UNAVAILABLE");
   const dir = await mkdtemp(join(tmpdir(), "castora-duration-"));
   try {
@@ -48,6 +48,6 @@ export async function inspectMediaBytes(bytes: Buffer): Promise<{ seconds: numbe
     const match = output.match(/Duration: (\d+):(\d+):(\d+\.\d+)/);
     const seconds = match ? Number(match[1]) * 3600 + Number(match[2]) * 60 + Number(match[3]) : 0;
     if (!seconds || seconds > 300) throw new Error("MEDIA_DURATION_LIMIT");
-    return { seconds: Math.ceil(seconds), hasAudio: /Stream.*Audio:/.test(output), hasVideo: /Stream.*Video:/.test(output) };
+    return { seconds: Math.ceil(seconds), durationSeconds: seconds, hasAudio: /Stream.*Audio:/.test(output), hasVideo: /Stream.*Video:/.test(output) };
   } finally { await rm(dir, { recursive: true, force: true }); }
 }

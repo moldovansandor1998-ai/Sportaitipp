@@ -13,7 +13,7 @@ export type PrepError =
   | "validation" | "AGE_VERIFICATION_REQUIRED" | LoraError
   | "CHARACTER_REQUIRED" | "EASY_INPUT_INVALID" | "TTS_VOICE_INVALID"
   | "I2V_MODEL_NOT_ALLOWED" | "URL_NOT_ALLOWED" | "IMAGE_INPUT_REQUIRED" | "SOURCE_IMAGE_REQUIRED"
-  | "TRAINED_EDIT_UNAVAILABLE" | "VIDEO_FORMAT_UNSUPPORTED" | "SCENE_PREVIEW_REQUIRED" | "REDUB_DURATION_LIMIT"
+  | "TRAINED_EDIT_UNAVAILABLE" | "VIDEO_FORMAT_UNSUPPORTED" | "SCENE_PREVIEW_REQUIRED" | "REDUB_DURATION_LIMIT" | "MOTION_DURATION_LIMIT"
   | "ELEVENLABS_AUTH_FAILED" | "ELEVENLABS_QUOTA_EXCEEDED" | "ELEVENLABS_PAYMENT_ISSUE";
 
 export interface PreparedJob {
@@ -435,6 +435,9 @@ export async function prepareValidatedJobInput(input: {
     delete payload.videoAssetId;
   }
   if (type === "character_motion_video") {
+    delete payload.sourceSeconds;
+    delete payload.motionSegments;
+    delete payload.sourceVideoAssetId;
     const sourceVideoAssetId = String(payload.videoAssetId);
     const { data: video } = await svc.from("assets").select("bucket,object_path,content_type")
       .eq("id", String(payload.videoAssetId)).eq("owner_id", input.userId).eq("media_type", "video").single();
@@ -461,6 +464,24 @@ export async function prepareValidatedJobInput(input: {
     if (!signedVideo?.signedUrl)
       return { type, payload: {}, error: "SOURCE_IMAGE_REQUIRED", status: 502 };
     payload.videoUrl = signedVideo.signedUrl;
+    // Keep the owned asset ID: long sequences need fresh signed URLs at every step.
+    payload.sourceVideoAssetId = sourceVideoAssetId;
+    if (["anchored", "scene_preview"].includes(String(payload.motionMethod ?? "anchored"))) {
+      try {
+        const { downloadProviderFile } = await import("./providerDownload");
+        const { inspectMediaBytes } = await import("./mediaDuration");
+        const { planMotionSegments } = await import("@/lib/motionSegments");
+        const { buf } = await downloadProviderFile(signedVideo.signedUrl);
+        if (buf.length > 48 * 1024 * 1024) return { type, payload: {}, error: "VIDEO_FORMAT_UNSUPPORTED", status: 400 };
+        const media = await inspectMediaBytes(buf);
+        if (!media.hasVideo) return { type, payload: {}, error: "VIDEO_FORMAT_UNSUPPORTED", status: 400 };
+        payload.sourceSeconds = media.durationSeconds;
+        payload.motionSegments = planMotionSegments(media.durationSeconds);
+      } catch (error) {
+        return { type, payload: {}, error: error instanceof Error && ["MOTION_DURATION_LIMIT", "MEDIA_DURATION_LIMIT"].includes(error.message)
+          ? "MOTION_DURATION_LIMIT" : "VIDEO_FORMAT_UNSUPPORTED", status: 400 };
+      }
+    }
     payload.characterImageUrl = referenceUrls[0];
     payload.characterImageUrls = referenceUrls;
     delete payload.sceneImageUrl;

@@ -1,6 +1,7 @@
 // Kreditár-becslés generálás ELŐTT – NINCS hold, NINCS job, NINCS adatbázis-módosítás.
 // UGYANAZ a prepareValidatedJobInput fut, mint a valódi job route-nál → árparitás garantált.
 export const runtime = "nodejs";
+export const maxDuration = 300;
 
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
@@ -36,6 +37,7 @@ export async function POST(req: NextRequest) {
   try {
     const estimate = await router.estimate(type as never, prepared.payload);
     return NextResponse.json({ credits: estimate.credits, secondsExpected: estimate.secondsExpected,
+      ...(Array.isArray(prepared.payload.motionSegments) ? { motionParts: prepared.payload.motionSegments.length, sourceSeconds: prepared.payload.sourceSeconds } : {}),
       ...(prepared.payload.videoRedub === true || prepared.payload.imageTalking === true
         ? { ...(prepared.payload.videoRedub === true ? { sourceSeconds: prepared.payload.sourceSeconds } : {}), speechSeconds: prepared.payload.billableSeconds } : {}) });
   } catch (e: unknown) {

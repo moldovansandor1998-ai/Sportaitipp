@@ -4,6 +4,7 @@ export const runtime = "nodejs";
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { serviceClient } from "@/lib/supabase/server";
+import { motionPartFromPath } from "@/lib/motionSegments";
 
 function authedClient() {
   return createClient(
@@ -107,6 +108,7 @@ export async function GET(req: NextRequest) {
       galleryItemId: it.id,          // gallery_items.id
       assetId: it.assets.id,         // assets.id – az /api/jobs ezt várja
       mediaType: it.assets.media_type,
+      motionPart: motionPartFromPath(it.assets.object_path),
       contentType: it.assets.content_type,
       bytes: it.assets.bytes,
       qcStatus: it.qc_status,

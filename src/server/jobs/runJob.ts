@@ -15,6 +15,7 @@ export interface JobRow {
   payload: Record<string, unknown> | null; provider: string | null;
   provider_job_id: string | null; cost_estimate: number;
   idempotency_key: string | null; status: string;
+  provider_meta?: Record<string, unknown>;
 }
 
 /** Direkt indítás: atomi claim, aztán feldolgozás. */
@@ -41,6 +42,7 @@ export async function runClaimedJob(job: JobRow, routerOverride?: ReturnType<typ
     return; // éles provider: webhook/poll folytatja
   }
   if ((job.type === "nureta_scene_image" && job.payload?.sourceAssetId)
+    || (job.type === "character_motion_video" && job.payload?.sourceVideoAssetId && job.payload?.motionMethod === "anchored")
     || (job.type === "nureta_scene_video" && job.payload?.sceneImageAssetId)
     || (job.type === "lip_sync" && (job.payload?.nuretaPostprocess === true || job.payload?.videoRedub === true))
     || (job.type === "tts" && job.payload?.videoRedubSpeech === true)
@@ -48,7 +50,9 @@ export async function runClaimedJob(job: JobRow, routerOverride?: ReturnType<typ
     try {
       const { prepareValidatedJobInput } = await import("./prepareJob");
       const prepared = await prepareValidatedJobInput({ userId: job.owner_id, type: job.type,
-        characterId: job.character_id ?? undefined, payload: job.payload ?? {} });
+        characterId: job.character_id ?? undefined, payload: job.type === "character_motion_video"
+          ? { ...job.payload, videoAssetId: job.payload?.sourceVideoAssetId, voiceMode: job.payload?.replaceVoice === true ? "model" : "original" }
+          : job.payload ?? {} });
       if (prepared.error) { await failJob(job, prepared.error); return; }
       await mustUpdate("generation_jobs", { payload: prepared.payload }, job.id, "submitted");
       job = { ...job, payload: prepared.payload };
@@ -147,7 +151,16 @@ async function finalizeLocked(
   jobId: string, job: JobRow, output: NormalizedOutput,
   sb: ReturnType<typeof serviceClient>,
 ): Promise<void> {
-  const assetIds = await storeOutputAssets(jobId, job, output, sb);
+  let assetIds: string[];
+  if (Array.isArray(output.meta.motionSequenceAssets)) {
+    assetIds = output.meta.motionSequenceAssets as string[];
+    const { data: saved, error } = await sb.from("gallery_items").select("asset_id")
+      .eq("owner_id", job.owner_id).eq("job_id", jobId).in("asset_id", assetIds);
+    if (error || !assetIds.length || new Set(saved?.map(item => item.asset_id)).size !== assetIds.length)
+      throw new Error("MOTION_RESULTS_MISSING");
+  } else {
+    assetIds = await storeOutputAssets(jobId, job, output, sb);
+  }
 
   await mustUpdate("generation_jobs", { result: { assetIds, meta: output.meta } }, jobId);
 
@@ -180,7 +193,7 @@ async function finalizeLocked(
   await notify(job.owner_id, "generation_completed", { jobType: job.type }, `done:${jobId}`).catch(() => {});
 }
 
-async function storeOutputAssets(
+export async function storeOutputAssets(
   jobId: string, job: JobRow, output: NormalizedOutput,
   sb: ReturnType<typeof serviceClient>,
 ): Promise<string[]> {
@@ -321,13 +334,15 @@ export async function failJob(job: JobRow, message: string): Promise<void> {
         .eq("id", v.id).eq("status", "training").then(() => {}, () => {});
     }
   }
-  // Részlegesen létrehozott storage-, asset- és gallery-adatok takarítása
-  const { data: items } = await sb0.from("gallery_items")
-    .select("asset_id,assets(bucket,object_path)").eq("job_id", job.id);
-  for (const it of (items ?? []) as Array<{ asset_id: string; assets: unknown }>) {
-    const a = it.assets as { bucket: string; object_path: string } | null;
-    if (a) await sb0.storage.from(a.bucket).remove([a.object_path]).then(() => {}, () => {});
-    await sb0.from("assets").delete().eq("id", it.asset_id).then(() => {}, () => {});
+  // A sequence publishes each completed part deliberately; later failures must not delete them.
+  if (job.provider_meta?.motionSequence !== true) {
+    const { data: items } = await sb0.from("gallery_items")
+      .select("asset_id,assets(bucket,object_path)").eq("job_id", job.id);
+    for (const it of (items ?? []) as Array<{ asset_id: string; assets: unknown }>) {
+      const a = it.assets as { bucket: string; object_path: string } | null;
+      if (a) await sb0.storage.from(a.bucket).remove([a.object_path]).then(() => {}, () => {});
+      await sb0.from("assets").delete().eq("id", it.asset_id).then(() => {}, () => {});
+    }
   }
   const jobId = job.id;
   await mustUpdate("generation_jobs", { status: "failed", error: { message } }, jobId).catch(() => {});

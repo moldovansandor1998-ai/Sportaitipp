@@ -4,6 +4,7 @@ import sharp from "sharp";
 import { serviceClient } from "@/lib/supabase/server";
 import { sceneFrame } from "@/server/jobs/sceneFrame";
 import { applyCharacterIdentity } from "@/lib/characterIdentity";
+import { motionCredits, type MotionSegment } from "@/lib/motionSegments";
 
 const API = "https://api.wavespeed.ai/api/v3";
 const MODEL = "wavespeed-ai/image-face-swap-pro";
@@ -86,6 +87,9 @@ export class WaveSpeedAdapter implements ProviderAdapter {
       if (payload.motionMethod === "scene_preview") return { credits: 40, secondsExpected: 90 };
       if (payload.motionMethod === "talking_scene") return { credits: 1008, secondsExpected: 420 };
       if (payload.motionMethod === "creative") return { credits: 100, secondsExpected: 240 };
+      if (payload.motionMethod === "anchored" && Array.isArray(payload.motionSegments))
+        return { credits: motionCredits(payload.motionSegments as MotionSegment[], payload.quality === "standard"),
+          secondsExpected: payload.motionSegments.length * 600 };
       return { credits: payload.quality === "standard" ? 756 : payload.motionMethod === "anchored" ? 1512 : 1008,
         secondsExpected: payload.motionMethod === "anchored" ? 420 : 180 };
     }
@@ -213,6 +217,11 @@ export class WaveSpeedAdapter implements ProviderAdapter {
       }
       if (p.payload.motionMethod === "anchored" && typeof p.payload.sceneImageUrl === "string") {
         const endpoint = p.payload.quality === "standard" ? MOTION_ENDPOINT : MOTION_ENDPOINT_IDENTITY;
+        if (typeof p.payload.sourceVideoAssetId === "string" && Array.isArray(p.payload.motionSegments)) {
+          const { startMotionSequence } = await import("@/server/jobs/motionSequence");
+          return startMotionSequence(p, endpoint, identityPrompt(IDENTITY_MOTION_PROMPT), IDENTITY_MOTION_NEGATIVE,
+            (model, body) => this.request(`${API}/${model}`, body));
+        }
         const data = await this.request(`${API}/${endpoint}`, {
           image: p.payload.sceneImageUrl, video, character_orientation: "video", keep_original_sound: true,
           prompt: identityPrompt(IDENTITY_MOTION_PROMPT),
@@ -292,6 +301,10 @@ export class WaveSpeedAdapter implements ProviderAdapter {
   private result(id: string) { return this.request(`${API}/predictions/${encodeURIComponent(id)}/result`); }
 
   async getStatus(id: string, meta?: Record<string, unknown>): Promise<"running" | "done" | "failed"> {
+    if (meta?.motionSequence === true) {
+      const { pollMotionSequence } = await import("@/server/jobs/motionSequence");
+      return pollMotionSequence(id, meta, (model, body) => this.request(`${API}/${model}`, body), id => this.result(id));
+    }
     const data = await this.result(id);
     if (data.status === "completed") {
       // Finish already-submitted jobs from the former one-step flow.
@@ -345,6 +358,10 @@ export class WaveSpeedAdapter implements ProviderAdapter {
   }
 
   async getResult(id: string, _meta?: Record<string, unknown>, jobType?: JobType): Promise<NormalizedOutput> {
+    if (_meta?.motionSequence === true) {
+      const { motionSequenceResult } = await import("@/server/jobs/motionSequence");
+      return motionSequenceResult(_meta);
+    }
     const data = await this.result(id);
     if (data.status !== "completed") throw new ProviderError("WaveSpeed result is not ready", true, id);
     const outputs = Array.isArray(data.outputs) ? data.outputs : [];

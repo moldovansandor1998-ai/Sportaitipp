@@ -4,6 +4,7 @@ export const runtime = "nodejs";
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { serviceClient } from "@/lib/supabase/server";
+import { motionPartFromPath } from "@/lib/motionSegments";
 
 export async function GET(
   req: NextRequest,
@@ -26,7 +27,7 @@ export async function GET(
   // CSAK ennek a jobnak a galéria-elemei → assetId + galleryItemId + signed URL
   const { data: items } = await svc.from("gallery_items")
     .select("id,assets(id,bucket,object_path,media_type,content_type,bytes)")
-    .eq("job_id", id).eq("owner_id", user.id).is("deleted_at", null);
+    .eq("job_id", id).eq("owner_id", user.id).is("deleted_at", null).order("created_at", { ascending: true });
   interface AssetRow { id: string; bucket: string; object_path: string; media_type: string; content_type: string; bytes: number; }
   const results = await Promise.all(((items ?? []) as Array<{ id: string; assets: unknown }>).map(async (it) => {
     // PostgREST to-one embed: objektum; a típus alapértelmezése tömb – normalizáljuk
@@ -39,6 +40,7 @@ export async function GET(
       assetId: asset.id,
       galleryItemId: it.id,
       mediaType: asset.media_type,
+      motionPart: motionPartFromPath(asset.object_path),
       contentType: asset.content_type,
       bytes: asset.bytes,
       url: signed?.signedUrl ?? null,

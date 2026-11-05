@@ -8,7 +8,7 @@ import { failJob, finalizeJob, type JobRow } from "@/server/jobs/runJob";
 export const runtime = "nodejs";
 export const maxDuration = 300;
 
-// A már beküldött szolgáltatói kérés állapotának lekérdezése; nem indít új generálást.
+// Poll a submitted job; a motion sequence may advance its next authorized part.
 export async function POST(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   const auth = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!);
@@ -39,7 +39,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     // A végleges szolgáltatói hiba nem oldódik meg újabb lekérdezéssel.
     // Zárjuk le a feladatot, és adjuk vissza a lefoglalt kreditet.
     if (e instanceof ProviderError && !e.retryable) {
-      await failJob(row, `A képszerkesztő szolgáltató elutasította a feladatot: ${e.message}`);
+      await failJob(row, `A szolgáltató elutasította a feladatot: ${e.message}`);
       return NextResponse.json({ status: "refunded", error: "PROVIDER_REJECTED_IMAGE" });
     }
     return NextResponse.json({ error: "PROVIDER_STATUS_UNAVAILABLE" }, { status: 502 });

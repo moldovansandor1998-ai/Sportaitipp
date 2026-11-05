@@ -10,6 +10,7 @@ interface Item {
   galleryItemId: string; assetId: string; mediaType: string; qcStatus: string;
   url: string | null; characterId: string | null; contentType: string; albumId: string | null; usedAt: string | null;
   contentCategory: "tiktok" | "fanvue"; usedByCharacterIds: string[];
+  motionPart?: { index: number; total: number; sequence: string } | null;
 }
 interface Album { id: string; name: string; }
 interface Character { id: string; name: string; }
@@ -306,7 +307,9 @@ export default function GalleryPage() {
           : item.contentType === "audio/mpeg" ? "mp3" : "bin";
         const model = (characters.find(c => c.id === item.characterId)?.name ?? "egyeb")
           .normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-zA-Z0-9_-]/g, "_");
-        files.push({ name: `${String(index + 1).padStart(3, "0")}_${model}_${item.assetId.slice(0, 8)}.${ext}`, bytes });
+        files.push({ name: item.motionPart
+          ? `${model}_${item.motionPart.sequence.slice(0, 8)}_resz-${String(item.motionPart.index).padStart(2, "0")}-${item.motionPart.total}.${ext}`
+          : `${String(index + 1).padStart(3, "0")}_${model}_${item.assetId.slice(0, 8)}.${ext}`, bytes });
         setDownloadStatus(`Letöltés: ${index + 1}/${chosen.length}`);
       }
       const url = URL.createObjectURL(zipFiles(files));
@@ -410,6 +413,7 @@ export default function GalleryPage() {
         <h2 style={{ fontSize: 20 }}>Legutóbbi videók ({videoCount})</h2>
         <p className="muted">A kiválasztott modell elkészült, használatlan videói, TikTok és Fanvue kategóriából is.</p>
         <div className="grid">{recentVideos.map(it => <div className="card" key={it.galleryItemId} style={{ padding: 10 }}>
+          {it.motionPart && <p className="muted">{it.motionPart.index}/{it.motionPart.total}. rész · {it.motionPart.sequence.slice(0, 8)}</p>}
           <GalleryVideo url={it.url} onRefresh={() => void load()} />
           <p>{characters.find(c => c.id === it.characterId)?.name ?? "Egyéb"} · {it.contentCategory === "fanvue" ? "Fanvue" : "TikTok"}</p>
         </div>)}</div>
@@ -439,6 +443,7 @@ export default function GalleryPage() {
                 <GalleryVideo url={it.url} onRefresh={() => void load()} />
               ) : it.mediaType === "video" ? <GalleryVideo url={null} onRefresh={() => void load()} /> : <div className="skeleton" />}
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 8 }}>
+                {it.motionPart && <span className="badge">{it.motionPart.index}/{it.motionPart.total}. rész · {it.motionPart.sequence.slice(0, 8)}</span>}
                 <span className="badge">{characters.find((c) => c.id === it.characterId)?.name ?? "Egyéb"} · {it.contentCategory === "fanvue" ? "Fanvue" : "TikTok"} · {it.mediaType} · {it.mediaType === "video" && it.qcStatus === "approved" ? "Jó alapvideó" : it.qcStatus}{selected.has(it.galleryItemId) && " ✓"}</span>
                 <span style={{ display: "flex", gap: 6 }}>
                   <button className="ghost" style={{ padding: "4px 10px" }} disabled={movingCategory !== null}

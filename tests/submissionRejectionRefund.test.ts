@@ -1,13 +1,14 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { ProviderError, ProviderSubmissionRejectedError } from "@/lib/providers/types";
-import { runClaimedJob, type JobRow } from "@/server/jobs/runJob";
+import { failJob, runClaimedJob, type JobRow } from "@/server/jobs/runJob";
 import type { buildRouter } from "@/lib/providers";
 
-const state = vi.hoisted(() => ({ providerId: null as string | null, patches: [] as Array<Record<string, unknown>>, rpc: vi.fn() }));
+const state = vi.hoisted(() => ({ providerId: null as string | null, patches: [] as Array<Record<string, unknown>>, tables: [] as string[], rpc: vi.fn() }));
 vi.mock("@/lib/providers", () => ({ buildRouter: () => ({}) }));
 vi.mock("@/lib/supabase/server", () => ({ serviceClient: () => ({
   rpc: state.rpc,
   from: (table: string) => {
+    state.tables.push(table);
     let updating = false;
     const chain = {
       select: () => chain, eq: () => chain, is: () => chain,
@@ -20,7 +21,7 @@ vi.mock("@/lib/supabase/server", () => ({ serviceClient: () => ({
 }) }));
 
 beforeEach(() => {
-  state.providerId = null; state.patches = [];
+  state.providerId = null; state.patches = []; state.tables = [];
   state.rpc.mockReset().mockResolvedValue({ data: true, error: null });
 });
 const job: JobRow = { id: "job", owner_id: "owner", type: "image_generation", character_id: null,
@@ -33,6 +34,12 @@ async function submitFailure(error: Error) {
   expect(submit).toHaveBeenCalledTimes(1);
 }
 describe("Rejected submission credit handling", () => {
+  it("preserves completed sequence clips when a later part fails", async () => {
+    await failJob({ ...job, type: "character_motion_video", provider_meta: { motionSequence: true } }, "part 2 failed");
+    expect(state.tables).not.toContain("gallery_items");
+    expect(state.tables).not.toContain("assets");
+    expect(state.rpc.mock.calls.filter(call => call[0] === "credit_refund_job")).toHaveLength(1);
+  });
   it("refunds a definite denial once and finishes as refunded", async () => {
     await submitFailure(new ProviderSubmissionRejectedError("Nureta 403: denied", false));
     expect(state.patches.map(patch => patch.status)).toEqual(["failed", "refunded"]);
