@@ -44,6 +44,12 @@ export default function ModelStudio() {
   }, []);
   useEffect(() => { void load(); const timer = setInterval(() => { void load(); }, 30000); return () => clearInterval(timer); }, [load]);
 
+  useEffect(() => {
+    if (new URLSearchParams(window.location.search).get("reddit") === "failed") {
+      setError("A Reddit-fiók összekötése nem sikerült vagy megszakadt. Nyisd meg a modell Reddit-beállításait, és próbáld újra.");
+    }
+  }, []);
+
   async function save(account: Account) {
     setSaving(account.id); setError("");
     const token = (await browserClient().auth.getSession()).data.session?.access_token;
@@ -233,6 +239,13 @@ export default function ModelStudio() {
           {recent && <small>Legutóbbi: {recent.local_date} {recent.slot === "morning" ? "08:30" : recent.slot === "evening" ? "20:30" : recent.slot} · {recent.status === "posted" ? "közzétéve" : recent.error === "X_POST_402" ? "X API számlázási hiba (402), automatika leállítva" : recent.status === "failed" ? `hiba: ${recent.error ?? "ismeretlen"}` : "folyamatban"}</small>}
         </div>;
       })}
+    </section>
+    <section className="card" style={{ marginTop: 16 }}>
+      <h2>Reddit · modellenkénti időzítés</h2>
+      <p className="muted">A Reddit-fiókot, a célközösséget és a napi 1–4 időpontot a modell oldalán állíthatod be. A posztok a fenti Fanvue-fióknál elmentett linket használják. Az összekötés után a posztolást külön kell engedélyezni.</p>
+      <div style={{ display: "flex", flexWrap: "wrap", gap: 12 }}>
+        {characters.map(character => <Link key={character.id} className="ghost" href={`/characters/${encodeURIComponent(character.id)}#reddit-automation`}>{character.name} · Reddit beállítások</Link>)}
+      </div>
     </section>
     <section className="card" style={{ marginTop: 16 }}>
       <h2>Forrásképek tömeges feltöltése</h2>

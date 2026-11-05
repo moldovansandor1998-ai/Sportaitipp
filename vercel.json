@@ -1,5 +1,7 @@
 {
   "crons": [
-    { "path": "/api/jobs/process", "schedule": "* * * * *" }
+    { "path": "/api/jobs/process", "schedule": "* * * * *" },
+    { "path": "/api/reddit/process", "schedule": "*/5 * * * *" },
+    { "path": "/api/reddit/discovery-process", "schedule": "17,47 * * * *" }
   ]
 }
