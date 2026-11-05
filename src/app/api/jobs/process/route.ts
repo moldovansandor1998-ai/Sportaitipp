@@ -18,6 +18,7 @@ import { prepareValidatedJobInput } from "@/server/jobs/prepareJob";
 import { scheduleKick } from "@/server/jobs/schedule";
 import { prepareContent, refreshContentJobs } from "@/server/content/prepare";
 import { postDailyX } from "@/server/x/postDaily";
+import { isRecoverableVideoStorageError } from "@/server/jobs/providerDownload";
 
 export async function POST(req: NextRequest) {
   const verdict = isCronAuthorized(req.headers.get("authorization"), process.env.CRON_SECRET);
@@ -163,10 +164,11 @@ export async function POST(req: NextRequest) {
   // Their credits remain refunded; the provider is never submitted a second time.
   const { data: recoverable } = await sb.from("generation_jobs").select("*")
     .eq("status", "refunded").eq("type", "character_motion_video")
+    .or("error->>message.eq.provider file too large,error->>message.ilike.%maximum allowed size%")
     .is("result", null).order("created_at", { ascending: false }).limit(20);
   let recovered = 0;
   for (const job of (recoverable ?? []) as (JobRow & { provider_meta?: Record<string, unknown>; error?: { message?: string } })[]) {
-    if (!job.error?.message?.includes("maximum allowed size")) continue;
+    if (!isRecoverableVideoStorageError(job.error?.message ?? "")) continue;
     try { if (await recoverRefundedVideoJob(job)) recovered++; }
     catch (error) { console.error(JSON.stringify({ scope: "cron.recoverGallery", jobId: job.id, error: String(error) })); }
     if (recovered >= 2) break;

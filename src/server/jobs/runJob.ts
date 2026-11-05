@@ -6,10 +6,9 @@ import { refundJob } from "@/lib/credits/rpc";
 import { buildRouter } from "@/lib/providers";
 import type { JobType, NormalizedOutput, ProviderFile } from "@/lib/providers/types";
 import { ProviderSubmissionRejectedError } from "@/lib/providers/types";
-import { assertAllowedProviderOutputUrl } from "@/lib/security/ssrf";
+import { downloadProviderFile, isRecoverableVideoStorageError } from "./providerDownload";
 
 const router = buildRouter();
-const MAX_PROVIDER_FILE = 100 * 1024 * 1024;
 
 export interface JobRow {
   id: string; owner_id: string; type: JobType; character_id: string | null;
@@ -294,7 +293,7 @@ export async function recoverRefundedVideoJob(job: JobRow & { provider_meta?: Re
     .eq("id", job.id).single();
   const message = String((current?.error as { message?: string } | null)?.message ?? "");
   if (current?.status !== "refunded" || current.result ||
-    !((sceneTest || imageRecovery) ? message === "URL_HOST_NOT_ALLOWED" : message.includes("maximum allowed size"))) return false;
+    !((sceneTest || imageRecovery) ? message === "URL_HOST_NOT_ALLOWED" : isRecoverableVideoStorageError(message))) return false;
   const adapter = router.getAdapter(job.provider);
   if (!adapter) throw new Error("RECOVERY_PROVIDER_UNAVAILABLE");
   const output = await adapter.getResult(job.provider_job_id, job.provider_meta, job.type);
@@ -351,45 +350,13 @@ async function mustUpdate(
   }
 }
 
-// ---------- SSRF-védett, méretkorlátos provider-letöltés ----------
-async function downloadProviderFile(url: string, provider?: string | null): Promise<{ buf: Buffer; contentType: string }> {
-  let safe: URL;
-  try { safe = assertAllowedProviderOutputUrl(url, provider); }
-  catch (error) {
-    const host = (() => { try { return new URL(url).hostname; } catch { return "invalid"; } })();
-    console.error(JSON.stringify({ scope: "asset.url_validation", host, error: error instanceof Error ? error.message : "invalid" }));
-    throw error;
-  }
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), 60_000);
-  try {
-    const res = await fetch(safe.toString(), { signal: controller.signal, redirect: "error" });
-    if (!res.ok || !res.body) throw new Error(`provider download failed: ${res.status}`);
-    const declared = Number(res.headers.get("content-length") ?? 0);
-    if (declared > MAX_PROVIDER_FILE) throw new Error("provider file too large");
-    const chunks: Buffer[] = [];
-    let total = 0;
-    const reader = res.body.getReader();
-    for (;;) {
-      const { done, value } = await reader.read();
-      if (done) break;
-      total += value.byteLength;
-      if (total > MAX_PROVIDER_FILE) throw new Error("provider file too large");
-      chunks.push(Buffer.from(value));
-    }
-    return { buf: Buffer.concat(chunks), contentType: res.headers.get("content-type") ?? "application/octet-stream" };
-  } finally {
-    clearTimeout(timer);
-  }
-}
-
 async function fileToBuffer(f: ProviderFile, provider?: string | null): Promise<{ buf: Buffer; contentType?: string }> {
   if (f.base64) return { buf: Buffer.from(f.base64, "base64") };
   if (f.dataUrl) {
     const [head, data] = f.dataUrl.split(",");
     return { buf: Buffer.from(data ?? "", "base64"), contentType: head?.slice(5, head.indexOf(";")) };
   }
-  if (f.url) return downloadProviderFile(f.url, provider);
+  if (f.url) return downloadProviderFile(f.url, provider, f.kind);
   throw new Error("empty provider file");
 }
 
