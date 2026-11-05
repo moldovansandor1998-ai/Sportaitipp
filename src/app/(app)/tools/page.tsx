@@ -1009,7 +1009,7 @@ export default function ToolsPage() {
         <h3 style={{ marginTop: 0 }}>Video-to-Video · Image-to-Video</h3>
         <h4>Szereplőcsere a feltöltött videóban</h4>
         <p className="muted">A videó elejéről választott látható képkockán a kiválasztott modellre cseréljük a szereplőt, majd a forrásvideó mozgását használjuk. MP4, 3 másodperc–5 perc, legfeljebb 48 MB.</p>
-        {motionMethod === "anchored" && <p className="muted">A hosszabb videó legfeljebb 30 másodperces részekben készül el. Minden folytatás az előző elkészült rész utolsó képkockájából indul. A részek sorszámozva, külön kerülnek a Galériába; te vághatod össze őket. A kreditár a teljes hosszra vonatkozik.</p>}
+        {motionMethod === "anchored" && <p className="muted">A teljes forrásvideót legfeljebb 30 másodperces részekre bontjuk. Minden folytatás az előző elkészült rész utolsó képkockáját használja. A részek sorszámozva, külön kerülnek a Galériába; te vághatod össze őket. A generált részek hossza eltérhet a forrástól. A kreditár a teljes feldolgozott forrásra vonatkozik.</p>}
         <button className="ghost" type="button" disabled={busyKey !== null} onClick={() => void uploadVideo()}>Mozgásvideó feltöltése (MP4, max. 48 MB)</button>
         {msg.videoUpload && <p className="muted">{msg.videoUpload}</p>}
         {videoPreview && <video controls src={videoPreview} style={{ display: "block", maxWidth: "100%", maxHeight: 320, marginTop: 8 }} />}

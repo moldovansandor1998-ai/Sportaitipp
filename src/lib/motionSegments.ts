@@ -19,7 +19,7 @@ export function motionCredits(segments: MotionSegment[], standard: boolean): num
   return Math.ceil(segments.reduce((sum, segment) => sum + Math.ceil(segment.duration), 0) * (standard ? 25.2 : 50.4));
 }
 
-export function motionPartFromPath(path: string) {
+export function motionPartFromPath(path: string, sequence?: string) {
   const match = path.match(/\/0-resz-(\d+)-(\d+)\.mp4$/);
-  return match ? { index: Number(match[1]), total: Number(match[2]), sequence: path.split("/").at(-2) } : null;
+  return match ? { index: Number(match[1]), total: Number(match[2]), sequence: sequence ?? path.split("/").at(-2) } : null;
 }

@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { pollMotionSequence, motionSequenceResult } from "@/server/jobs/motionSequence";
+import { inspectMediaBytes } from "@/server/jobs/mediaDuration";
 
 const state = vi.hoisted(() => ({ row: {} as Record<string, any>, uploads: [] as string[], saved: vi.fn(), lastFrame: vi.fn(), clip: vi.fn() }));
 vi.mock("@/server/jobs/providerDownload", () => ({ downloadProviderFile: vi.fn(async (url: string) => ({ buf: Buffer.from(url) })) }));
@@ -30,6 +31,7 @@ vi.mock("@/lib/supabase/server", () => ({ serviceClient: () => ({
 
 beforeEach(() => {
   vi.clearAllMocks(); state.uploads = [];
+  vi.mocked(inspectMediaBytes).mockResolvedValue({hasVideo:true,hasAudio:true,seconds:30,durationSeconds:30});
   state.saved.mockResolvedValue(["saved-part-1"]);
   state.lastFrame.mockResolvedValue(Buffer.from("last-frame")); state.clip.mockResolvedValue(Buffer.from("normalized-video"));
   state.row = { id:"job", owner_id:"owner", type:"character_motion_video", status:"processing", provider:"wavespeed", provider_job_id:"p1",
@@ -38,6 +40,14 @@ beforeEach(() => {
 });
 
 describe("durable serial motion sequence", () => {
+  it("continues from a shorter provider output instead of discarding it or regenerating it", async () => {
+    vi.mocked(inspectMediaBytes).mockResolvedValue({hasVideo:true,hasAudio:true,seconds:25,durationSeconds:25});
+    const request = vi.fn();
+    await pollMotionSequence("p1",state.row.provider_meta,request,async()=>({status:"completed",outputs:["https://provider.test/short.mp4"]}));
+    expect(state.row.provider_meta.stage).toBe("motion_next");
+    expect(state.row.provider_meta.parts[0]).toMatchObject({start:0,duration:30,outputSeconds:25});
+    expect(request).not.toHaveBeenCalled();
+  });
   it("saves part one, uses its last frame and the next source interval, and submits part two only once", async () => {
     const request = vi.fn(async () => ({id:"p2"}));
     const result = vi.fn(async () => ({status:"completed",outputs:["https://provider.test/part1.mp4"]}));
@@ -79,6 +89,8 @@ describe("durable serial motion sequence", () => {
     expect(state.row.provider_meta.parts).toHaveLength(1);
     await expect(motionSequenceResult(state.row.provider_meta)).rejects.toThrow("NOT_READY");
     state.row.provider_meta.stage = "motion_complete";
+    await expect(motionSequenceResult(state.row.provider_meta)).rejects.toThrow("NOT_READY");
+    state.row.provider_meta.segments = [state.row.provider_meta.segments[0]];
     expect((await motionSequenceResult(state.row.provider_meta)).meta.motionSequenceAssets).toEqual(["saved-part-1"]);
   });
 });

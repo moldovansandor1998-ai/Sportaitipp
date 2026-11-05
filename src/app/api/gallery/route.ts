@@ -108,7 +108,7 @@ export async function GET(req: NextRequest) {
       galleryItemId: it.id,          // gallery_items.id
       assetId: it.assets.id,         // assets.id – az /api/jobs ezt várja
       mediaType: it.assets.media_type,
-      motionPart: motionPartFromPath(it.assets.object_path),
+      motionPart: motionPartFromPath(it.assets.object_path, it.job_id ?? undefined),
       contentType: it.assets.content_type,
       bytes: it.assets.bytes,
       qcStatus: it.qc_status,

@@ -10,7 +10,7 @@ import type { JobRow } from "./runJob";
 
 type Request = (endpoint: string, body: Record<string, unknown>) => Promise<Record<string, unknown>>;
 type Result = (id: string) => Promise<Record<string, unknown>>;
-interface Part { assetId: string; providerId: string; start: number; duration: number; }
+interface Part { assetId: string; providerId: string; start: number; duration: number; outputSeconds?: number; }
 interface Meta extends Record<string, unknown> {
   motionSequence: true; submission_started: true; jobId: string; stage: string;
   endpoint: string; prompt: string; negativePrompt: string; segments: MotionSegment[];
@@ -100,8 +100,6 @@ export async function pollMotionSequence(id: string, initial: Record<string, unk
   const job = await readJob(initial), meta = job.provider_meta;
   if (job.status !== "processing" || job.provider_job_id !== id) return "running";
   if (meta.stage === "motion_complete") return "done";
-  if (meta.stage === "motion_short_output")
-    throw new ProviderError("A szolgáltató a forrásrészletnél rövidebb videót adott. A kész rész a galériában maradt; a folytatás leállt, hogy ne maradjon ki mozgás.", false, id);
   // Preparation/storage are safe to retry after a lost worker. Paid submissions are not.
   if (["motion_saving", "motion_preparing", "motion_submitting"].includes(meta.stage)) {
     if (Date.now() - Number(meta.lockAt) < 10 * 60_000) return "running";
@@ -130,12 +128,12 @@ export async function pollMotionSequence(id: string, initial: Record<string, unk
       const [assetId] = await storeOutputAssets(job.id, job, { files: [{ kind: "video", base64: buf.toString("base64"),
         filename: `resz-${String(meta.index + 1).padStart(2, "0")}-${meta.segments.length}.mp4`, contentType: "video/mp4" }], meta: {} }, serviceClient());
       const segment = meta.segments[meta.index];
-      const parts = [...meta.parts, { assetId, providerId: id, ...segment }];
-      const short = media.durationSeconds < segment.duration - 0.5;
-      const next = { ...locked.provider_meta, parts, stage: short ? "motion_short_output" : parts.length === meta.segments.length ? "motion_complete" : "motion_next" };
+      // Kling may return a shorter valid-motion extraction. Continue the next
+      // requested source interval using the ACTUAL saved video's final frame.
+      // Do not resubmit/charge an already processed source interval to chase length.
+      const parts = [...meta.parts, { assetId, providerId: id, ...segment, outputSeconds: media.durationSeconds }];
+      const next = { ...locked.provider_meta, parts, stage: parts.length === meta.segments.length ? "motion_complete" : "motion_next" };
       if (!await save(locked, next)) return "running";
-      if (short)
-        throw new ProviderError(`A(z) ${meta.index + 1}. rész a forrásrészletnél rövidebb lett. A kész rész megmaradt a galériában; a folytatást leállítottuk, hogy ne maradjon ki mozgás.`, false, id);
       return "running"; // Next polling call uses the persisted checkpoint.
     } catch (error) {
       await save(locked, { ...locked.provider_meta, stage: "motion_rendering" }).catch(() => {});
@@ -148,10 +146,12 @@ export async function pollMotionSequence(id: string, initial: Record<string, unk
     try {
       const index = meta.parts.length;
       const previous = await downloadProviderFile(await ownedUrl(job.owner_id, meta.parts[index - 1].assetId), undefined, "video");
+      const previousMedia = await inspectMediaBytes(previous.buf);
+      const parts = meta.parts.map((part, i) => i === index - 1 ? { ...part, outputSeconds: previousMedia.durationSeconds } : part);
       const imagePath = `${job.owner_id}/${job.id}/motion-start-${index + 1}.jpg`;
       await upload(imagePath, await lastMotionFrame(previous.buf), "image/jpeg");
       const videoPath = await prepareClip(job, meta.segments[index], index);
-      await save(locked, { ...locked.provider_meta, stage: "motion_ready", index, imagePath, videoPath });
+      await save(locked, { ...locked.provider_meta, stage: "motion_ready", index, imagePath, videoPath, parts });
     } catch (error) {
       await save(locked, { ...locked.provider_meta, stage: "motion_next" }).catch(() => {});
       throw error;
@@ -168,6 +168,7 @@ export async function pollMotionSequence(id: string, initial: Record<string, unk
       const data = await request(meta.endpoint, body(meta, image, video));
       if (typeof data.id !== "string") throw new Error("MOTION_TASK_ID_MISSING");
       acceptedId = data.id;
+      console.info(JSON.stringify({ scope: "motion.part_submitted", jobId: job.id, part: meta.index + 1, providerJobId: acceptedId }));
       if (!await save(locked, { ...locked.provider_meta, stage: "motion_rendering" }, { provider_job_id: data.id }))
         throw new Error("MOTION_SUBMISSION_NOT_RECORDED");
     } catch (error) {
@@ -184,7 +185,8 @@ export async function pollMotionSequence(id: string, initial: Record<string, unk
 
 export async function motionSequenceResult(meta: Record<string, unknown>): Promise<NormalizedOutput> {
   const job = await readJob(meta);
-  if (job.provider_meta.stage !== "motion_complete") throw new ProviderError("MOTION_SEQUENCE_NOT_READY", true);
+  if (job.provider_meta.stage !== "motion_complete" || job.provider_meta.parts.length !== job.provider_meta.segments.length)
+    throw new ProviderError("MOTION_SEQUENCE_NOT_READY", true);
   return { files: [], meta: { motionSequenceAssets: job.provider_meta.parts.map(part => part.assetId),
     parts: job.provider_meta.parts, sourceSeconds: job.payload?.sourceSeconds } };
 }

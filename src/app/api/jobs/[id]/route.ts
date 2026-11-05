@@ -40,7 +40,7 @@ export async function GET(
       assetId: asset.id,
       galleryItemId: it.id,
       mediaType: asset.media_type,
-      motionPart: motionPartFromPath(asset.object_path),
+      motionPart: motionPartFromPath(asset.object_path, id),
       contentType: asset.content_type,
       bytes: asset.bytes,
       url: signed?.signedUrl ?? null,
