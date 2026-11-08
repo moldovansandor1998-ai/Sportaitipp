@@ -6,12 +6,12 @@ import { Icon, Landscape, Portrait, Waveform } from "./Artwork";
 import styles from "./LandingPage.module.css";
 
 function Brand({ locale }: { locale: LandingLocale }) {
-  return <Link href={locale === "en" ? "/en" : "/"} className={styles.brand} aria-label="Start AI Creator"><span className={styles.brandMark}><Icon name="spark" /></span><span>Start <span className={styles.brandAi}>AI</span> Creator<span className={styles.brandDot}>.</span></span></Link>;
+  return <Link href={locale === "en" ? "/" : "/hu"} className={styles.brand} aria-label="Start AI Creator"><span className={styles.brandMark}><Icon name="spark" /></span><span>Start <span className={styles.brandAi}>AI</span> Creator<span className={styles.brandDot}>.</span></span></Link>;
 }
 
 export default function LandingPage({ locale }: { locale: LandingLocale }) {
   const c = landingContent[locale];
-  const schema = { "@context": "https://schema.org", "@type": "SoftwareApplication", name: "Start AI Creator", applicationCategory: "MultimediaApplication", operatingSystem: "Web", url: siteOrigin() + (locale === "en" ? "/en" : "/"), inLanguage: ["hu", "en"], description: c.intro };
+  const schema = { "@context": "https://schema.org", "@type": "SoftwareApplication", name: "Start AI Creator", applicationCategory: "MultimediaApplication", operatingSystem: "Web", url: siteOrigin() + (locale === "en" ? "/" : "/hu"), inLanguage: ["hu", "en"], description: c.intro };
   return <div lang={locale} className={styles.page} id="top">
     <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(schema).replace(/</g, "\\u003c") }} />
     <a href="#main" className={styles.skipLink}>{c.skip}</a>

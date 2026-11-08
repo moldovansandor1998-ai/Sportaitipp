@@ -1,3 +1,4 @@
+import Image from "next/image";
 import type { ToolArt } from "./content";
 import styles from "./LandingPage.module.css";
 
@@ -48,13 +49,19 @@ export function Waveform() {
   return <div className={styles.waveform} aria-hidden="true">{[13, 25, 18, 40, 56, 34, 23, 62, 81, 51, 30, 69, 92, 61, 42, 77, 56, 33, 49, 66, 35, 21, 40, 16].map((height, i) => <i key={i} style={{ height: `${height}%` }} />)}</div>;
 }
 
+const featurePhotos: Partial<Record<ToolArt, string>> = {
+  image: "image-generation",
+  video: "video-motion",
+  audio: "voice-talking-video",
+  content: "content-planning",
+  gallery: "creative-library",
+};
+
 export function ToolArtwork({ art, id }: { art: ToolArt; id: string }) {
+  const photo = featurePhotos[art];
   return <div className={`${styles.toolArt} ${styles[`art_${art}`]}`} aria-hidden="true">
-    {art === "portrait" && <><div className={styles.artGrid} /><Portrait id={id} /><span className={styles.artCorner}>CHARACTER / 01</span></>}
-    {art === "image" && <><div className={styles.imageStack}><Landscape id={id} /></div><div className={styles.imageSwatches}><i /><i /><i /></div><span className={styles.artCorner}>IMAGE STUDIO</span></>}
-    {art === "video" && <><div className={styles.videoFrame}><Landscape id={id} /><div className={styles.playIcon}>▷</div></div><div className={styles.filmstrip}>{Array.from({ length: 8 }, (_, i) => <i key={i} />)}</div><span className={styles.artCorner}>MOTION / TIMELINE</span></>}
-    {art === "audio" && <><div className={styles.audioOrb}><svg viewBox="0 0 48 48" fill="none"><rect x="18" y="8" width="12" height="23" rx="6" stroke="currentColor" strokeWidth="2" /><path d="M12 24a12 12 0 0 0 24 0M24 36v6m-7 0h14" stroke="currentColor" strokeWidth="2" strokeLinecap="round" /></svg></div><Waveform /><span className={styles.artCorner}>VOICE / AUDIO</span></>}
-    {art === "content" && <><div className={styles.contentSheet}><span /><b /><b /><b /><div><i /><i /><i /></div></div><div className={styles.contentSpark}><Icon name="spark" /></div><span className={styles.artCorner}>CONTENT / IDEAS</span></>}
-    {art === "gallery" && <><div className={styles.galleryTiles}><div><Landscape id={id} /></div><div><Portrait id={`${id}-small`} /></div><div><Waveform /></div><div><Landscape id={`${id}-second`} /></div></div><span className={styles.artCorner}>YOUR CREATIVE LIBRARY</span></>}
+    {photo ? <Image src={`/images/feature-photos/${photo}.png`} alt="" fill quality={88}
+      sizes="(max-width: 540px) calc(100vw - 40px), (max-width: 820px) calc((100vw - 64px) / 2), 420px"
+      className={styles.featurePhoto} /> : <><div className={styles.artGrid} /><Portrait id={id} /><span className={styles.artCorner}>CHARACTER / 01</span></>}
   </div>;
 }

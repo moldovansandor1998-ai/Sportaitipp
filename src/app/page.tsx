@@ -1,4 +1,4 @@
 import LandingPage from "@/components/marketing/LandingPage";
 import { landingMetadata } from "@/lib/seo";
-export const metadata = landingMetadata("hu");
-export default function HomePage() { return <LandingPage locale="hu" />; }
+export const metadata = landingMetadata("en");
+export default function HomePage() { return <LandingPage locale="en" />; }

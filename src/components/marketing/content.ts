@@ -8,7 +8,7 @@ export type Feature = {
 
 export const landingContent = {
   hu: {
-    language: "English", languageHref: "/en", skip: "Ugrás a tartalomra", login: "Belépés", existing: "Már van fiókod? Lépj be", nav: ["Eszköztár", "Így működik", "Kérdések"],
+    language: "English", languageHref: "/", skip: "Ugrás a tartalomra", login: "Belépés", existing: "Már van fiókod? Lépj be", nav: ["Eszköztár", "Így működik", "Kérdések"],
     banner: "A saját alkotói világod. Egy helyen.", bannerNote: "Magyar és angol bemutatóoldal",
     eyebrow: "AI-KARAKTEREK. KÉPEK. VIDEÓK.", title: "Az ötlet a tiéd.", titleAccent: "Az eszköztár itt van.",
     intro: "Építs saját AI-karaktert. Készíts képeket, dolgozz videóval és hanggal, majd rendezd a tartalmaidat egy közös alkotói térben.",
@@ -42,7 +42,7 @@ export const landingContent = {
     footerText: "A saját AI-alkotói világod.", footerNote: "AI-karakter- és tartalomkészítő platform.", terms: "Felhasználási feltételek (tervezet)", privacy: "Adatkezelés (tervezet)", backTop: "Vissza az elejére",
   },
   en: {
-    language: "Magyar", languageHref: "/", skip: "Skip to content", login: "Sign in", existing: "Already have an account? Sign in", nav: ["Toolbox", "How it works", "FAQ"],
+    language: "Magyar", languageHref: "/hu", skip: "Skip to content", login: "Sign in", existing: "Already have an account? Sign in", nav: ["Toolbox", "How it works", "FAQ"],
     banner: "Your creative world. In one place.", bannerNote: "Hungarian and English overview",
     eyebrow: "AI CHARACTERS. IMAGES. VIDEO.", title: "Your idea.", titleAccent: "Your creative toolkit.",
     intro: "Build your own AI character. Create images, work with video and voice, and bring your content together in one creative workspace.",

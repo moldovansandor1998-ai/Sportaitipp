@@ -379,3 +379,7 @@
 @media (prefers-reduced-motion: reduce) {
   .page *, .page *::before, .page *::after { scroll-behavior: auto !important; transition: none !important; animation: none !important; }
 }
+
+/* Consistent wide frames for the generated feature photography. */
+.featureCard > .toolArt { height: auto; aspect-ratio: 17 / 10; }
+.featurePhoto { object-fit: cover; object-position: center; }

@@ -1,4 +1,7 @@
 import type { Metadata } from "next";
+import { headers } from "next/headers";
+import DocumentLanguage from "@/components/marketing/DocumentLanguage";
+import { PUBLIC_LOCALE_HEADER } from "@/lib/public-locale";
 import "./globals.css";
 
 export const metadata: Metadata = {
@@ -6,10 +9,11 @@ export const metadata: Metadata = {
   description: "Saját AI-karakterplatform – karakterek, képek, videók, kreditek.",
 };
 
-export default function RootLayout({ children }: { children: React.ReactNode }) {
+export default async function RootLayout({ children }: { children: React.ReactNode }) {
+  const locale = (await headers()).get(PUBLIC_LOCALE_HEADER) === "en" ? "en" : "hu";
   return (
-    <html lang="hu">
-      <body>{children}</body>
+    <html lang={locale}>
+      <body><DocumentLanguage />{children}</body>
     </html>
   );
 }
