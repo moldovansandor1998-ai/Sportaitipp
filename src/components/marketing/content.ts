@@ -1,4 +1,11 @@
-export type LandingLocale = "hu" | "en";
+import type { PublicLocale } from "@/lib/public-locale";
+import ro from "./locales/ro";
+import it from "./locales/it";
+import de from "./locales/de";
+import fr from "./locales/fr";
+import sk from "./locales/sk";
+import pl from "./locales/pl";
+export type LandingLocale = PublicLocale;
 export type ToolCategory = "all" | "characters" | "images" | "video" | "audio" | "organize";
 export type ToolArt = "portrait" | "image" | "video" | "audio" | "content" | "gallery";
 export type Feature = {
@@ -6,10 +13,10 @@ export type Feature = {
   title: string; description: string; tags: readonly string[]; href: string; provider: boolean;
 };
 
-export const landingContent = {
+const baseContent = {
   hu: {
-    language: "English", languageHref: "/", skip: "Ugrás a tartalomra", login: "Belépés", existing: "Már van fiókod? Lépj be", nav: ["Eszköztár", "Így működik", "Kérdések"],
-    banner: "A saját alkotói világod. Egy helyen.", bannerNote: "Magyar és angol bemutatóoldal",
+    mainNavigation: "Fő navigáció", toolCategories: "Eszközkategóriák", legalInformation: "Jogi információk", chooseLanguage: "Nyelv választása", seoTitle: "AI-karakterek, képek és videók", seoDescription: "AI-karakterek létrehozása és kezelése referenciaképekkel, kép- és videóeszközökkel, hangmunkafolyamatokkal és rendezett galériával a Start AI Creator platformon.", socialAlt: "Start AI Creator: karakterek, képek, videó és hang. AI-val készült kreatív illusztráció.", language: "English", languageHref: "/", skip: "Ugrás a tartalomra", login: "Belépés", existing: "Már van fiókod? Lépj be", nav: ["Eszköztár", "Így működik", "Kérdések"],
+    banner: "A saját alkotói világod. Egy helyen.", bannerNote: "Bemutatóoldal nyolc nyelven",
     eyebrow: "AI-KARAKTEREK. KÉPEK. VIDEÓK.", title: "Az ötlet a tiéd.", titleAccent: "Az eszköztár itt van.",
     intro: "Építs saját AI-karaktert. Készíts képeket, dolgozz videóval és hanggal, majd rendezd a tartalmaidat egy közös alkotói térben.",
     discover: "Fedezd fel az eszközöket", availabilityLink: "Hozzáférés és elérhetőség", heroNote: "Meglévő fiókkal használható munkatér. Új előfizetések előkészítés alatt.",
@@ -37,13 +44,13 @@ export const landingContent = {
       ["Lehet már új előfizetést vásárolni?", "A nyilvános előfizetés és fizetés még előkészítés alatt áll. Végleges árakat, adókat és feltételeket vásárlás előtt kell megismerned. Meglévő fiókkal továbbra is bejelentkezhetsz."],
       ["Automatikusan közzéteszi a tartalmaimat?", "A tartalomnaptár tervezésre és állapotkövetésre szolgál. Nem ígérünk automatikus közösségi publikálást, garantált elérést vagy bevételt. A fizetős mód automatikus tartalom-előkészítése jelenleg szünetel."],
       ["Használhatom valós személy képeit?", "Csak olyan tartalommal dolgozz, amelynek használatára jogosult vagy. Valós személy felhasználásához megfelelő hozzájárulás szükséges. Kiskorúakat ábrázoló, beleegyezés nélküli vagy jogellenes tartalom létrehozása tilos."],
-      ["Magyarul és angolul is használható?", "A bemutatóoldal magyarul és angolul is olvasható. A belső munkatér nyelve ettől eltérhet; a saját tartalmaidat és promptjaidat nem fordítjuk át automatikusan. Egyes beszédfunkciók kifejezetten magyar nyelvű munkafolyamatok."],
+      ["Milyen nyelveken olvasható a bemutatóoldal?", "A bemutatóoldal angolul, magyarul, románul, olaszul, németül, franciául, szlovákul és lengyelül is olvasható. A belső munkatér nyelve ettől eltérhet; a saját tartalmaidat és promptjaidat nem fordítjuk át automatikusan. Egyes beszédfunkciók kifejezetten magyar nyelvű munkafolyamatok."],
     ],
     footerText: "A saját AI-alkotói világod.", footerNote: "AI-karakter- és tartalomkészítő platform.", terms: "Felhasználási feltételek (tervezet)", privacy: "Adatkezelés (tervezet)", backTop: "Vissza az elejére",
   },
   en: {
-    language: "Magyar", languageHref: "/hu", skip: "Skip to content", login: "Sign in", existing: "Already have an account? Sign in", nav: ["Toolbox", "How it works", "FAQ"],
-    banner: "Your creative world. In one place.", bannerNote: "Hungarian and English overview",
+    mainNavigation: "Main navigation", toolCategories: "Tool categories", legalInformation: "Legal information", chooseLanguage: "Choose language", seoTitle: "AI characters, images and video tools", seoDescription: "Explore AI character, image, video and voice tools in one creative workspace. Manage references and organize your content with Start AI Creator.", socialAlt: "Start AI Creator: characters, images, video and voice. AI-generated creative illustration.", language: "Magyar", languageHref: "/hu", skip: "Skip to content", login: "Sign in", existing: "Already have an account? Sign in", nav: ["Toolbox", "How it works", "FAQ"],
+    banner: "Your creative world. In one place.", bannerNote: "Overview in eight languages",
     eyebrow: "AI CHARACTERS. IMAGES. VIDEO.", title: "Your idea.", titleAccent: "Your creative toolkit.",
     intro: "Build your own AI character. Create images, work with video and voice, and bring your content together in one creative workspace.",
     discover: "Explore the tools", availabilityLink: "Access and availability", heroNote: "Workspace for existing accounts. New subscriptions are in preparation.",
@@ -71,11 +78,19 @@ export const landingContent = {
       ["Can I buy a new subscription yet?", "Public subscriptions and payment are still in preparation. Final prices, applicable taxes and terms must be shown before purchase. Existing account holders can still sign in."],
       ["Will it publish my content automatically?", "The content calendar is for planning and status tracking. We do not promise automatic social publishing, guaranteed reach or revenue. Automatic content preparation is currently paused in paid mode."],
       ["Can I use images of real people?", "Only work with content you have the right to use. Using a real person's identity requires appropriate consent. Content involving minors, non-consensual use or unlawful activity is prohibited."],
-      ["Does it support Hungarian and English?", "The public overview is available in Hungarian and English. Workspace languages may differ; your own content and prompts are not automatically translated. Some speech features are specifically Hungarian-language workflows."],
+      ["Which languages is the overview available in?", "The public overview is available in English, Hungarian, Romanian, Italian, German, French, Slovak and Polish. Workspace languages may differ; your own content and prompts are not automatically translated. Some speech features are specifically Hungarian-language workflows."],
     ],
     footerText: "Your own AI creative world.", footerNote: "An AI character and content creation platform.", terms: "Terms of service (draft)", privacy: "Privacy notice (draft)", backTop: "Back to top",
   },
 } as const;
+
+/** Widen translated text while retaining the structural catalog contract. */
+type TextShape<T> = T extends string ? string : T extends readonly (infer U)[] ? readonly TextShape<U>[] : T extends object ? { readonly [K in keyof T]: TextShape<T[K]> } : T;
+export type LandingCopy = Omit<TextShape<typeof baseContent.en>, "features" | "filters"> & {
+  features: readonly Feature[];
+  filters: readonly { id: ToolCategory; label: string }[];
+};
+export const landingContent = { ...baseContent, ro, it, de, fr, sk, pl } satisfies Record<LandingLocale, LandingCopy>;
 
 export function filterFeatures(features: readonly Feature[], category: ToolCategory, query: string): readonly Feature[] {
   const normalize = (text: string) => text.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLocaleLowerCase();

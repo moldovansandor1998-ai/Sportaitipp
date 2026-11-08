@@ -17,7 +17,7 @@ export default function FeatureCatalog({ locale }: { locale: LandingLocale }) {
       <div className={styles.search}><Icon name="search" /><input aria-label={c.search} type="search" placeholder={c.searchPlaceholder} value={query} onChange={e => setQuery(e.target.value)} /></div>
     </div>
     <div className={styles.catalogToolbar}>
-      <div className={styles.filters} role="group" aria-label={locale === "hu" ? "Eszközkategóriák" : "Tool categories"}>
+      <div className={styles.filters} role="group" aria-label={c.toolCategories}>
         {c.filters.map(filter => <button type="button" key={filter.id} onClick={() => setCategory(filter.id)} aria-pressed={category === filter.id}>{filter.id === "all" && <Icon name="grid" />}{filter.label}</button>)}
       </div>
       <span className={styles.resultCount} role="status" aria-live="polite">{features.length} {c.resultCount}</span>

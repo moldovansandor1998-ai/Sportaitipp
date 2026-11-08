@@ -1,9 +1,11 @@
 "use client";
+import { useAppTranslation } from "@/components/i18n/AppLanguageProvider";
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { browserClient } from "@/lib/supabase/client";
 
 export default function NewCharacterPage() {
+  const { t } = useAppTranslation();
   const [gender, setGender] = useState<"" | "female" | "male">("");
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
@@ -13,7 +15,7 @@ export default function NewCharacterPage() {
   const router = useRouter();
 
   async function create() {
-    if (!gender) { setError("Válaszd ki, hogy női vagy férfi karaktert készítesz."); return; }
+    if (!gender) { setError(t("Válaszd ki, hogy női vagy férfi karaktert készítesz.")); return; }
     setLoading(true); setError(null);
     const getSb = () => browserClient();
     const { data: { user } } = await getSb().auth.getUser();
@@ -31,29 +33,29 @@ export default function NewCharacterPage() {
 
   return (
     <main style={{ maxWidth: 560 }}>
-      <h1 style={{ fontSize: 22, marginTop: 0 }}>Új karakter</h1>
+      <h1 style={{ fontSize: 22, marginTop: 0 }}>{t("Új karakter")}</h1>
       <div className="card">
-        <label>Karakter neve</label>
+        <label>{t("Karakter neve")}</label>
         <input value={name} onChange={(e) => setName(e.target.value)} maxLength={80} />
-        <label htmlFor="character-gender">Karakter neme</label>
+        <label htmlFor="character-gender">{t("Karakter neme")}</label>
         <select id="character-gender" value={gender} onChange={(e) => setGender(e.target.value as "" | "female" | "male")} required>
-          <option value="" disabled>Válassz…</option>
-          <option value="female">Nő</option>
-          <option value="male">Férfi</option>
+          <option value="" disabled>{t("Válassz…")}</option>
+          <option value="female">{t("Nő")}</option>
+          <option value="male">{t("Férfi")}</option>
         </select>
-        <label>Leírás (opcionális)</label>
+        <label>{t("Leírás (opcionális)")}</label>
         <textarea value={description} onChange={(e) => setDescription(e.target.value)} rows={3} maxLength={2000} />
-        <label>Jogalap</label>
+        <label>{t("Jogalap")}</label>
         <select value={consentType} onChange={(e) => setConsentType(e.target.value)}>
-          <option value="ai_persona">Teljesen mesterséges karakter (AI persona)</option>
-          <option value="self">Saját magam (hozzájáruló dokumentum kell)</option>
-          <option value="third_party_documented">Harmadik fél – dokumentált hozzájárulással</option>
+          <option value="ai_persona">{t("Teljesen mesterséges karakter (AI persona)")}</option>
+          <option value="self">{t("Saját magam (hozzájáruló dokumentum kell)")}</option>
+          <option value="third_party_documented">{t("Harmadik fél – dokumentált hozzájárulással")}</option>
         </select>
         {consentType !== "ai_persona" && (
-          <p className="error">Dokumentált hozzájárulás szükséges – az admin QC-vel hagyja jóvá. (Feltöltés a 2. mérföldkőben.)</p>
+          <p className="error">{t("Dokumentált hozzájárulás és jóváhagyás szükséges.")}</p>
         )}
-        {error && <p className="error">{error}</p>}
-        <button onClick={create} disabled={loading || !name.trim() || !gender} style={{ marginTop: 16 }}>Létrehozás</button>
+        {error && <p className="error">{t(error)}</p>}
+        <button onClick={create} disabled={loading || !name.trim() || !gender} style={{ marginTop: 16 }}>{t("Létrehozás")}</button>
       </div>
     </main>
   );

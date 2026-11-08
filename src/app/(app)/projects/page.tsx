@@ -1,10 +1,12 @@
 "use client";
+import { useAppTranslation } from "@/components/i18n/AppLanguageProvider";
 import { useCallback, useEffect, useState } from "react";
 import { browserClient } from "@/lib/supabase/client";
 
 interface Project { id: string; name: string; kind: string; created_at: string; }
 
 export default function ProjectsPage() {
+  const { t } = useAppTranslation();
   const [projects, setProjects] = useState<Project[]>([]);
   const [name, setName] = useState("");
   const [kind, setKind] = useState("general");
@@ -26,12 +28,12 @@ export default function ProjectsPage() {
     setName(""); await load();
   }
   async function remove(id: string) {
-    if (!confirm("Törlöd a projektet?")) return;
+    if (!confirm(t("Törlöd a projektet?"))) return;
     await fetch(`/api/projects/${id}`, { method: "DELETE", headers: { authorization: `Bearer ${await token()}` } });
     await load();
   }
   async function rename(project: Project) {
-    const nextName = prompt("Új projektnév", project.name)?.trim();
+    const nextName = prompt(t("Új projektnév"), project.name)?.trim();
     if (!nextName || nextName === project.name) return;
     const res = await fetch(`/api/projects/${project.id}`, {
       method: "PATCH",
@@ -43,25 +45,25 @@ export default function ProjectsPage() {
 
   return (
     <main style={{ maxWidth: 640 }}>
-      <h1 style={{ fontSize: 22, marginTop: 0 }}>Projektek</h1>
+      <h1 style={{ fontSize: 22, marginTop: 0 }}>{t("Projektek")}</h1>
       <div className="card">
         <div style={{ display: "flex", gap: 8 }}>
-          <input placeholder="projekt neve" value={name} onChange={(e) => setName(e.target.value)} style={{ flex: 1 }} />
+          <input placeholder={t("projekt neve")} value={name} onChange={(e) => setName(e.target.value)} style={{ flex: 1 }} />
           <select value={kind} onChange={(e) => setKind(e.target.value)}>
-            <option value="general">general</option><option value="carousel">carousel</option>
-            <option value="viral_trend">viral_trend</option><option value="ppv_set">ppv_set</option>
+            <option value="general">{t("general")}</option><option value="carousel">{t("carousel")}</option>
+            <option value="viral_trend">{t("viral_trend")}</option><option value="ppv_set">{t("ppv_set")}</option>
           </select>
-          <button onClick={create} disabled={!name.trim()}>Létrehozás</button>
+          <button onClick={create} disabled={!name.trim()}>{t("Létrehozás")}</button>
         </div>
       </div>
-      {projects.length === 0 ? <div className="empty" style={{ marginTop: 16 }}>Nincs projekted.</div> : (
+      {projects.length === 0 ? <div className="empty" style={{ marginTop: 16 }}>{t("Nincs projekted.")}</div> : (
         <div style={{ marginTop: 12 }}>
           {projects.map((p) => (
             <div key={p.id} className="card" style={{ marginBottom: 8, padding: 12, display: "flex", gap: 8, alignItems: "center" }}>
               <span style={{ flex: 1 }}>{p.name}</span>
-              <span className="badge">{p.kind}</span>
-              <button className="ghost" style={{ padding: "4px 10px" }} onClick={() => rename(p)}>Átnevezés</button>
-              <button className="ghost" style={{ padding: "4px 10px" }} onClick={() => remove(p.id)}>Törlés</button>
+              <span className="badge">{t(p.kind)}</span>
+              <button className="ghost" style={{ padding: "4px 10px" }} onClick={() => rename(p)}>{t("Átnevezés")}</button>
+              <button className="ghost" style={{ padding: "4px 10px" }} onClick={() => remove(p.id)}>{t("Törlés")}</button>
             </div>
           ))}
         </div>

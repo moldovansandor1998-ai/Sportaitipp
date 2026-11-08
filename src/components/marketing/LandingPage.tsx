@@ -1,28 +1,30 @@
 import Link from "next/link";
 import { siteOrigin } from "@/lib/seo";
 import { landingContent, type LandingLocale } from "./content";
+import { PUBLIC_LOCALES, publicLocalePath } from "@/lib/public-locale";
+import LanguagePicker from "./LanguagePicker";
 import FeatureCatalog from "./FeatureCatalog";
 import { Icon, Landscape, Portrait, Waveform } from "./Artwork";
 import styles from "./LandingPage.module.css";
 
 function Brand({ locale }: { locale: LandingLocale }) {
-  return <Link href={locale === "en" ? "/" : "/hu"} className={styles.brand} aria-label="Start AI Creator"><span className={styles.brandMark}><Icon name="spark" /></span><span>Start <span className={styles.brandAi}>AI</span> Creator<span className={styles.brandDot}>.</span></span></Link>;
+  return <Link href={publicLocalePath(locale)} className={styles.brand} aria-label="Start AI Creator"><span className={styles.brandMark}><Icon name="spark" /></span><span>Start <span className={styles.brandAi}>AI</span> Creator<span className={styles.brandDot}>.</span></span></Link>;
 }
 
 export default function LandingPage({ locale }: { locale: LandingLocale }) {
   const c = landingContent[locale];
-  const schema = { "@context": "https://schema.org", "@type": "SoftwareApplication", name: "Start AI Creator", applicationCategory: "MultimediaApplication", operatingSystem: "Web", url: siteOrigin() + (locale === "en" ? "/" : "/hu"), inLanguage: ["hu", "en"], description: c.intro };
+  const schema = { "@context": "https://schema.org", "@type": "SoftwareApplication", name: "Start AI Creator", applicationCategory: "MultimediaApplication", operatingSystem: "Web", url: siteOrigin() + (publicLocalePath(locale)), inLanguage: PUBLIC_LOCALES, description: c.intro };
   return <div lang={locale} className={styles.page} id="top">
     <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(schema).replace(/</g, "\\u003c") }} />
     <a href="#main" className={styles.skipLink}>{c.skip}</a>
     <header className={styles.header}>
       <div className={styles.container}>
         <Brand locale={locale} />
-        <nav className={styles.mainNav} aria-label={locale === "en" ? "Main navigation" : "Fő navigáció"}>{["features", "workflow", "faq"].map((id, index) => <a href={`#${id}`} key={id}>{c.nav[index]}</a>)}</nav>
-        <div className={styles.headerActions}><a className={styles.language} href={c.languageHref} hrefLang={locale === "en" ? "hu" : "en"} lang={locale === "en" ? "hu" : "en"}><Icon name="globe" />{c.language}</a><Link className={styles.signIn} href="/login" prefetch={false}>{c.login}<Icon name="arrow" /></Link></div>
+        <nav className={styles.mainNav} aria-label={c.mainNavigation}>{["features", "workflow", "faq"].map((id, index) => <a href={`#${id}`} key={id}>{c.nav[index]}</a>)}</nav>
+        <div className={styles.headerActions}><LanguagePicker locale={locale} label={c.chooseLanguage} /><Link className={styles.signIn} href="/login" prefetch={false}>{c.login}<Icon name="arrow" /></Link></div>
       </div>
     </header>
-    <div className={styles.promoBar}><div className={styles.container}><span><Icon name="spark" />{c.banner}</span><span>{c.bannerNote}<span className={styles.languageBadge}>HU / EN</span></span></div></div>
+    <div className={styles.promoBar}><div className={styles.container}><span><Icon name="spark" />{c.banner}</span><span>{c.bannerNote}<span className={styles.languageBadge}>EN · HU · RO · IT · DE · FR · SK · PL</span></span></div></div>
     <main id="main" className={styles.container}>
       <section className={styles.hero} aria-labelledby="hero-heading">
         <div className={styles.heroCopy}>
@@ -56,6 +58,6 @@ export default function LandingPage({ locale }: { locale: LandingLocale }) {
       </section>
       <section id="faq" className={`${styles.section} ${styles.faq}`} aria-labelledby="faq-heading"><div><p className={styles.eyebrow}>{c.faqEyebrow}</p><h2 id="faq-heading">{c.faqTitle}</h2></div><div>{c.questions.map(([question, answer]) => <details key={question}><summary>{question}<span aria-hidden="true">+</span></summary><p>{answer}</p></details>)}</div></section>
     </main>
-    <footer className={styles.footer}><div className={styles.container}><div className={styles.footerTop}><div><Brand locale={locale} /><p>{c.footerText}</p></div><nav aria-label={locale === "hu" ? "Jogi információk" : "Legal information"}><Link href="/terms">{c.terms}</Link><Link href="/privacy">{c.privacy}</Link><a href={c.languageHref} hrefLang={locale === "en" ? "hu" : "en"}>{c.language}</a></nav></div><div className={styles.footerBottom}><span>© {new Date().getFullYear()} Start AI Creator. {c.footerNote}</span><a href="#top">{c.backTop} ↑</a></div></div></footer>
+    <footer className={styles.footer}><div className={styles.container}><div className={styles.footerTop}><div><Brand locale={locale} /><p>{c.footerText}</p></div><nav aria-label={c.legalInformation}><Link href="/terms">{c.terms}</Link><Link href="/privacy">{c.privacy}</Link><LanguagePicker locale={locale} label={c.chooseLanguage} /></nav></div><div className={styles.footerBottom}><span>© {new Date().getFullYear()} Start AI Creator. {c.footerNote}</span><a href="#top">{c.backTop} ↑</a></div></div></footer>
   </div>;
 }

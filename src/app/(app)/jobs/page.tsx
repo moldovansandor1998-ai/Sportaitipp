@@ -1,4 +1,5 @@
 "use client";
+import { useAppTranslation } from "@/components/i18n/AppLanguageProvider";
 import { useEffect, useState } from "react";
 import { browserClient } from "@/lib/supabase/client";
 
@@ -9,6 +10,7 @@ interface JobListRow {
 interface JobEventRow { id: number; created_at: string; from_status: string | null; to_status: string; }
 
 export default function JobsPage() {
+  const { t, locale } = useAppTranslation();
   const [jobs, setJobs] = useState<JobListRow[]>([]);
   const [events, setEvents] = useState<JobEventRow[]>([]);
 
@@ -30,18 +32,18 @@ export default function JobsPage() {
 
   return (
     <main>
-      <h1 style={{ fontSize: 22, marginTop: 0 }}>Feladataim</h1>
+      <h1 style={{ fontSize: 22, marginTop: 0 }}>{t("Feladataim")}</h1>
       <div className="card">
         <table width="100%" cellPadding={8} style={{ borderCollapse: "collapse" }}>
           <thead>
             <tr style={{ textAlign: "left", color: "var(--muted)", fontSize: 12 }}>
-              <th>Típus</th><th>Állapot</th><th>Becsült</th><th>Tényleges</th><th>Hiba</th>
+              <th>{t("Típus")}</th><th>{t("Állapot")}</th><th>{t("Becsült")}</th><th>{t("Tényleges")}</th><th>{t("Hiba")}</th>
             </tr>
           </thead>
           <tbody>
             {jobs.map((j) => (
               <tr key={j.id} style={{ borderTop: "1px solid var(--border)", fontSize: 14 }}>
-                <td>{j.type}</td><td><span className="badge">{j.status}</span></td>
+                <td>{j.type}</td><td><span className="badge">{t(j.status)}</span></td>
                 <td>{j.cost_estimate}</td><td>{j.cost_final ?? "–"}</td>
                 <td className="error">{j.error?.message ?? ""}</td>
               </tr>
@@ -51,10 +53,10 @@ export default function JobsPage() {
       </div>
       {events.length > 0 && (
         <div className="card" style={{ marginTop: 16 }}>
-          <h3 style={{ marginTop: 0 }}>Legutóbbi feladat eseményei</h3>
+          <h3 style={{ marginTop: 0 }}>{t("Legutóbbi feladat eseményei")}</h3>
           {events.map((e) => (
             <div key={e.id} className="muted" style={{ padding: "4px 0" }}>
-              {new Date(e.created_at).toLocaleTimeString("hu-HU")} — {e.from_status ?? "–"} → {e.to_status}
+              {new Date(e.created_at).toLocaleTimeString(locale)} — {e.from_status ? t(e.from_status) : "–"} → {t(e.to_status)}
             </div>
           ))}
         </div>

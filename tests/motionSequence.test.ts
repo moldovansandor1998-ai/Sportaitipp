@@ -2,7 +2,20 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { pollMotionSequence, motionSequenceResult } from "@/server/jobs/motionSequence";
 import { inspectMediaBytes } from "@/server/jobs/mediaDuration";
 
-const state = vi.hoisted(() => ({ row: {} as Record<string, any>, uploads: [] as string[], saved: vi.fn(), lastFrame: vi.fn(), clip: vi.fn() }));
+interface MockMeta extends Record<string, unknown> {
+  parts: Array<Record<string, unknown>>;
+  segments: Array<{ start: number; duration: number }>;
+}
+interface MockRow extends Record<string, unknown> { provider_meta: MockMeta; }
+interface MockBuilder {
+  select(): MockBuilder;
+  update(value: Record<string, unknown>): MockBuilder;
+  eq(key: string, value: unknown): MockBuilder;
+  contains(key: string, value: Record<string, unknown>): MockBuilder;
+  single(): Promise<{ data: Record<string, unknown> }>;
+  maybeSingle(): Promise<{ data: { id: unknown } | null }>;
+}
+const state = vi.hoisted(() => ({ row: {} as MockRow, uploads: [] as string[], saved: vi.fn(), lastFrame: vi.fn(), clip: vi.fn() }));
 vi.mock("@/server/jobs/providerDownload", () => ({ downloadProviderFile: vi.fn(async (url: string) => ({ buf: Buffer.from(url) })) }));
 vi.mock("@/server/jobs/mediaDuration", () => ({ inspectMediaBytes: vi.fn(async () => ({hasVideo:true,hasAudio:true,seconds:30,durationSeconds:30})) }));
 vi.mock("@/server/jobs/motionMedia", () => ({ lastMotionFrame: state.lastFrame, motionClip: state.clip }));
@@ -10,7 +23,7 @@ vi.mock("@/server/jobs/runJob", () => ({ storeOutputAssets: state.saved }));
 vi.mock("@/lib/supabase/server", () => ({ serviceClient: () => ({
   from: (table: string) => {
     const filters: Array<[string, unknown]> = []; let changes: Record<string, unknown> | null = null;
-    const builder: any = {
+    const builder: MockBuilder = {
       select: () => builder, update: (value: Record<string, unknown>) => { changes = value; return builder; },
       eq: (key: string, value: unknown) => { filters.push([key, value]); return builder; },
       contains: (_key: string, value: Record<string, unknown>) => { for (const [k,v] of Object.entries(value)) filters.push([`meta:${k}`,v]); return builder; },

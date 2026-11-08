@@ -1,4 +1,5 @@
 "use client";
+import { useAppTranslation } from "@/components/i18n/AppLanguageProvider";
 import { useEffect, useState } from "react";
 import { browserClient } from "@/lib/supabase/client";
 
@@ -19,6 +20,7 @@ const TOGGLES = [
 ] as const;
 
 export default function SettingsPage() {
+  const { t } = useAppTranslation();
   const [profile, setProfile] = useState<ProfileRow | null>(null);
   const [settings, setSettings] = useState<SettingsRow | null>(null);
   const [msg, setMsg] = useState<string | null>(null);
@@ -39,7 +41,7 @@ export default function SettingsPage() {
     const getSb = () => browserClient();
     const { user_id, ...patch } = settings;
     const { error } = await getSb().from("user_settings").update(patch).eq("user_id", user_id);
-    setMsg(error ? error.message : "Mentve.");
+    setMsg(error ? error.message : t("Mentve."));
   }
 
   if (!profile || !settings) return <div className="skeleton" />;
@@ -47,24 +49,23 @@ export default function SettingsPage() {
 
   return (
     <main style={{ maxWidth: 560 }}>
-      <h1 style={{ fontSize: 22, marginTop: 0 }}>Fiókbeállítások</h1>
+      <h1 style={{ fontSize: 22, marginTop: 0 }}>{t("Fiókbeállítások")}</h1>
       <div className="card">
         <p className="muted" style={{ marginTop: 0 }}>{profile.email}</p>
         <p className="muted">
-          ÁSZF: {profile.terms_accepted_at ? "elfogadva" : "–"} · Adatkezelés: {profile.privacy_accepted_at ? "elfogadva" : "–"} ·
-          Nagykorúság: {profile.age_verified_at ? "igazolva" : "–"}
+          {t("ÁSZF:")}{" "}{profile.terms_accepted_at ? t("elfogadva") : "–"} {t("· Adatkezelés:")}{" "}{profile.privacy_accepted_at ? t("elfogadva") : "–"} {t("· Nagykorúság:")}{" "}{profile.age_verified_at ? t("igazolva") : "–"}
         </p>
       </div>
       <div className="card" style={{ marginTop: 16 }}>
-        <h3 style={{ marginTop: 0 }}>E-mail-értesítések</h3>
+        <h3 style={{ marginTop: 0 }}>{t("E-mail-értesítések")}</h3>
         {TOGGLES.map(([key, label]) => (
           <label key={key} style={{ display: "flex", gap: 8, alignItems: "center", color: "var(--text)" }}>
             <input type="checkbox" style={{ width: "auto" }} checked={!!settings[key]} onChange={() => toggle(key)} />
-            {label}
+            {t(label)}
           </label>
         ))}
-        <button onClick={save} style={{ marginTop: 12 }}>Mentés</button>
-        {msg && <p className="muted">{msg}</p>}
+        <button onClick={save} style={{ marginTop: 12 }}>{t("Mentés")}</button>
+        {msg && <p className="muted">{t(msg)}</p>}
       </div>
     </main>
   );

@@ -1,4 +1,5 @@
 "use client";
+import { useAppTranslation } from "@/components/i18n/AppLanguageProvider";
 // Admin munkaasztal: submission_uncertain jobok kezelése (reconcile) + kreditmódosítás.
 // Jogosultság a szerveren ellenőrzött (profiles.role) – az oldal csak adminnak mutat adatot.
 import { useCallback, useEffect, useState } from "react";
@@ -10,6 +11,7 @@ interface UncertainJob {
 }
 
 export default function AdminPage() {
+  const { t, locale } = useAppTranslation();
   const [jobs, setJobs] = useState<UncertainJob[]>([]);
   const [isAdmin, setIsAdmin] = useState<boolean | null>(null);
   const [msg, setMsg] = useState<string>("");
@@ -58,7 +60,7 @@ export default function AdminPage() {
     });
     setBusy(false);
     const b = await res.json();
-    setMsg(res.ok ? `OK: ${JSON.stringify(b)}` : `Hiba ${res.status}: ${b.error}`);
+    setMsg(res.ok ? `OK: ${JSON.stringify(b)}` : t("Hiba {code}: {detail}", { code: res.status, detail: String(b.error) }));
     await load();
   }
 
@@ -73,48 +75,45 @@ export default function AdminPage() {
     });
     setBusy(false);
     const b = await res.json();
-    setMsg(res.ok ? "Kreditmódosítás végrehajtva (auditálva)." : `Hiba ${res.status}: ${b.error}`);
+    setMsg(res.ok ? t("Kreditmódosítás végrehajtva (auditálva).") : t("Hiba {code}: {detail}", { code: res.status, detail: String(b.error) }));
   }
 
   if (isAdmin === null) return <div className="skeleton" />;
-  if (!isAdmin) return <main><div className="empty">Admin jogosultság szükséges.</div></main>;
+  if (!isAdmin) return <main><div className="empty">{t("Admin jogosultság szükséges.")}</div></main>;
 
   return (
     <main style={{ maxWidth: 760 }}>
-      <h1 style={{ fontSize: 22, marginTop: 0 }}>Admin</h1>
+      <h1 style={{ fontSize: 22, marginTop: 0 }}>{t("Admin")}</h1>
       <div className="card">
-        <h3 style={{ marginTop: 0 }}>submission_uncertain jobok ({jobs.length})</h3>
-        {jobs.length === 0 && <p className="muted">Nincs bizonytalan job.</p>}
+        <h3 style={{ marginTop: 0 }}>{t("submission_uncertain jobok (")}{jobs.length})</h3>
+        {jobs.length === 0 && <p className="muted">{t("Nincs bizonytalan job.")}</p>}
         {jobs.map((j) => (
           <div key={j.id} style={{ borderTop: "1px solid var(--border)", padding: "8px 0" }}>
             <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-              <span style={{ flex: 1, fontSize: 13 }}>{j.type} · {j.cost_estimate} kr · {j.error?.message ?? ""}</span>
-              <button className="ghost" disabled={busy} onClick={() => setConfirmJob(j.id)}>művelet…</button>
+              <span style={{ flex: 1, fontSize: 13 }}>{j.type} · {j.cost_estimate}{" "}{t("kr ·")}{" "}{j.error?.message ?? ""}</span>
+              <button className="ghost" disabled={busy} onClick={() => setConfirmJob(j.id)}>{t("művelet…")}</button>
             </div>
             {confirmJob === j.id && (
               <div style={{ background: "var(--panel-2)", borderRadius: 8, padding: 10, marginTop: 8 }}>
-                <p className="muted" style={{ margin: "0 0 8px" }}>
-                  Megerősítés: a mark_failed refundot, a restart újraküldést eredményez. A mark_submittedhez
-                  add meg a provider dashboardján ELLENŐRZÖTT request ID-t és a providert.
-                </p>
+                <p className="muted" style={{ margin: "0 0 8px" }}>{t("Megerősítés: a mark_failed refundot, a restart újraküldést eredményez. A mark_submittedhez add meg a provider dashboardján ELLENŐRZÖTT request ID-t és a providert.")}</p>
                 <div style={{ display: "flex", gap: 8, marginBottom: 8 }}>
                   <select value={providerSel} onChange={(e) => setProviderSel(e.target.value as "fal" | "replicate")}>
-                    <option value="fal">fal.ai</option>
-                    <option value="replicate">Replicate</option>
+                    <option value="fal">{t("fal.ai")}</option>
+                    <option value="replicate">{t("Replicate")}</option>
                   </select>
                   <button className="ghost" disabled={busy} onClick={() => {
-                    if (!window.confirm("Biztosan nem fut provideroldali munka? A kredit visszatérítésre kerül.")) return;
+                    if (!window.confirm(t("Biztosan nem fut provideroldali munka? A kredit visszatérítésre kerül."))) return;
                     callReconcile({ lookupJobId: j.id, action: "mark_failed", reason: "admin UI megerősítéssel: nem fut provideroldali munka" });
                     setConfirmJob(null);
-                  }}>mark_failed (refund)</button>
+                  }}>{t("mark_failed (refund)")}</button>
                   <button className="ghost" disabled={busy} onClick={() => {
-                    if (!window.confirm("Ellenőrizted a provider dashboardján, hogy NEM fut a munka?")) return;
+                    if (!window.confirm(t("Ellenőrizted a provider dashboardján, hogy NEM fut a munka?"))) return;
                     callReconcile({ lookupJobId: j.id, action: "restart", reason: "admin UI megerősítéssel", confirmNotRunning: true });
                     setConfirmJob(null);
-                  }}>restart (confirmNotRunning)</button>
+                  }}>{t("restart (confirmNotRunning)")}</button>
                 </div>
                 <div style={{ display: "flex", gap: 8 }}>
-                  <input placeholder="provider request ID (dashboard)" id={`rid-${j.id}`} style={{ flex: 1 }} />
+                  <input placeholder={t("provider request ID (dashboard)")} id={`rid-${j.id}`} style={{ flex: 1 }} />
                   <button disabled={busy} onClick={() => {
                     callReconcile({
                       lookupJobId: j.id, action: "mark_submitted", reason: "admin UI: dashboard-ellenőrzéssel",
@@ -122,7 +121,7 @@ export default function AdminPage() {
                       verifiedProviderJobId: (document.getElementById(`rid-${j.id}`) as HTMLInputElement).value,
                     });
                     setConfirmJob(null);
-                  }}>mark_submitted</button>
+                  }}>{t("mark_submitted")}</button>
                 </div>
               </div>
             )}
@@ -131,35 +130,35 @@ export default function AdminPage() {
       </div>
       {summary && (
         <div className="card" style={{ marginTop: 16 }}>
-          <h3 style={{ marginTop: 0 }}>Platform-összesítő</h3>
-          <p className="muted">Kreditégetés (30 nap): {summary.creditsBurned30d} · Nyitott moderációs jelző: {summary.openFlags.length}</p>
-          <p className="muted">Jobok státuszonként: {JSON.stringify(summary.jobsByStatus)}</p>
+          <h3 style={{ marginTop: 0 }}>{t("Platform-összesítő")}</h3>
+          <p className="muted">{t("Kreditégetés (30 nap):")}{" "}{summary.creditsBurned30d}{" "}{t("· Nyitott moderációs jelző:")}{" "}{summary.openFlags.length}</p>
+          <p className="muted">{t("Jobok státuszonként:")}{" "}{Object.entries(summary.jobsByStatus).map(([status, count]) => `${t(status)}: ${count}`).join(", ")}</p>
           {summary.openFlags.length > 0 && (
             <ul>{summary.openFlags.slice(0, 10).map((f: { id: string; reason: string; created_at: string }) => (
-              <li key={f.id} className="muted">{f.reason} – {new Date(f.created_at).toLocaleDateString("hu-HU")}</li>
+              <li key={f.id} className="muted">{f.reason} – {new Date(f.created_at).toLocaleDateString(locale)}</li>
             ))}</ul>
           )}
-          <h4 style={{ marginBottom: 6 }}>Felhasználók ({summary.users.length})</h4>
+          <h4 style={{ marginBottom: 6 }}>{t("Felhasználók (")}{summary.users.length})</h4>
           <div style={{ maxHeight: 220, overflow: "auto" }}>
             {summary.users.map((u: { id: string; email: string; role: string; created_at: string; banned_until: string | null }) => (
               <div key={u.id} style={{ display: "flex", gap: 8, fontSize: 13, padding: "3px 0", borderTop: "1px solid var(--border)" }}>
                 <span style={{ flex: 1 }}>{u.email}</span>
                 <span className="badge">{u.role}</span>
-                {u.banned_until && <span className="badge">bannolt</span>}
+                {u.banned_until && <span className="badge">{t("bannolt")}</span>}
               </div>
             ))}
           </div>
         </div>
       )}
       <div className="card" style={{ marginTop: 16 }}>
-        <h3 style={{ marginTop: 0 }}>Kreditmódosítás (auditált)</h3>
-        <label>Felhasználó UUID</label>
+        <h3 style={{ marginTop: 0 }}>{t("Kreditmódosítás (auditált)")}</h3>
+        <label>{t("Felhasználó UUID")}</label>
         <input value={creditUser} onChange={(e) => setCreditUser(e.target.value)} />
-        <label>Összeg (negatív is lehet)</label>
+        <label>{t("Összeg (negatív is lehet)")}</label>
         <input value={creditAmount} onChange={(e) => setCreditAmount(e.target.value)} inputMode="numeric" />
-        <label>Megjegyzés</label>
+        <label>{t("Megjegyzés")}</label>
         <input value={creditNote} onChange={(e) => setCreditNote(e.target.value)} />
-        <button style={{ marginTop: 12 }} disabled={busy || !creditUser || !creditAmount} onClick={adjustCredits}>Módosítás</button>
+        <button style={{ marginTop: 12 }} disabled={busy || !creditUser || !creditAmount} onClick={adjustCredits}>{t("Módosítás")}</button>
       </div>
       {msg && <p className="muted" style={{ marginTop: 12 }}>{msg}</p>}
     </main>

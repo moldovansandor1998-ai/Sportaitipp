@@ -1,3 +1,4 @@
+import { isInternalOwner } from "@/lib/security/internalAccess";
 export const runtime = "nodejs";
 
 // Admin kreditmódosítás: a VÉGPONT hitelesíti a hívót (JWT + role), majd explicit,
@@ -20,6 +21,8 @@ export async function POST(req: NextRequest) {
   );
   const { data: { user } } = await sb.auth.getUser(req.headers.get("authorization")?.replace(/^Bearer\s+/i, "") ?? "");
   if (!user) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+  // Exact authenticated owner only; retain the independent admin-role and RPC checks below.
+  if (!isInternalOwner(user.email)) return NextResponse.json({ error: "forbidden" }, { status: 403 });
 
   const svc = serviceClient();
   const { data: profile } = await svc.from("profiles").select("role").eq("id", user.id).single();

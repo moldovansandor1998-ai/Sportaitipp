@@ -1,10 +1,10 @@
 import type { NextRequest } from "next/server";
 import { updateSession } from "@/lib/supabase/middleware";
-import { documentLocale, PUBLIC_LOCALE_HEADER } from "@/lib/public-locale";
+import { PUBLIC_LOCALE_HEADER, PUBLIC_LOCALES, publicLocalePath, publicLocaleFromPath, isPublicLocale } from "@/lib/public-locale";
 import { SOCIAL_IMAGE_PATH } from "@/lib/seo";
 
 const PUBLIC_PATHS = new Set([
-  "/", "/en", "/hu", "/robots.txt", "/sitemap.xml", "/icon.svg", SOCIAL_IMAGE_PATH,
+  ...PUBLIC_LOCALES.map(publicLocalePath), "/en", "/robots.txt", "/sitemap.xml", "/icon.svg", SOCIAL_IMAGE_PATH,
   "/images/feature-photos/image-generation.png",
   "/images/feature-photos/video-motion.png",
   "/images/feature-photos/voice-talking-video.png",
@@ -16,7 +16,10 @@ export async function middleware(request: NextRequest) {
   const path = request.nextUrl.pathname;
   // Overwrite client-supplied values; this is a display-language signal only.
   // updateSession forwards these request headers while preserving auth/cookies.
-  request.headers.set(PUBLIC_LOCALE_HEADER, documentLocale(path));
+  const savedLocale = request.cookies.get("start-ai-locale")?.value;
+  // Existing legal sample pages remain Hungarian until the verified policy replacement.
+  const legacyLegal = path === "/terms" || path === "/privacy";
+  request.headers.set(PUBLIC_LOCALE_HEADER, legacyLegal ? "hu" : publicLocaleFromPath(path) ?? (isPublicLocale(savedLocale) ? savedLocale : "en"));
   const response = await updateSession(request);
   if (!PUBLIC_PATHS.has(path) && !path.startsWith("/_next/")) {
     response.headers.set("X-Robots-Tag", "noindex, nofollow, noarchive");

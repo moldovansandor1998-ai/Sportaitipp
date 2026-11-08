@@ -15,7 +15,7 @@ afterAll(() => { for (const [k, v] of Object.entries(SAVED)) { if (v === undefin
 afterEach(() => vi.unstubAllGlobals());
 
 const USER = "11111111-1111-1111-1111-111111111111";
-function baseStub(): void {
+function baseStub(role = "user"): void {
   vi.stubGlobal("fetch", vi.fn(async (url: string | URL, init?: RequestInit) => {
     const u = String(url);
     if (u.includes("/auth/v1/user")) {
@@ -24,8 +24,9 @@ function baseStub(): void {
         return new Response(JSON.stringify({ code: "bad_jwt", message: "JWT is missing" }),
           { status: 401, headers: { "content-type": "application/json" } });
       }
-      return new Response(JSON.stringify({ user: { id: USER } }), { status: 200 });
+      return new Response(JSON.stringify({ user: { id: USER, email: role === "admin" ? "moldovansandor1998@gmail.com" : "customer@example.com" } }), { status: 200 });
     }
+    if (u.includes("/rest/v1/profiles")) return new Response(JSON.stringify({ role, banned_until: null }), { status: 200 });
     if (u.includes("/rest/v1/credit_transactions")) return new Response(JSON.stringify([]), { status: 200 });
     if (u.includes("/rest/v1/rpc/")) return new Response(JSON.stringify("job-1"), { status: 200 });
     if (u.includes("/rest/v1/plans")) return new Response(JSON.stringify({ id: "starter", credits: 1000, price_huf: 4900, name: "Starter" }), { status: 200 });
@@ -64,12 +65,18 @@ describe("content API-k", () => {
 });
 
 describe("TikTok-import", () => {
-  it("nem-tiktok URL → 400; tiktok URL mockolt oEmbed-del → 201", async () => {
+  it("blocks ordinary customers before making a TikTok request", async () => {
     baseStub();
+    expect((await post("/api/trends/import", { url: "https://www.tiktok.com/@u/video/123", idempotencyKey: "test-customer-0001" })).status).toBe(401);
+    expect(vi.mocked(fetch).mock.calls.some(([url]) => String(url).includes("tiktok.com/oembed"))).toBe(false);
+  });
+  it("nem-tiktok URL → 400; tiktok URL mockolt oEmbed-del → 201", async () => {
+    baseStub("admin");
     expect((await post("/api/trends/import", { url: "https://evil.example/x", idempotencyKey: "test-key-0007" })).status).toBe(400);
     vi.stubGlobal("fetch", vi.fn(async (url: string | URL) => {
       const u = String(url);
-      if (u.includes("/auth/v1/user")) return new Response(JSON.stringify({ user: { id: USER } }), { status: 200 });
+      if (u.includes("/auth/v1/user")) return new Response(JSON.stringify({ user: { id: USER, email: "moldovansandor1998@gmail.com" } }), { status: 200 });
+      if (u.includes("/rest/v1/profiles")) return new Response(JSON.stringify({ role: "admin", banned_until: null }), { status: 200 });
       if (u.includes("/rest/v1/credit_transactions")) return new Response(JSON.stringify([]), { status: 200 });
       if (u.includes("/rest/v1/rpc/")) return new Response(JSON.stringify("job-1"), { status: 200 });
       if (u.includes("/rest/v1/viral_trends")) return new Response(JSON.stringify({ id: "t-1" }), { status: 201 });

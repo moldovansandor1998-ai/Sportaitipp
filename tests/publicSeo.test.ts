@@ -5,23 +5,23 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { landingContent } from "@/components/marketing/content";
 import robots from "@/app/robots";
 import sitemap from "@/app/sitemap";
-import { documentLocale } from "@/lib/public-locale";
-import { landingMetadata, SITE_ORIGIN, siteOrigin, SOCIAL_IMAGE_PATH, SOCIAL_IMAGE_WIDTH, SOCIAL_IMAGE_HEIGHT } from "@/lib/seo";
+import { documentLocale, PUBLIC_LOCALES, publicLocalePath, OPEN_GRAPH_LOCALES } from "@/lib/public-locale";
+import { landingMetadata, publicLanguageAlternates, SITE_ORIGIN, siteOrigin, SOCIAL_IMAGE_PATH, SOCIAL_IMAGE_WIDTH, SOCIAL_IMAGE_HEIGHT } from "@/lib/seo";
 
 afterEach(() => vi.unstubAllEnvs());
 
 describe("international public SEO", () => {
-  it.each(["en", "hu"] as const)("publishes complete %s social preview metadata", (locale) => {
+  it.each(PUBLIC_LOCALES)("publishes complete %s social preview metadata", (locale) => {
     vi.stubEnv("NEXT_PUBLIC_SITE_URL", SITE_ORIGIN);
     const metadata = landingMetadata(locale);
-    const path = locale === "en" ? "/" : "/hu";
+    const path = publicLocalePath(locale);
     expect(metadata.alternates).toEqual({
       canonical: SITE_ORIGIN + path,
-      languages: { en: SITE_ORIGIN + "/", hu: SITE_ORIGIN + "/hu", "x-default": SITE_ORIGIN + "/" },
+      languages: publicLanguageAlternates(SITE_ORIGIN),
     });
     expect(metadata.openGraph).toMatchObject({
       type: "website", url: SITE_ORIGIN + path, siteName: "Start AI Creator",
-      locale: locale === "en" ? "en_US" : "hu_HU",
+      locale: OPEN_GRAPH_LOCALES[locale],
       images: [{ url: SITE_ORIGIN + SOCIAL_IMAGE_PATH, width: 1200, height: 630, type: "image/jpeg", alt: expect.any(String) }],
     });
     expect(metadata.twitter).toMatchObject({ card: "summary_large_image", images: [{ url: SITE_ORIGIN + SOCIAL_IMAGE_PATH, alt: expect.any(String) }] });
@@ -39,9 +39,9 @@ describe("international public SEO", () => {
   it("lists only canonical landing pages, with reciprocal international alternates", () => {
     vi.stubEnv("NEXT_PUBLIC_SITE_URL", SITE_ORIGIN);
     const entries = sitemap();
-    expect(entries.map(entry => entry.url)).toEqual([SITE_ORIGIN + "/", SITE_ORIGIN + "/hu"]);
+    expect(entries.map(entry => entry.url)).toEqual(PUBLIC_LOCALES.map(locale => SITE_ORIGIN + publicLocalePath(locale)));
     for (const entry of entries) {
-      expect(entry.alternates?.languages).toEqual({ en: SITE_ORIGIN + "/", hu: SITE_ORIGIN + "/hu", "x-default": SITE_ORIGIN + "/" });
+      expect(entry.alternates?.languages).toEqual(publicLanguageAlternates(SITE_ORIGIN));
     }
     expect(robots()).toEqual({ rules: { userAgent: "*", allow: "/", disallow: ["/api/", "/auth/"] }, sitemap: SITE_ORIGIN + "/sitemap.xml" });
   });

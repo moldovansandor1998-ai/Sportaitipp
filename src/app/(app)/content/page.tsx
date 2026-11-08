@@ -1,5 +1,7 @@
 "use client";
+import { useAppTranslation } from "@/components/i18n/AppLanguageProvider";
 // Tartalom-eszközök: Viral Reels Copy, Trends, Niche, Carousel, TikTok-import – teljes folyamatok.
+import { useAppPreferences } from "@/components/AppPreferences";
 import { useCallback, useState } from "react";
 import { browserClient } from "@/lib/supabase/client";
 
@@ -7,6 +9,8 @@ interface Trend { title: string; platform: string; score: number; why: string; }
 interface Idea { niche: string; angle: string; monetization: string; difficulty: string; }
 
 export default function ContentPage() {
+  const { t } = useAppTranslation();
+  const { isAdmin } = useAppPreferences();
   const getSb = () => browserClient();
   const token = useCallback(async () => (await getSb().auth.getSession()).data.session?.access_token ?? "", []);
   const [topic, setTopic] = useState(""); const [audience, setAudience] = useState("");
@@ -35,23 +39,22 @@ export default function ContentPage() {
 
   return (
     <main style={{ maxWidth: 720 }}>
-      <h1 style={{ fontSize: 22, marginTop: 0 }}>Tartalom-eszközök</h1>
+      <h1 style={{ fontSize: 22, marginTop: 0 }}>{t("Tartalom-eszközök")}</h1>
       {err && <p className="error">{err}</p>}
 
       <div className="card">
-        <h3 style={{ marginTop: 0 }}>Viral Reels Copy</h3>
-        <input placeholder="téma" value={topic} onChange={(e) => setTopic(e.target.value)} />
-        <input placeholder="célközönség" value={audience} onChange={(e) => setAudience(e.target.value)} />
+        <h3 style={{ marginTop: 0 }}>{t("Viral Reels Copy")}</h3>
+        <input placeholder={t("téma")} value={topic} onChange={(e) => setTopic(e.target.value)} />
+        <input placeholder={t("célközönség")} value={audience} onChange={(e) => setAudience(e.target.value)} />
         <div style={{ display: "flex", gap: 8 }}>
           <select value={tone} onChange={(e) => setTone(e.target.value)}>
-            <option value="energetic">energetic</option><option value="calm">calm</option>
-            <option value="expert">expert</option><option value="funny">funny</option>
+            <option value="energetic">{t("energetic")}</option><option value="calm">{t("calm")}</option>
+            <option value="expert">{t("expert")}</option><option value="funny">{t("funny")}</option>
           </select>
-          <input placeholder="CTA" value={cta} onChange={(e) => setCta(e.target.value)} style={{ flex: 1 }} />
+          <input placeholder={t("CTA")} value={cta} onChange={(e) => setCta(e.target.value)} style={{ flex: 1 }} />
         </div>
         <button style={{ marginTop: 8 }} disabled={busy || !topic.trim()}
-          onClick={async () => { const r = await call("/api/content/reels-copy", { topic, audience, tone, cta }); if (r) setCopy(r.copy as Record<string, unknown>); }}>
-          Generálás (5 kredit)</button>
+          onClick={async () => { const r = await call("/api/content/reels-copy", { topic, audience, tone, cta }); if (r) setCopy(r.copy as Record<string, unknown>); }}>{t("Generálás (5 kredit)")}</button>
         {copy && (
           <div style={{ marginTop: 10, background: "var(--panel-2)", borderRadius: 8, padding: 12 }}>
             <p><strong>{String(copy.hook)}</strong></p>
@@ -62,11 +65,10 @@ export default function ContentPage() {
       </div>
 
       <div className="card" style={{ marginTop: 12 }}>
-        <h3 style={{ marginTop: 0 }}>Viral Trends</h3>
-        <input placeholder="niche (pl. fitness)" value={niche} onChange={(e) => setNiche(e.target.value)} />
+        <h3 style={{ marginTop: 0 }}>{t("Viral Trends")}</h3>
+        <input placeholder={t("niche (pl. fitness)")} value={niche} onChange={(e) => setNiche(e.target.value)} />
         <button style={{ marginTop: 8 }} disabled={busy || !niche.trim()}
-          onClick={async () => { const r = await call("/api/content/trends", { niche, persist: true }); if (r) setTrends((r.trends as Trend[]) ?? []); }}>
-          Trendek (5 kredit)</button>
+          onClick={async () => { const r = await call("/api/content/trends", { niche, persist: true }); if (r) setTrends((r.trends as Trend[]) ?? []); }}>{t("Trendek (5 kredit)")}</button>
         {trends.length > 0 && (
           <ul style={{ marginTop: 10 }}>
             {trends.map((t) => <li key={t.title} className="muted">{t.title} – {t.platform} ({t.score}) · {t.why}</li>)}
@@ -75,11 +77,10 @@ export default function ContentPage() {
       </div>
 
       <div className="card" style={{ marginTop: 12 }}>
-        <h3 style={{ marginTop: 0 }}>Niche Generator</h3>
-        <input placeholder="érdeklődések, vesszővel" value={interests} onChange={(e) => setInterests(e.target.value)} />
+        <h3 style={{ marginTop: 0 }}>{t("Niche Generator")}</h3>
+        <input placeholder={t("érdeklődések, vesszővel")} value={interests} onChange={(e) => setInterests(e.target.value)} />
         <button style={{ marginTop: 8 }} disabled={busy}
-          onClick={async () => { const r = await call("/api/content/niche", { interests: interests.split(",").map((x) => x.trim()).filter(Boolean) }); if (r) setIdeas((r.ideas as Idea[]) ?? []); }}>
-          Niche-ek (5 kredit)</button>
+          onClick={async () => { const r = await call("/api/content/niche", { interests: interests.split(",").map((x) => x.trim()).filter(Boolean) }); if (r) setIdeas((r.ideas as Idea[]) ?? []); }}>{t("Niche-ek (5 kredit)")}</button>
         {ideas.length > 0 && (
           <ul style={{ marginTop: 10 }}>
             {ideas.map((i) => <li key={i.niche} className="muted">{i.niche} – {i.monetization} ({i.difficulty})</li>)}
@@ -88,27 +89,26 @@ export default function ContentPage() {
       </div>
 
       <div className="card" style={{ marginTop: 12 }}>
-        <h3 style={{ marginTop: 0 }}>Carousel Generator</h3>
-        <input placeholder="cím" value={carTitle} onChange={(e) => setCarTitle(e.target.value)} />
-        <textarea rows={3} placeholder="bullet-pontok (soronként egy)" value={bullets} onChange={(e) => setBullets(e.target.value)} />
+        <h3 style={{ marginTop: 0 }}>{t("Carousel Generator")}</h3>
+        <input placeholder={t("cím")} value={carTitle} onChange={(e) => setCarTitle(e.target.value)} />
+        <textarea rows={3} placeholder={t("bullet-pontok (soronként egy)")} value={bullets} onChange={(e) => setBullets(e.target.value)} />
         <button style={{ marginTop: 8 }} disabled={busy || !carTitle.trim() || !bullets.trim()}
           onClick={async () => {
             const r = await call("/api/content/carousel", {
                 title: carTitle, bullets: bullets.split("\n").map((x) => x.trim()).filter(Boolean),
             });
             if (r) setCarResult({ pageCount: Number(r.pageCount) });
-          }}>Készítés (10 kredit)</button>
-        {carResult && <p className="muted" style={{ marginTop: 8 }}>{carResult.pageCount} oldal kész – a Galériában.</p>}
+          }}>{t("Készítés (10 kredit)")}</button>
+        {carResult && <p className="muted" style={{ marginTop: 8 }}>{carResult.pageCount}{" "}{t("oldal kész – a Galériában.")}</p>}
       </div>
 
-      <div className="card" style={{ marginTop: 12 }}>
-        <h3 style={{ marginTop: 0 }}>TikTok-link import</h3>
+      {isAdmin && <div className="card" style={{ marginTop: 12 }}>
+        <h3 style={{ marginTop: 0 }}>{t("TikTok-link import")}</h3>
         <input placeholder="https://www.tiktok.com/@user/video/..." value={ttUrl} onChange={(e) => setTtUrl(e.target.value)} />
         <button style={{ marginTop: 8 }} disabled={busy || !ttUrl.trim()}
-          onClick={async () => { const r = await call("/api/trends/import", { url: ttUrl }); if (r) setTtResult(r); }}>
-          Import (5 kredit)</button>
-        {ttResult && <p className="muted" style={{ marginTop: 8 }}>Importálva: {String(ttResult.title)} ({String(ttResult.author)}) – trendId: {String(ttResult.trendId)}</p>}
-      </div>
+          onClick={async () => { const r = await call("/api/trends/import", { url: ttUrl }); if (r) setTtResult(r); }}>{t("Import (5 kredit)")}</button>
+        {ttResult && <p className="muted" style={{ marginTop: 8 }}>{t("Importálva:")}{" "}{String(ttResult.title)} ({String(ttResult.author)}{t(") – trendId:")}{" "}{String(ttResult.trendId)}</p>}
+      </div>}
     </main>
   );
 }

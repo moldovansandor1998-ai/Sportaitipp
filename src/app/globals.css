@@ -55,3 +55,26 @@ label { display: block; font-size: 13px; color: var(--muted); margin: 12px 0 4px
   .content { padding: 12px; }
   h1 { font-size: 18px; }
 }
+
+/* Keep the mobile opener outside the drawer so closing never traps navigation. */
+.mobile-menu-toggle, .sidebar-backdrop { display: none; }
+.app-language { width: auto; max-width: 110px; flex-shrink: 0; }
+.app-account-email { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+@media (max-width: 800px) {
+  .mobile-menu-toggle { display: inline-flex; flex-shrink: 0; }
+  .sidebar, .sidebar.collapsed { transform: translateX(-100%); width: min(280px, 85vw); height: 100dvh; overflow-y: auto; top: 0; left: 0; }
+  .sidebar.mobile-open { transform: translateX(0); }
+  .sidebar.collapsed .nav-label { display: inline; }
+  .sidebar-backdrop { display: block; position: fixed; inset: 0; z-index: 19; border-radius: 0; background: #0009; }
+  .topbar { gap: 8px; padding: 8px; height: auto; min-height: 56px; flex-wrap: wrap; }
+  .app-account-email { display: none; }
+}
+
+.customer-workspace .content { background: radial-gradient(ellipse at top right, #1a234533, transparent 65%), var(--bg); }
+.customer-dashboard { max-width: 1160px; margin: 20px auto; }
+.customer-dashboard h1 { font-size: clamp(26px, 4vw, 42px); margin-bottom: 12px; letter-spacing: -.03em; }
+.customer-dashboard h2 { font-size: 20px; color: var(--text); }
+.customer-dashboard .card { padding: 28px; transition: border-color .2s; }
+.customer-dashboard .card:hover { border-color: var(--accent); }
+.customer-step, .customer-eyebrow { color: var(--accent); font-size: 12px; letter-spacing: .12em; font-weight: 700; }
+@media (max-width: 700px) { .customer-dashboard .grid { grid-template-columns: 1fr; } }

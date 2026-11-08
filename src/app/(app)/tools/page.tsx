@@ -1,4 +1,5 @@
 "use client";
+import { useAppTranslation } from "@/components/i18n/AppLanguageProvider";
 // AI eszközök – minden eszköz VALÓDI folyamattal: assetválasztó/feltöltés, paraméterek,
 // árbecslés, indítás, progress, eredmény (player/letöltés/galéria), retry.
 // (Kulccsal futtatva valódi providert hív; kulcs nélkül NO_PROVIDER_CONFIGURED – nincs hamis eredmény.)
@@ -19,6 +20,10 @@ interface Cfg { mode: string; faceSwapConfigured: boolean; i2vModels: Array<{ id
 interface NuretaVideo { assetId: string; jobId: string; characterId: string; createdAt: string; duration: number; }
 
 export default function ToolsPage() {
+  const { t: translate, locale } = useAppTranslation();
+  const translationRef = useRef(translate);
+  translationRef.current = translate;
+  const t = useCallback((source: string, variables?: Record<string, string | number>) => translationRef.current(source, variables), []);
   const [gallery, setGallery] = useState<GalItem[]>([]);
   const [approvedVideos, setApprovedVideos] = useState<GalItem[]>([]);
   const [characters, setCharacters] = useState<CharacterRow[]>([]);
@@ -106,27 +111,27 @@ export default function ToolsPage() {
     if (adultSource?.mediaType !== "video" || busyKey !== null) return;
     const revision = ++analysisRevision.current;
     setBusyKey("videoAnalysis");
-    setMsg(current => ({ ...current, videoAnalysis: "Az AI elemzi a videó mozdulatait és a kameramozgást…" }));
+    setMsg(current => ({ ...current, videoAnalysis: t("Az AI elemzi a videó mozdulatait és a kameramozgást…") }));
     try {
       const response = await fetch("/api/nureta/video-prompt", {
         method: "POST", headers: { authorization: `Bearer ${await token()}`, "content-type": "application/json" },
         body: JSON.stringify({ videoAssetId: adultSource.id, duration: adultDuration }),
       });
       const data = await response.json() as { prompt?: string; summary?: string; sourceDuration?: number; error?: string };
-      if (!response.ok || !data.prompt) throw new Error(data.error ?? "Nem sikerült elemezni a videót.");
+      if (!response.ok || !data.prompt) throw new Error(data.error ?? t("Nem sikerült elemezni a videót."));
       if (revision !== analysisRevision.current) return;
       setAdultVideoPrompt(data.prompt);
       setVideoAnalysisSummary(data.summary ?? "");
-      setMsg(current => ({ ...current, videoAnalysis: `Prompt elkészült a ${adultDuration} másodperces videóhoz. Ellenőrizd, szükség esetén szerkeszd. A kezdőkép jóváhagyása után ezt használjuk.` }));
+      setMsg(current => ({ ...current, videoAnalysis: t("Prompt elkészült a {p0} másodperces videóhoz. Ellenőrizd, szükség esetén szerkeszd. A kezdőkép jóváhagyása után ezt használjuk.", {p0: adultDuration}) }));
     } catch (error) {
-      if (revision === analysisRevision.current) setMsg(current => ({ ...current, videoAnalysis: error instanceof Error ? error.message : "Elemzési hiba" }));
+      if (revision === analysisRevision.current) setMsg(current => ({ ...current, videoAnalysis: error instanceof Error ? error.message : t("Elemzési hiba") }));
     } finally { setBusyKey(null); }
   }
 
   async function loadElevenVoices() {
     const response = await fetch("/api/elevenlabs/voices", { headers: { authorization: `Bearer ${await token()}` } });
     if (!response.ok) {
-      setMsg((current) => ({ ...current, eleven: "Az ElevenLabs hangok nem tölthetők be. Ellenőrizd a szerver API-kulcsát." }));
+      setMsg((current) => ({ ...current, eleven: t("Az ElevenLabs hangok nem tölthetők be. Ellenőrizd a szerver API-kulcsát.") }));
       return;
     }
     const data = await response.json() as { voices: Array<{ id: string; name: string }> };
@@ -143,10 +148,10 @@ export default function ToolsPage() {
         method: "POST", headers: { authorization: `Bearer ${await token()}`, "Content-Type": "application/json" },
         body: JSON.stringify({ voiceId: elevenVoice, text: elevenText.trim() }),
       });
-      if (!response.ok) throw new Error("A hangkészítés nem sikerült. Ellenőrizd az ElevenLabs kreditet és a kiválasztott hangot.");
+      if (!response.ok) throw new Error(t("A hangkészítés nem sikerült. Ellenőrizd az ElevenLabs kreditet és a kiválasztott hangot."));
       const data = await response.json() as { assetId: string };
       setTalkAudio(data.assetId);
-      setMsg((current) => ({ ...current, eleven: "A hang elkészült és ki van választva a videóhoz." }));
+      setMsg((current) => ({ ...current, eleven: t("A hang elkészült és ki van választva a videóhoz.") }));
     } catch (error) {
       setMsg((current) => ({ ...current, eleven: error instanceof Error ? error.message : "Hanghiba" }));
     } finally { setBusyKey(null); }
@@ -171,7 +176,7 @@ export default function ToolsPage() {
       const batch = await batchResponse.json() as { items: Array<{ filename: string; status: string; job_id: string | null; jobStatus: string | null; error: string | null }> };
       setBulkStatus(batch.items.map((item) => ({
         name: item.filename, jobId: item.job_id ?? undefined,
-        state: item.jobStatus ?? (item.status === "pending" || item.status === "claimed" ? "sorban" : item.error ?? item.status),
+        state: item.jobStatus ?? (item.status === "pending" || item.status === "claimed" ? t("sorban") : item.error ?? item.status),
       })));
     }
     if (res.ok) {
@@ -270,10 +275,10 @@ export default function ToolsPage() {
       if (restored > 0) {
         const updatedGallery = await fetch("/api/gallery", { headers: { authorization: `Bearer ${await token()}` } });
         if (updatedGallery.ok) setGallery(((await updatedGallery.json()) as { items: GalItem[] }).items.filter((i) => i.url));
-        setMsg((current) => ({ ...current, fullSwap: `${restored} korábbi kép helyreállítva a Galériában.` }));
+        setMsg((current) => ({ ...current, fullSwap: t("{p0} korábbi kép helyreállítva a Galériában.", {p0: restored}) }));
       }
     }
-  }, [token]);
+  }, [token, t]);
   useEffect(() => {
     setSceneVideo("");
     setVariationVideo("");
@@ -293,12 +298,12 @@ export default function ToolsPage() {
       const batch = await response.json() as { items: Array<{ filename: string; status: string; job_id: string | null; jobStatus: string | null; error: string | null }> };
       if (batch.items.length) setBulkStatus(batch.items.map((item) => ({
         name: item.filename, jobId: item.job_id ?? undefined,
-        state: item.jobStatus ?? (item.status === "pending" || item.status === "claimed" ? "sorban" : item.error ?? item.status),
+        state: item.jobStatus ?? (item.status === "pending" || item.status === "claimed" ? t("sorban") : item.error ?? item.status),
       })));
     };
     const timer = window.setInterval(() => { if (!bulkBusyRef.current) void refresh(); }, 15000);
     return () => window.clearInterval(timer);
-  }, [token]);
+  }, [token, t]);
 
   async function loadJobResults(jobId: string, key: string) {
     const res = await fetch(`/api/jobs/${jobId}`, { headers: { authorization: `Bearer ${await token()}` } });
@@ -316,13 +321,13 @@ export default function ToolsPage() {
       const res = await fetch(`/api/nureta/videos?characterId=${encodeURIComponent(toolChar)}`,
         { headers: { authorization: `Bearer ${await token()}` } });
       if (!active) return;
-      if (!res.ok) { setMsg(current => ({ ...current, nuretaSync: "A Nureta-videók listája nem tölthető be." })); return; }
+      if (!res.ok) { setMsg(current => ({ ...current, nuretaSync: t("A Nureta-videók listája nem tölthető be.") })); return; }
       const body = await res.json() as { items: NuretaVideo[] };
       if (!active) return;
       setNuretaVideos(body.items); setNuretaVideoAsset(body.items[0]?.assetId ?? "");
     })();
     return () => { active = false; };
-  }, [toolChar, token, results.adultVideo]);
+  }, [toolChar, token, results.adultVideo, t]);
   function poll(jobId: string, key: string) {
     pollerRef.current?.stop(jobId);
     pollerRef.current?.start(jobId,
@@ -334,7 +339,7 @@ export default function ToolsPage() {
         const { data } = await getSb().from("generation_jobs").select("status,error,result,provider_meta").eq("id", jobId).single();
         const sequence = data?.provider_meta as { motionSequence?: boolean; index?: number; segments?: unknown[]; parts?: unknown[] } | null;
         if (sequence?.motionSequence && data?.status === "processing") {
-          setMsg(current => ({ ...current, [key]: `${Math.min((sequence.index ?? 0) + 1, sequence.segments?.length ?? 1)}/${sequence.segments?.length ?? 1}. videórész készül. ${sequence.parts?.length ?? 0} rész már a galériában. A folytatás automatikus, az oldalt bezárhatod.` }));
+          setMsg(current => ({ ...current, [key]: t("{p0}/{p1}. videórész készül. {p2} rész már a galériában. A folytatás automatikus, az oldalt bezárhatod.", {p0: Math.min((sequence.index ?? 0) + 1, sequence.segments?.length ?? 1), p1: sequence.segments?.length ?? 1, p2: sequence.parts?.length ?? 0}) }));
           if (sequence.parts?.length) await loadJobResults(jobId, key);
         }
         const j = data as { status: string; error: { message?: string } | null; result: { meta?: { caption?: string } } | null } | null;
@@ -345,12 +350,12 @@ export default function ToolsPage() {
         setJobs((m) => ({ ...m, [key]: { id: jobId, status, error: errorMessage ? { message: errorMessage } : null } }));
         if (status === "failed" || status === "refunded" || status === "submission_uncertain") {
           setMsg(current => ({ ...current, [key]: status === "refunded"
-            ? `A generálás nem indult el vagy meghiúsult; a kreditet visszaadtuk. ${errorMessage ?? ""}`
-            : status === "submission_uncertain" ? `A beküldés állapotát ellenőrizni kell. ${errorMessage ?? ""}`
-            : `A generálás meghiúsult. ${errorMessage ?? ""}` }));
+            ? t("A generálás nem indult el vagy meghiúsult; a kreditet visszaadtuk. {p0}", {p0: errorMessage ?? ""})
+            : status === "submission_uncertain" ? t("A beküldés állapotát ellenőrizni kell. {p0}", {p0: errorMessage ?? ""})
+            : t("A generálás meghiúsult. {p0}", {p0: errorMessage ?? ""}) }));
         }
         if (status === "completed") {
-          setMsg(current => ({ ...current, [key]: "Elkészült, az eredmény a Galériában is megtalálható." }));
+          setMsg(current => ({ ...current, [key]: t("Elkészült, az eredmény a Galériában is megtalálható.") }));
           await loadJobResults(jobId, key); void init();
         }
       });
@@ -362,12 +367,12 @@ export default function ToolsPage() {
     const file = await new Promise<File | null>((r) => { input.onchange = () => r(input.files?.[0] ?? null); input.oncancel = () => r(null); input.click(); });
     if (!file) return null;
     if (maxBytes && file.size > maxBytes) {
-      setMsg(current => ({ ...current, upload: `Ehhez a feltöltéshez legfeljebb ${Math.floor(maxBytes / 1024 / 1024)} MB méretű képet válassz.` }));
+      setMsg(current => ({ ...current, upload: t("Ehhez a feltöltéshez legfeljebb {p0} MB méretű képet válassz.", {p0: Math.floor(maxBytes / 1024 / 1024)}) }));
       return null;
     }
     const form = new FormData(); form.append("file", file);
     const res = await fetch("/api/assets/import", { method: "POST", headers: { authorization: `Bearer ${await token()}` }, body: form });
-    if (!res.ok) { setMsg((m) => ({ ...m, upload: "Import hiba" })); return null; }
+    if (!res.ok) { setMsg((m) => ({ ...m, upload: t("Import hiba") })); return null; }
     onFile?.(file);
     return ((await res.json()) as { assetId: string }).assetId;
   }
@@ -378,15 +383,15 @@ export default function ToolsPage() {
     const file = await new Promise<File | null>((resolve) => { picker.onchange = () => resolve(picker.files?.[0] ?? null); picker.click(); });
     if (!file) return;
     setBusyKey("videoUpload");
-    setMsg((m) => ({ ...m, videoUpload: "Videó feltöltése…" }));
+    setMsg((m) => ({ ...m, videoUpload: t("Videó feltöltése…") }));
     try {
       if (file.type !== "video/mp4" || file.size < 1 || file.size > 48 * 1024 * 1024)
-        throw new Error("MP4 videót válassz, legfeljebb 48 MB méretben.");
+        throw new Error(t("MP4 videót válassz, legfeljebb 48 MB méretben."));
       const headers = { authorization: `Bearer ${await token()}`, "content-type": "application/json" };
       const signed = await fetch("/api/assets/video-upload", { method: "POST", headers,
         body: JSON.stringify({ contentType: file.type, size: file.size }) });
       const sign = await signed.json() as { objectPath?: string; token?: string; error?: string };
-      if (!signed.ok || !sign.objectPath || !sign.token) throw new Error(sign.error ?? "Feltöltési hiba");
+      if (!signed.ok || !sign.objectPath || !sign.token) throw new Error(sign.error ?? t("Feltöltési hiba"));
       const uploaded = await getSb().storage.from("assets").uploadToSignedUrl(sign.objectPath, sign.token, file, { contentType: file.type });
       if (uploaded.error) throw new Error(uploaded.error.message);
       const digest = await crypto.subtle.digest("SHA-256", await file.arrayBuffer());
@@ -394,15 +399,15 @@ export default function ToolsPage() {
       const finalized = await fetch("/api/assets/video-upload", { method: "PUT", headers,
         body: JSON.stringify({ objectPath: sign.objectPath, sha256 }) });
       const result = await finalized.json() as { assetId?: string; error?: string };
-      if (!finalized.ok || !result.assetId) throw new Error(result.error ?? "Nem sikerült menteni a videót.");
+      if (!finalized.ok || !result.assetId) throw new Error(result.error ?? t("Nem sikerült menteni a videót."));
       if (onUploaded) onUploaded(result.assetId, file);
       else {
         setV2vVideo(result.assetId);
         setVideoPreview(URL.createObjectURL(file));
       }
-      setMsg((m) => ({ ...m, videoUpload: "Videó feltöltve. Válassz modellt, majd indítsd az átalakítást." }));
+      setMsg((m) => ({ ...m, videoUpload: t("Videó feltöltve. Válassz modellt, majd indítsd az átalakítást.") }));
     } catch (error) {
-      setMsg((m) => ({ ...m, videoUpload: error instanceof Error ? error.message : "Feltöltési hiba" }));
+      setMsg((m) => ({ ...m, videoUpload: error instanceof Error ? error.message : t("Feltöltési hiba") }));
     } finally { setBusyKey(null); }
   }
 
@@ -410,13 +415,13 @@ export default function ToolsPage() {
     if (bulkBusyRef.current || !bulkFiles.length || (!allModels && !toolChar) || (allModels && !characters.length) || !cfg?.faceSwapConfigured) return;
     bulkBusyRef.current = true;
     setBusyKey("bulkSwap");
-    setBulkStatus(bulkFiles.map((file) => ({ name: file.name, state: "várakozik" })));
+    setBulkStatus(bulkFiles.map((file) => ({ name: file.name, state: t("várakozik") })));
     const update = (index: number, change: Partial<{ name: string; state: string; jobId: string }>) =>
       setBulkStatus((current) => current.map((row, i) => i === index ? { ...row, ...change } : row));
     let queuedSources = 0;
     try {
       const accessToken = await token();
-      if (!accessToken) throw new Error("Jelentkezz be újra a feltöltéshez.");
+      if (!accessToken) throw new Error(t("Jelentkezz be újra a feltöltéshez."));
       const uploadedFiles: Array<{ assetId: string; name: string }> = [];
       const enqueue = async (part: Array<{ assetId: string; name: string }>) => {
         const response = await fetch("/api/jobs/batch", {
@@ -425,23 +430,23 @@ export default function ToolsPage() {
         });
         if (!response.ok) {
           const detail = await response.json().catch(() => null) as { error?: string } | null;
-          throw new Error(`${queuedSources} forráskép sorban; a következő adag hibája: ${detail?.error ?? response.status}. A teljes csomagot ne indítsd újra.`);
+          throw new Error(t("{p0} forráskép sorban; a következő adag hibája: {p1}. A teljes csomagot ne indítsd újra.", {p0: queuedSources, p1: detail?.error ?? response.status}));
         }
         queuedSources += part.length;
-        setMsg((current) => ({ ...current, bulkSwap: `${queuedSources}/${bulkFiles.length} forráskép sorba állítva…` }));
+        setMsg((current) => ({ ...current, bulkSwap: t("{p0}/{p1} forráskép sorba állítva…", {p0: queuedSources, p1: bulkFiles.length}) }));
       };
       for (let i = 0; i < bulkFiles.length; i++) {
         const file = bulkFiles[i];
-        update(i, { state: "feltöltés" });
+        update(i, { state: t("feltöltés") });
         try {
           const form = new FormData(); form.append("file", file);
           const uploaded = await fetch("/api/assets/import", { method: "POST", headers: { authorization: `Bearer ${accessToken}` }, body: form });
           const imported = await uploaded.json() as { assetId?: string; error?: string };
-          if (!uploaded.ok || !imported.assetId) throw new Error(imported.error ?? "Feltöltési hiba");
+          if (!uploaded.ok || !imported.assetId) throw new Error(imported.error ?? t("Feltöltési hiba"));
           uploadedFiles.push({ assetId: imported.assetId, name: file.name });
-          update(i, { state: "feltöltve" });
+          update(i, { state: t("feltöltve") });
         } catch (error) {
-          update(i, { state: `hiba: ${error instanceof Error ? error.message : "ismeretlen hiba"}` });
+          update(i, { state: t("Hiba: {p0}", { p0: error instanceof Error ? error.message : t("ismeretlen hiba") }) });
         }
         if (uploadedFiles.length - queuedSources >= 5) await enqueue(uploadedFiles.slice(queuedSources, queuedSources + 5));
       }
@@ -449,13 +454,13 @@ export default function ToolsPage() {
         if (uploadedFiles.length > queuedSources) await enqueue(uploadedFiles.slice(queuedSources));
         setBulkStatus(allModels ? characters.flatMap((c) => uploadedFiles.map((f) => ({ name: `${c.name} · ${f.name}`, state: "sorban" })))
           : uploadedFiles.map((f) => ({ name: f.name, state: "sorban" })));
-        setMsg((current) => ({ ...current, bulkSwap: `${uploadedFiles.length} forráskép × ${allModels ? characters.length : 1} modell = ${uploadedFiles.length * (allModels ? characters.length : 1)} ${bulkCategory === "fanvue" ? "Fanvue" : "TikTok"} kép sorba állítva. Most már elhagyhatod vagy frissítheted az oldalt.` }));
+        setMsg((current) => ({ ...current, bulkSwap: t("{p0} forráskép × {p1} modell = {p2} {p3} kép sorba állítva. Most már elhagyhatod vagy frissítheted az oldalt.", {p0: uploadedFiles.length, p1: allModels ? characters.length : 1, p2: uploadedFiles.length * (allModels ? characters.length : 1), p3: bulkCategory === "fanvue" ? "Fanvue" : "TikTok"}) }));
         setBulkFiles([]);
         const picker = document.getElementById("character-source-images") as HTMLInputElement | null;
         if (picker) picker.value = "";
       }
     } catch (error) {
-      setMsg((current) => ({ ...current, bulkSwap: error instanceof Error ? error.message : "Hiba történt" }));
+      setMsg((current) => ({ ...current, bulkSwap: error instanceof Error ? error.message : t("Hiba történt") }));
       if (queuedSources > 0) {
         setBulkFiles([]);
         const picker = document.getElementById("character-source-images") as HTMLInputElement | null;
@@ -473,12 +478,12 @@ export default function ToolsPage() {
     setBusyKey("bulkSwap");
     try {
       const accessToken = await token();
-      if (!accessToken) throw new Error("Jelentkezz be újra.");
+      if (!accessToken) throw new Error(t("Jelentkezz be újra."));
       const recovered = await fetch("/api/jobs/batch/recover", { headers: { authorization: `Bearer ${accessToken}` } });
-      if (!recovered.ok) throw new Error("A korábbi feltöltések lekérése nem sikerült.");
+      if (!recovered.ok) throw new Error(t("A korábbi feltöltések lekérése nem sikerült."));
       const { items } = await recovered.json() as { items: Array<{ assetId: string; name: string }> };
       if (!items.length) {
-        setMsg((current) => ({ ...current, bulkSwap: "Nincs sorba nem állított kép az elmúlt 48 órából." }));
+        setMsg((current) => ({ ...current, bulkSwap: t("Nincs sorba nem állított kép az elmúlt 48 órából.") }));
         return;
       }
       let queued = 0;
@@ -489,15 +494,15 @@ export default function ToolsPage() {
         });
         if (!response.ok) {
           const detail = await response.json().catch(() => null) as { error?: string } | null;
-          throw new Error(`${queued}/${items.length} kép sorban. A következő adag hibája: ${detail?.error ?? response.status}. Az elkészült adagokat ne indítsd újra.`);
+          throw new Error(t("{p0}/{p1} kép sorban. A következő adag hibája: {p2}. Az elkészült adagokat ne indítsd újra.", {p0: queued, p1: items.length, p2: detail?.error ?? response.status}));
         }
         queued += Math.min(20, items.length - offset);
-        setMsg((current) => ({ ...current, bulkSwap: `${queued}/${items.length} korábbi kép sorba állítva…` }));
+        setMsg((current) => ({ ...current, bulkSwap: t("{p0}/{p1} korábbi kép sorba állítva…", {p0: queued, p1: items.length}) }));
       }
-      setMsg((current) => ({ ...current, bulkSwap: `${items.length} korábbi kép × ${allModels ? characters.length : 1} modell sorba állítva a ${bulkCategory === "fanvue" ? "Fanvue" : "TikTok"} galériához.` }));
+      setMsg((current) => ({ ...current, bulkSwap: t("{p0} korábbi kép × {p1} modell sorba állítva a {p2} galériához.", {p0: items.length, p1: allModels ? characters.length : 1, p2: bulkCategory === "fanvue" ? "Fanvue" : "TikTok"}) }));
       void init();
     } catch (error) {
-      setMsg((current) => ({ ...current, bulkSwap: error instanceof Error ? error.message : "Helyreállítási hiba" }));
+      setMsg((current) => ({ ...current, bulkSwap: error instanceof Error ? error.message : t("Helyreállítási hiba") }));
     } finally {
       bulkBusyRef.current = false;
       setBusyKey(null);
@@ -506,7 +511,7 @@ export default function ToolsPage() {
 
   async function searchPinterest() {
     if (pinterestQuery.trim().length < 2) return;
-    setPinterestMessage("Keresés…");
+    setPinterestMessage(t("Keresés…"));
     setPinterestPins([]);
     try {
       const res = await fetch(`/api/pinterest/search?q=${encodeURIComponent(pinterestQuery.trim())}`, {
@@ -515,13 +520,13 @@ export default function ToolsPage() {
       const data = await res.json() as { error?: string; pins?: Array<{ id: string; imageUrl: string; pinUrl: string }> };
       if (!res.ok) {
         setPinterestMessage(data.error === "PINTEREST_ACCESS_REQUIRED" || data.error === "PINTEREST_SEARCH_ACCESS_REQUIRED"
-          ? "A Pinterest kereséshez jóváhagyott Pinterest API hozzáférés szükséges."
-          : "A Pinterest keresés most nem érhető el.");
+          ? t("A Pinterest kereséshez jóváhagyott Pinterest API hozzáférés szükséges.")
+          : t("A Pinterest keresés most nem érhető el."));
         return;
       }
       setPinterestPins(data.pins ?? []);
-      setPinterestMessage(data.pins?.length ? "Válassz egy képet az átalakításhoz." : "Nincs találat.");
-    } catch { setPinterestMessage("A Pinterest keresés most nem érhető el."); }
+      setPinterestMessage(data.pins?.length ? t("Válassz egy képet az átalakításhoz.") : t("Nincs találat."));
+    } catch { setPinterestMessage(t("A Pinterest keresés most nem érhető el.")); }
   }
 
   function run(key: string, type: string, payload: Record<string, unknown>, extra?: { characterId?: string }) {
@@ -538,22 +543,22 @@ export default function ToolsPage() {
         const est = await fetch("/api/jobs/estimate", { method: "POST", headers, body: JSON.stringify(bodyObj) });
         if (!est.ok) {
           const detail = await est.json().catch(() => ({})) as { error?: string };
-          throw new Error(detail.error === "MOTION_DURATION_LIMIT" ? "3 másodperc és 5 perc közötti mozgásvideót válassz. A hosszabb videó automatikusan több részben készül el."
-            : detail.error === "VIDEO_FORMAT_UNSUPPORTED" ? "A videó nem olvasható. Legfeljebb 48 MB-os MP4 fájlt válassz."
-            : `Az indítás előtti ellenőrzés nem sikerült: ${detail.error ?? est.status}. A generálás nem indult el.`);
+          throw new Error(detail.error === "MOTION_DURATION_LIMIT" ? t("3 másodperc és 5 perc közötti mozgásvideót válassz. A hosszabb videó automatikusan több részben készül el.")
+            : detail.error === "VIDEO_FORMAT_UNSUPPORTED" ? t("A videó nem olvasható. Legfeljebb 48 MB-os MP4 fájlt válassz.")
+            : t("Az indítás előtti ellenőrzés nem sikerült: {p0}. A generálás nem indult el.", {p0: detail.error ?? est.status}));
         }
-        const estBody = await est.json().catch(() => { throw new Error("Árbecslés-válasz feldolgozása sikertelen."); });
-        if (typeof (estBody as { credits?: number }).credits !== "number") throw new Error("Árbecslés-válasz érvénytelen.");
+        const estBody = await est.json().catch(() => { throw new Error(t("Árbecslés-válasz feldolgozása sikertelen.")); });
+        if (typeof (estBody as { credits?: number }).credits !== "number") throw new Error(t("Árbecslés-válasz érvénytelen."));
         setPrices((p) => ({ ...p, [key]: (estBody as { credits: number }).credits }));
         const result = await startJobWithTracker({ tracker: trackersRef.current[key], fetchImpl: fetch, token: await token(), body: bodyObj });
-        if ("skipped" in result) throw new Error("A kérés már fut.");
-        if (!result.ok) throw new Error(result.error ?? `Hiba ${result.status}`);
+        if ("skipped" in result) throw new Error(t("A kérés már fut."));
+        if (!result.ok) throw new Error(result.error ?? t("Hiba: {p0}", { p0: result.status }));
         return result;
       },
     }).then((r) => {
       if ("ok" in r && r.ok) {
         setJobs((p) => ({ ...p, [key]: { id: r.value.jobId!, status: "queued", error: null } }));
-        setMsg((p) => ({ ...p, [key]: "A kérés sorba állítva. A kész eredmény a Galériába kerül." }));
+        setMsg((p) => ({ ...p, [key]: t("A kérés sorba állítva. A kész eredmény a Galériába kerül.") }));
         poll(r.value.jobId!, key);
       }
     });
@@ -572,12 +577,12 @@ export default function ToolsPage() {
           )}
         </button>
       ))}
-      {(approvedOnly ? approvedVideos.filter((g) => g.characterId === toolChar) : gallery).filter((g) => g.mediaType === media).length === 0 && <span className="muted">{approvedOnly ? "Ehhez a modellhez még nincs Jó alapvideóként megjelölt videó." : `nincs ${media} a galériában – tölts fel`}</span>}
+      {(approvedOnly ? approvedVideos.filter((g) => g.characterId === toolChar) : gallery).filter((g) => g.mediaType === media).length === 0 && <span className="muted">{approvedOnly ? t("Ehhez a modellhez még nincs Jó alapvideóként megjelölt videó.") : t("nincs {p0} a galériában – tölts fel", {p0: t(media === "video" ? "videó" : "kép")})}</span>}
       {approvedOnly && <a href={`/gallery?characterId=${encodeURIComponent(toolChar || "all")}`}
-        style={{ flexBasis: "100%", marginTop: 8 }}>Galéria megnyitása – nézd meg a videókat, majd a megfelelőn nyomd meg a „Jó alapvideó” gombot</a>}
+        style={{ flexBasis: "100%", marginTop: 8 }}>{t("Galéria megnyitása – nézd meg a videókat, majd a megfelelőn nyomd meg a „Jó alapvideó” gombot")}</a>}
       {media === "video" && selected && (approvedOnly ? approvedVideos : gallery).find((g) => g.assetId === selected && (!approvedOnly || g.characterId === toolChar))?.url && (
         <div style={{ flexBasis: "100%", marginTop: 8 }}>
-          <span className="muted">Kiválasztott alapvideó – nézd végig indítás előtt:</span>
+          <span className="muted">{t("Kiválasztott alapvideó – nézd végig indítás előtt:")}</span>
           <video key={selected} controls playsInline preload="metadata"
             src={(approvedOnly ? approvedVideos : gallery).find((g) => g.assetId === selected)?.url ?? ""}
             style={{ display: "block", width: "min(100%, 260px)", maxHeight: 460, marginTop: 8, borderRadius: 8 }} />
@@ -585,40 +590,40 @@ export default function ToolsPage() {
       )}
     </div>
   );
-  const Badge = ({ k }: { k: string }) => jobs[k] ? <span className="badge">{jobs[k].status}{jobs[k].error?.message ? ` – ${jobs[k].error.message}` : ""}</span> : null;
-  const Price = ({ k }: { k: string }) => <span className="badge">ár: {prices[k] == null ? "–" : `${prices[k]} kredit`}</span>;
+  const Badge = ({ k }: { k: string }) => jobs[k] ? <span className="badge">{t(jobs[k].status)}{jobs[k].error?.message ? ` – ${jobs[k].error.message}` : ""}</span> : null;
+  const Price = ({ k }: { k: string }) => <span className="badge">{t("ár:")}{" "}{prices[k] == null ? "–" : `${prices[k]} ${t("kredit")}`}</span>;
   const Results = ({ k, kind }: { k: string; kind: "image" | "video" | "text" }) => (
     <>
       {(results[k] ?? []).filter((r) => r.mediaType === kind).map((r) => (
         <div key={r.galleryItemId} style={{ marginTop: 10 }}>
-          {r.motionPart && <p className="muted">{r.motionPart.index}/{r.motionPart.total}. videórész</p>}
+          {r.motionPart && <p className="muted">{r.motionPart.index}/{r.motionPart.total}{t(". videórész")}</p>}
           {kind === "video" ? <video src={r.url ?? ""} controls style={{ width: "100%", borderRadius: 8 }} />
             : (
               /* eslint-disable-next-line @next/next/no-img-element -- signed URL */
               <img src={r.url ?? ""} alt="" style={{ width: "100%", borderRadius: 8 }} />
             )}
           <div style={{ display: "flex", gap: 8, marginTop: 6 }}>
-            <a href={r.url ?? "#"} download><button className="ghost" style={{ padding: "4px 10px" }}>Letöltés</button></a>
-            <a href="/gallery"><button className="ghost" style={{ padding: "4px 10px" }}>Galéria</button></a>
+            <a href={r.url ?? "#"} download><button className="ghost" style={{ padding: "4px 10px" }}>{t("Letöltés")}</button></a>
+            <a href="/gallery"><button className="ghost" style={{ padding: "4px 10px" }}>{t("Galéria")}</button></a>
           </div>
         </div>
       ))}
-      {kind === "text" && captions[k] && <p className="muted" style={{ marginTop: 8 }}>Prompt: {captions[k]}</p>}
+      {kind === "text" && captions[k] && <p className="muted" style={{ marginTop: 8 }}>{t("Prompt:")}{" "}{captions[k]}</p>}
     </>
   );
 
   return (
     <main style={{ maxWidth: 720 }}>
-      <h1 style={{ fontSize: 22, marginTop: 0 }}>AI eszközök</h1>
-      <p className="muted">Minden eszköz teljes folyamattal. Kulcs nélkül a job őszintén elutasítódik (NO_PROVIDER_CONFIGURED) – hamis eredmény nincs.</p>
+      <h1 style={{ fontSize: 22, marginTop: 0 }}>{t("AI eszközök")}</h1>
+      <p className="muted">{t("Minden eszköz teljes folyamattal. Kulcs nélkül a job őszintén elutasítódik (NO_PROVIDER_CONFIGURED) – hamis eredmény nincs.")}</p>
 
       <div className="card" style={{ marginBottom: 12 }}>
-        <label>Karakter</label>
+        <label>{t("Karakter")}</label>
         <select value={toolChar} onChange={(e) => setToolChar(e.target.value)} style={{ width: "100%" }}>
-          <option value="">Nincs karakter</option>
+          <option value="">{t("Nincs karakter")}</option>
           {characters.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
         </select>
-        <p className="muted" style={{ marginBottom: 0 }}>Válaszd ki, kinek kell szerepelnie az új képen.</p>
+        <p className="muted" style={{ marginBottom: 0 }}>{t("Válaszd ki, kinek kell szerepelnie az új képen.")}</p>
       </div>
 
       <VideoRedub mode="image" key={`image-${toolChar}`} characterId={toolChar} characterName={characters.find(c => c.id === toolChar)?.name ?? ""}
@@ -631,14 +636,14 @@ export default function ToolsPage() {
             const id = await upload("image/jpeg,image/png,image/webp", selected => { file = selected; }, 4 * 1024 * 1024);
             if (id && file) callback(id, file);
           } catch (error) {
-            setMsg(current => ({ ...current, imageTalkUpload: error instanceof Error ? error.message : "Képfeltöltési hiba" }));
+            setMsg(current => ({ ...current, imageTalkUpload: error instanceof Error ? error.message : t("Képfeltöltési hiba") }));
           } finally { setBusyKey(null); }
         }}
         restoreSpeech={async (jobId, characterId) => {
           const response = await fetch(`/api/jobs/${encodeURIComponent(jobId)}`, { headers: { authorization: `Bearer ${await token()}` } });
           const data = await response.json() as { job?: { id: string; status: string; type: string }; results?: Res[] };
           if (!response.ok || data.job?.status !== "completed" || data.job.type !== "tts" || !data.results?.some(item => item.mediaType === "audio" && item.url))
-            throw new Error("Az elkészült hang nem érhető el.");
+            throw new Error(t("Az elkészült hang nem érhető el."));
           const key = `imageTalkSpeech:${characterId}`;
           setResults(current => ({ ...current, [key]: data.results! }));
           setJobs(current => ({ ...current, [key]: { id: jobId, status: "completed", error: null } }));
@@ -664,7 +669,7 @@ export default function ToolsPage() {
           const response = await fetch(`/api/jobs/${encodeURIComponent(jobId)}`, { headers: { authorization: `Bearer ${await token()}` } });
           const data = await response.json() as { job?: { id: string; status: string; type: string }; results?: Res[] };
           if (!response.ok || data.job?.status !== "completed" || data.job.type !== "tts" || !data.results?.some(item => item.mediaType === "audio" && item.url))
-            throw new Error("Az elkészült hang nem érhető el.");
+            throw new Error(t("Az elkészült hang nem érhető el."));
           const key = `redubSpeech:${characterId}`;
           setResults(current => ({ ...current, [key]: data.results! }));
           setJobs(current => ({ ...current, [key]: { id: jobId, status: "completed", error: null } }));
@@ -685,12 +690,12 @@ export default function ToolsPage() {
         }} />
 
       <section className="card" style={{ marginBottom: 16 }}>
-        <h2 style={{ marginTop: 0 }}>{adultChoice?.inputMode === "upload" ? "Saját képből videó" : "Jelenetkép jóváhagyása → videó"}</h2>
-        <p className="muted">Válassz képet vagy videót a galériából, vagy tölts fel újat. A forrás képének pózát, helyszínét és tárgyait megtartva a kiválasztott modell kerül rá. Videónál egy jól látható képkockát választunk.</p>
-        <label>Forráskép a galériából</label>
+        <h2 style={{ marginTop: 0 }}>{adultChoice?.inputMode === "upload" ? t("Saját képből videó") : t("Jelenetkép jóváhagyása → videó")}</h2>
+        <p className="muted">{t("Válassz képet vagy videót a galériából, vagy tölts fel újat. A forrás képének pózát, helyszínét és tárgyait megtartva a kiválasztott modell kerül rá. Videónál egy jól látható képkockát választunk.")}</p>
+        <label>{t("Forráskép a galériából")}</label>
         <Picker media="image" selected={adultSource?.mediaType === "image" ? adultSource.id : ""}
           onSelect={(id) => chooseAdultSource(id, "image", gallery.find((g) => g.assetId === id)?.url ?? "")} />
-        <label>Forrásvideó a galériából</label>
+        <label>{t("Forrásvideó a galériából")}</label>
         <Picker media="video" selected={adultSource?.mediaType === "video" ? adultSource.id : ""}
           onSelect={(id) => chooseAdultSource(id, "video", gallery.find((g) => g.assetId === id)?.url ?? "")} />
         <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 8 }}>
@@ -698,11 +703,11 @@ export default function ToolsPage() {
             let preview = "";
             const id = await upload("image/*", (file) => { preview = URL.createObjectURL(file); });
             if (id) chooseAdultSource(id, "image", preview);
-          }}>Kép feltöltése</button>
+          }}>{t("Kép feltöltése")}</button>
           <button className="ghost" disabled={busyKey !== null}
             onClick={() => void uploadVideo((id, file) => {
               chooseAdultSource(id, "video", URL.createObjectURL(file));
-            })}>Videó feltöltése (MP4)</button>
+            })}>{t("Videó feltöltése (MP4)")}</button>
         </div>
         <button className="ghost" style={{ marginTop: 8 }} disabled={busyKey !== null || !toolChar} onClick={async () => {
           setBusyKey("adultUpload");
@@ -712,46 +717,46 @@ export default function ToolsPage() {
             if (!id) return;
             chooseAdultSource(id, "image", preview);
             setAdultChoice({ assetId: id, characterId: toolChar, inputMode: "upload" });
-            setMsg((current) => ({ ...current, adultPreview: "Saját kép kiválasztva. Közvetlenül ebből készül a videó." }));
+            setMsg((current) => ({ ...current, adultPreview: t("Saját kép kiválasztva. Közvetlenül ebből készül a videó.") }));
           } catch (error) {
-            setMsg((current) => ({ ...current, upload: error instanceof Error ? error.message : "Feltöltési hiba" }));
+            setMsg((current) => ({ ...current, upload: error instanceof Error ? error.message : t("Feltöltési hiba") }));
           } finally { setBusyKey(null); }
-        }}>Saját kép feltöltése közvetlen videókészítéshez</button>
+        }}>{t("Saját kép feltöltése közvetlen videókészítéshez")}</button>
         {(msg.videoUpload || msg.upload) && <p role="status" className="muted">{msg.videoUpload || msg.upload}</p>}
-        {adultSource && <p className="muted">Kiválasztott forrás: {adultSource.mediaType === "video" ? "videó" : "kép"}.</p>}
+        {adultSource && <p className="muted">{t("Kiválasztott forrás:")}{" "}{adultSource.mediaType === "video" ? t("videó") : t("kép")}.</p>}
         {adultSourcePreview && adultSource?.mediaType === "image" && (
           /* eslint-disable-next-line @next/next/no-img-element -- user-selected local or signed URL */
-          <img src={adultSourcePreview} alt="Kiválasztott forráskép" style={{ maxWidth: "100%", maxHeight: 360, display: "block" }} />
+          <img src={adultSourcePreview} alt={t("Kiválasztott forráskép")} style={{ maxWidth: "100%", maxHeight: 360, display: "block" }} />
         )}
         {adultSourcePreview && adultSource?.mediaType === "video" &&
           <video src={adultSourcePreview} controls playsInline style={{ maxWidth: "100%", maxHeight: 360, display: "block" }} />}
         {adultSource?.mediaType === "video" && <div style={{ marginTop: 12 }}>
-          <label htmlFor="analysis-duration">Az új videó hossza</label>
+          <label htmlFor="analysis-duration">{t("Az új videó hossza")}</label>
           <select id="analysis-duration" value={adultDuration} disabled={busyKey !== null}
             onChange={event => { analysisRevision.current += 1; setAdultDuration(Number(event.target.value) as 5 | 8 | 10 | 12 | 15); setVideoAnalysisSummary(""); }}>
-            {[5, 8, 10, 12, 15].map(seconds => <option key={seconds} value={seconds}>{seconds} mp</option>)}
+            {[5, 8, 10, 12, 15].map(seconds => <option key={seconds} value={seconds}>{seconds}{" "}{t("mp")}</option>)}
           </select>
           <button className="ghost" disabled={busyKey !== null} onClick={() => void analyzeAdultSource()}>
-            {busyKey === "videoAnalysis" ? "Videó elemzése…" : "Videó elemzése → prompt"}
+            {busyKey === "videoAnalysis" ? t("Videó elemzése…") : t("Videó elemzése → prompt")}
           </button>
-          <p className="muted">Az AI a videó látható mozgását és kameráját írja le. Legfeljebb 30 mp / 48 MB. Rövidebb új videónál a forrás elejét követi. A Nureta új videót generál; a mozgás eltérhet.</p>
+          <p className="muted">{t("Az AI a videó látható mozgását és kameráját írja le. Legfeljebb 30 mp / 48 MB. Rövidebb új videónál a forrás elejét követi. A Nureta új videót generál; a mozgás eltérhet.")}</p>
           {msg.videoAnalysis && <p className="muted" role="status">{msg.videoAnalysis}</p>}
           {videoAnalysisSummary && <p>{videoAnalysisSummary}</p>}
-          <label htmlFor="analyzed-video-prompt">Videóprompt (szerkeszthető)</label>
+          <label htmlFor="analyzed-video-prompt">{t("Videóprompt (szerkeszthető)")}</label>
           <textarea id="analyzed-video-prompt" maxLength={1500} value={adultVideoPrompt} disabled={busyKey === "videoAnalysis"}
-            onChange={event => setAdultVideoPrompt(event.target.value)} placeholder="Az elemzés ide tölti ki a mozdulatokat. Saját promptot is írhatsz." />
+            onChange={event => setAdultVideoPrompt(event.target.value)} placeholder={t("Az elemzés ide tölti ki a mozdulatokat. Saját promptot is írhatsz.")} />
         </div>}
         {adultChoice?.inputMode !== "upload" && <>
-        <label htmlFor="adult-scene">Mit változtassunk a jelenetképen? (nem kötelező)</label>
+        <label htmlFor="adult-scene">{t("Mit változtassunk a jelenetképen? (nem kötelező)")}</label>
         <textarea id="adult-scene" maxLength={500} value={adultScenePrompt}
-          onChange={(event) => setAdultScenePrompt(event.target.value)} placeholder="Például: a modell arca legyen pontosabb; a póz és a tárgyak maradjanak" />
+          onChange={(event) => setAdultScenePrompt(event.target.value)} placeholder={t("Például: a modell arca legyen pontosabb; a póz és a tárgyak maradjanak")} />
         <button disabled={busyKey !== null || !toolChar || !adultSource} onClick={() => {
           setAdultChoice(null);
           setResults((current) => ({ ...current, adultPreview: [], adultVideo: [] }));
           run("adultPreview", "nureta_scene_image", {
             sourceAssetId: adultSource!.id, sourceMediaType: adultSource!.mediaType, scenePrompt: adultScenePrompt,
           }, { characterId: toolChar });
-        }}>Jelenetkép készítése / újragenerálása</button>
+        }}>{t("Jelenetkép készítése / újragenerálása")}</button>
         <Badge k="adultPreview" /><Price k="adultPreview" />
         <Results k="adultPreview" kind="image" />
         {msg.adultPreview && <p role="status" className="muted">{msg.adultPreview}</p>}
@@ -766,50 +771,50 @@ export default function ToolsPage() {
                 method: "POST", headers: { authorization: `Bearer ${await token()}`, "content-type": "application/json" },
                 body: JSON.stringify({ jobId, assetId: image.assetId, characterId: toolChar }),
               });
-              if (!response.ok) throw new Error("A jelenetkép jóváhagyása nem sikerült.");
+              if (!response.ok) throw new Error(t("A jelenetkép jóváhagyása nem sikerült."));
               setAdultChoice({ jobId, assetId: image.assetId, characterId: toolChar });
-              setMsg((current) => ({ ...current, adultPreview: "Jelenetkép jóváhagyva. Add meg a videó szövegét." }));
+              setMsg((current) => ({ ...current, adultPreview: t("Jelenetkép jóváhagyva. Add meg a videó szövegét.") }));
             } catch (error) {
-              setMsg((current) => ({ ...current, adultPreview: error instanceof Error ? error.message : "Jóváhagyási hiba" }));
+              setMsg((current) => ({ ...current, adultPreview: error instanceof Error ? error.message : t("Jóváhagyási hiba") }));
             } finally { setBusyKey(null); }
-          }}>Ezt a jelenetképet jóváhagyom</button>
+          }}>{t("Ezt a jelenetképet jóváhagyom")}</button>
         )}
         </>}
         {adultChoice?.characterId === toolChar && (adultChoice.inputMode === "upload" || results.adultPreview?.some((item) => item.assetId === adultChoice.assetId)) && <>
-          <p className="muted">{adultChoice.inputMode === "upload" ? "Közvetlen videókészítés: add meg a mozgást, majd indítsd a videót." : "Jóváhagyott kép kiválasztva. A videó ebből a képből indul."}</p>
-          <label htmlFor="scene-video-engine">Videómotor</label>
+          <p className="muted">{adultChoice.inputMode === "upload" ? t("Közvetlen videókészítés: add meg a mozgást, majd indítsd a videót.") : t("Jóváhagyott kép kiválasztva. A videó ebből a képből indul.")}</p>
+          <label htmlFor="scene-video-engine">{t("Videómotor")}</label>
           <select id="scene-video-engine" value={sceneVideoEngine}
             onChange={(event) => setSceneVideoEngine(event.target.value as "nureta" | "kling")}>
-            <option value="nureta">Nureta / Seahorse</option>
-            <option value="kling">Kling 3.0 Pro / WaveSpeed</option>
+            <option value="nureta">{t("Nureta / Seahorse")}</option>
+            <option value="kling">{t("Kling 3.0 Pro / WaveSpeed")}</option>
           </select>
-          <label htmlFor="adult-video-prompt">Mit csináljon a videóban?</label>
+          <label htmlFor="adult-video-prompt">{t("Mit csináljon a videóban?")}</label>
           <textarea id="adult-video-prompt" maxLength={1500} value={adultVideoPrompt}
-            onChange={(event) => setAdultVideoPrompt(event.target.value)} placeholder="Írd le a mozdulatokat és a jelenet menetét" />
-          <label htmlFor="adult-video-voice">Videó hangja</label>
+            onChange={(event) => setAdultVideoPrompt(event.target.value)} placeholder={t("Írd le a mozdulatokat és a jelenet menetét")} />
+          <label htmlFor="adult-video-voice">{t("Videó hangja")}</label>
           <select id="adult-video-voice" value={adultVoiceMode}
             onChange={(event) => setAdultVoiceMode(event.target.value as "source" | "model" | "nureta")}>
-            <option value="nureta">Videómotor által készített hang</option>
-            {adultSource?.mediaType === "video" && <option value="source">Forrásvideó eredeti hangja</option>}
-            <option value="model">A kiválasztott modell hangja</option>
+            <option value="nureta">{t("Videómotor által készített hang")}</option>
+            {adultSource?.mediaType === "video" && <option value="source">{t("Forrásvideó eredeti hangja")}</option>}
+            <option value="model">{t("A kiválasztott modell hangja")}</option>
           </select>
           {adultVoiceMode === "model" && adultSource?.mediaType !== "video" && <>
-            <label htmlFor="adult-speech">Mit mondjon a modell? (magyar beszéd)</label>
+            <label htmlFor="adult-speech">{t("Mit mondjon a modell? (magyar beszéd)")}</label>
             <textarea id="adult-speech" maxLength={adultDuration * 12} value={adultSpeechText}
               onChange={(event) => setAdultSpeechText(event.target.value)} />
-            <p className="muted">Rövid mondatot írj, amely belefér a választott {adultDuration} másodpercbe.</p>
+            <p className="muted">{t("Rövid mondatot írj, amely belefér a választott")}{" "}{adultDuration}{" "}{t("másodpercbe.")}</p>
           </>}
-          {adultVoiceMode === "model" && <p className="muted">A karakterhez mentett ElevenLabs-hangot használjuk. A hangcsere önmagában nem szájmozgás-szinkron.</p>}
+          {adultVoiceMode === "model" && <p className="muted">{t("A karakterhez mentett ElevenLabs-hangot használjuk. A hangcsere önmagában nem szájmozgás-szinkron.")}</p>}
           {adultVoiceMode === "model" && adultSource?.mediaType === "video" &&
-            <p className="muted">A forrásvideó beszédét a modell hangjára cseréljük. A videóképet nem generáljuk újra a hangcsere során.</p>}
+            <p className="muted">{t("A forrásvideó beszédét a modell hangjára cseréljük. A videóképet nem generáljuk újra a hangcsere során.")}</p>}
           <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-            <select aria-label="Videó hossza" value={adultDuration}
-              onChange={(event) => { analysisRevision.current += 1; setAdultDuration(Number(event.target.value) as 5 | 8 | 10 | 12 | 15); setVideoAnalysisSummary(""); setMsg(current => ({ ...current, videoAnalysis: "A videóhossz változott. A pontos időzítéshez futtasd újra az elemzést." })); }}>
-              {[5, 8, 10, 12, 15].map((seconds) => <option key={seconds} value={seconds}>{seconds} mp</option>)}
+            <select aria-label={t("Videó hossza")} value={adultDuration}
+              onChange={(event) => { analysisRevision.current += 1; setAdultDuration(Number(event.target.value) as 5 | 8 | 10 | 12 | 15); setVideoAnalysisSummary(""); setMsg(current => ({ ...current, videoAnalysis: t("A videóhossz változott. A pontos időzítéshez futtasd újra az elemzést.") })); }}>
+              {[5, 8, 10, 12, 15].map((seconds) => <option key={seconds} value={seconds}>{seconds}{" "}{t("mp")}</option>)}
             </select>
-            <select disabled={sceneVideoEngine === "kling"} aria-label="Nureta felbontás" value={adultResolution}
+            <select disabled={sceneVideoEngine === "kling"} aria-label={t("Nureta felbontás")} value={adultResolution}
               onChange={(event) => setAdultResolution(event.target.value as "480p" | "720p")}>
-              <option value="480p">480p próba</option><option value="720p">720p</option>
+              <option value="480p">{t("480p próba")}</option><option value="720p">{t("720p")}</option>
             </select>
             <button disabled={busyKey !== null || !adultVideoPrompt.trim()
               || adultVoiceMode === "model" && adultSource?.mediaType !== "video" && !adultSpeechText.trim()}
@@ -819,38 +824,38 @@ export default function ToolsPage() {
                 ...(adultChoice.inputMode === "upload" ? { sceneInputMode: "upload" } : { sceneJobId: adultChoice.jobId }),
                 sceneImageAssetId: adultChoice.assetId, duration: adultDuration, resolution: adultResolution,
                 voiceMode: adultVoiceMode, speechText: adultSpeechText,
-              }, { characterId: toolChar })}>{adultChoice.inputMode === "upload" ? "Feltöltött képből videó készítése" : "Jóváhagyott képből videó készítése"}</button>
+              }, { characterId: toolChar })}>{adultChoice.inputMode === "upload" ? t("Feltöltött képből videó készítése") : t("Jóváhagyott képből videó készítése")}</button>
           </div>
         </>}
         <Badge k="adultVideo" /><Price k="adultVideo" />
         <Results k="adultVideo" kind="video" />
         {msg.adultVideo && <p role="status" className="muted">{msg.adultVideo}</p>}
         <div style={{ marginTop: 24, borderTop: "1px solid var(--border)", paddingTop: 16 }}>
-          <h3>Kész Nureta-videó → hang és szájszinkron</h3>
-          <p className="muted">Az elkészült videóból külön szinkronizált változat készül. Az eredeti megmarad; új Nureta-generálást nem indítunk. A szájszinkron külön kreditbe kerül.</p>
-          <label htmlFor="nureta-sync-video">Elkészült Nureta-videó</label>
+          <h3>{t("Kész Nureta-videó → hang és szájszinkron")}</h3>
+          <p className="muted">{t("Az elkészült videóból külön szinkronizált változat készül. Az eredeti megmarad; új Nureta-generálást nem indítunk. A szájszinkron külön kreditbe kerül.")}</p>
+          <label htmlFor="nureta-sync-video">{t("Elkészült Nureta-videó")}</label>
           <select id="nureta-sync-video" value={nuretaVideoAsset} onChange={event => setNuretaVideoAsset(event.target.value)}>
-            <option value="">Válassz kész videót</option>
+            <option value="">{t("Válassz kész videót")}</option>
             {nuretaVideos.map(video => <option key={video.assetId} value={video.assetId}>
-              {new Date(video.createdAt).toLocaleString("hu-HU")} · {video.duration} mp · {video.jobId.slice(0, 8)}
+              {new Date(video.createdAt).toLocaleString(locale)} · {video.duration}{" "}{t("mp ·")}{" "}{video.jobId.slice(0, 8)}
             </option>)}
           </select>
-          {nuretaVideos.length === 0 && <p className="muted">Ehhez a modellhez még nincs elkészült Nureta-videó.</p>}
-          <label htmlFor="nureta-sync-audio">Hang a szinkronizált változatban</label>
+          {nuretaVideos.length === 0 && <p className="muted">{t("Ehhez a modellhez még nincs elkészült Nureta-videó.")}</p>}
+          <label htmlFor="nureta-sync-audio">{t("Hang a szinkronizált változatban")}</label>
           <select id="nureta-sync-audio" value={nuretaAudioMode} onChange={event => setNuretaAudioMode(event.target.value as "keep" | "model" | "speech")}>
-            <option value="keep">A kész videó meglévő hangja — csak szájszinkron</option>
-            <option value="model">A kész videó hangja a modell ElevenLabs-hangjára cserélve</option>
-            <option value="speech">Új magyar beszéd a modell ElevenLabs-hangján</option>
+            <option value="keep">{t("A kész videó meglévő hangja — csak szájszinkron")}</option>
+            <option value="model">{t("A kész videó hangja a modell ElevenLabs-hangjára cserélve")}</option>
+            <option value="speech">{t("Új magyar beszéd a modell ElevenLabs-hangján")}</option>
           </select>
           {nuretaAudioMode === "speech" && <>
-            <label htmlFor="nureta-sync-speech">Pontos kimondandó szöveg</label>
+            <label htmlFor="nureta-sync-speech">{t("Pontos kimondandó szöveg")}</label>
             <textarea id="nureta-sync-speech" maxLength={(nuretaVideos.find(v => v.assetId === nuretaVideoAsset)?.duration ?? 15) * 12}
               value={nuretaSpeech} onChange={event => setNuretaSpeech(event.target.value)} />
           </>}
-          <p className="muted">Ha a kész videó már a modell hangját használja, válaszd a „csak szájszinkron” lehetőséget. A beszédhez igazítjuk a szájat; sikítás vagy nevetés pontos szinkronja nem garantált.</p>
+          <p className="muted">{t("Ha a kész videó már a modell hangját használja, válaszd a „csak szájszinkron” lehetőséget. A beszédhez igazítjuk a szájat; sikítás vagy nevetés pontos szinkronja nem garantált.")}</p>
           <button disabled={busyKey !== null || !nuretaVideoAsset || nuretaAudioMode === "speech" && !nuretaSpeech.trim()}
             onClick={() => run("nuretaSync", "lip_sync", { nuretaPostprocess: true, videoAssetId: nuretaVideoAsset,
-              audioMode: nuretaAudioMode, speechText: nuretaSpeech }, { characterId: toolChar })}>Hang és szájszinkron készítése</button>
+              audioMode: nuretaAudioMode, speechText: nuretaSpeech }, { characterId: toolChar })}>{t("Hang és szájszinkron készítése")}</button>
           <Badge k="nuretaSync" /><Price k="nuretaSync" />
           <Results k="nuretaSync" kind="video" />
           {msg.nuretaSync && <p role="status" className="muted">{msg.nuretaSync}</p>}
@@ -858,13 +863,13 @@ export default function ToolsPage() {
       </section>
 
       <details className="card">
-        <summary>Image-to-Prompt (egyéb eszköz)</summary>
-        <h3 style={{ marginTop: 0 }}>Image-to-Prompt</h3>
+        <summary>{t("Image-to-Prompt (egyéb eszköz)")}</summary>
+        <h3 style={{ marginTop: 0 }}>{t("Image-to-Prompt")}</h3>
         <Picker media="image" selected={simpleAsset} onSelect={setSimpleAsset} />
         <div style={{ display: "flex", gap: 8, marginTop: 8 }}>
-          <button className="ghost" disabled={busyKey !== null} onClick={async () => { const id = await upload("image/*"); if (id) setSimpleAsset(id); }}>Feltöltés</button>
-          <input placeholder="asset ID" value={simpleAsset} onChange={(e) => setSimpleAsset(e.target.value)} style={{ flex: 1 }} />
-          <button disabled={busyKey === "i2p" || !simpleAsset} onClick={() => run("i2p", "video_to_prompt", { sourceAssetId: simpleAsset })}>Prompt</button>
+          <button className="ghost" disabled={busyKey !== null} onClick={async () => { const id = await upload("image/*"); if (id) setSimpleAsset(id); }}>{t("Feltöltés")}</button>
+          <input placeholder={t("asset ID")} value={simpleAsset} onChange={(e) => setSimpleAsset(e.target.value)} style={{ flex: 1 }} />
+          <button disabled={busyKey === "i2p" || !simpleAsset} onClick={() => run("i2p", "video_to_prompt", { sourceAssetId: simpleAsset })}>{t("Prompt")}</button>
           <Badge k="i2p" /><Price k="i2p" />
         </div>
         <Results k="i2p" kind="text" />
@@ -872,22 +877,19 @@ export default function ToolsPage() {
       </details>
 
       <div id="character-image" className="card" style={{ marginTop: 12, scrollMarginTop: 24 }}>
-        <h3 style={{ marginTop: 0 }}>{characters.find((c) => c.id === toolChar)?.name ?? "Karakter"} arca a feltöltött képen</h3>
-        <p className="muted">A kiválasztott karakter arca és haja automatikusan kerül a képre. A póz, a háttér és a tárgyak a feltöltött képhez igazodnak; telefon csak akkor maradhat a képen, ha a forrásképen is látszik.</p>
-        <label>Szerkesztő modell <select value={characterEditModel} onChange={(e) => setCharacterEditModel(e.target.value as "seedream-v4.5" | "nano-banana")}>
-          <option value="seedream-v4.5">Seedream 4.5 Edit</option>
-          <option value="nano-banana">Nano Banana Edit</option>
+        <h3 style={{ marginTop: 0 }}>{characters.find((c) => c.id === toolChar)?.name ?? "Karakter"}{" "}{t("arca a feltöltött képen")}</h3>
+        <p className="muted">{t("A kiválasztott karakter arca és haja automatikusan kerül a képre. A póz, a háttér és a tárgyak a feltöltött képhez igazodnak; telefon csak akkor maradhat a képen, ha a forrásképen is látszik.")}</p>
+        <label>{t("Szerkesztő modell")}{" "}<select value={characterEditModel} onChange={(e) => setCharacterEditModel(e.target.value as "seedream-v4.5" | "nano-banana")}>
+          <option value="seedream-v4.5">{t("Seedream 4.5 Edit")}</option>
+          <option value="nano-banana">{t("Nano Banana Edit")}</option>
         </select></label>
-        {cfg && !cfg.faceSwapConfigured && <p className="muted">A WaveSpeed API-kulcs még nincs beállítva; az arccsere ezután válik elérhetővé.</p>}
-        <label style={{ display: "block", margin: "12px 0 8px" }}>Képek helye a galériában
-          <select value={bulkCategory} onChange={(e) => setBulkCategory(e.target.value as "tiktok" | "fanvue")} style={{ marginLeft: 8 }} disabled={busyKey !== null}>
-            <option value="tiktok">TikTok képek</option>
-            <option value="fanvue">Fanvue képek</option>
+        {cfg && !cfg.faceSwapConfigured && <p className="muted">{t("A WaveSpeed API-kulcs még nincs beállítva; az arccsere ezután válik elérhetővé.")}</p>}
+        <label style={{ display: "block", margin: "12px 0 8px" }}>{t("Képek helye a galériában")}<select value={bulkCategory} onChange={(e) => setBulkCategory(e.target.value as "tiktok" | "fanvue")} style={{ marginLeft: 8 }} disabled={busyKey !== null}>
+            <option value="tiktok">{t("TikTok képek")}</option>
+            <option value="fanvue">{t("Fanvue képek")}</option>
           </select>
         </label>
-        <label htmlFor="character-source-images" style={{ display: "block", margin: "12px 0 8px" }}>
-          Átalakítandó képek tömeges feltöltése
-        </label>
+        <label htmlFor="character-source-images" style={{ display: "block", margin: "12px 0 8px" }}>{t("Átalakítandó képek tömeges feltöltése")}</label>
         <input id="character-source-images" type="file" accept="image/png,image/jpeg,image/webp,image/*"
           multiple disabled={busyKey !== null} aria-describedby="character-source-hint"
           onChange={(event) => {
@@ -897,55 +899,53 @@ export default function ToolsPage() {
             setSwapAsset(""); setSwapPinUrl(""); setSwapPreview("");
             setMsg((current) => ({ ...current, bulkSwap: "" }));
           }} />
-        <p id="character-source-hint" className="muted">A telefon fotóválasztójában több képet is jelölj ki, majd nyomd meg a Kész gombot.</p>
-        <p className="muted">A feltöltés befejezéséig maradj az oldalon. Amikor megjelenik a „sorba állítva” üzenet, a képek és videók az oldal bezárása után is feldolgozódnak.</p>
+        <p id="character-source-hint" className="muted">{t("A telefon fotóválasztójában több képet is jelölj ki, majd nyomd meg a Kész gombot.")}</p>
+        <p className="muted">{t("A feltöltés befejezéséig maradj az oldalon. Amikor megjelenik a „sorba állítva” üzenet, a képek és videók az oldal bezárása után is feldolgozódnak.")}</p>
         {bulkFiles.length > 0 && <div role="status" style={{ margin: "8px 0 16px" }}>
-          <p>{bulkFiles.length} kép kiválasztva</p>
+          <p>{bulkFiles.length}{" "}{t("kép kiválasztva")}</p>
           <button disabled={busyKey !== null || !toolChar || !cfg?.faceSwapConfigured}
-            onClick={() => void startBulkEdits()}>Mind a {bulkFiles.length} {bulkCategory === "fanvue" ? "Fanvue" : "TikTok"} kép elkészítése</button>
+            onClick={() => void startBulkEdits()}>{t("Mind a")}{" "}{bulkFiles.length} {bulkCategory === "fanvue" ? "Fanvue" : "TikTok"}{" "}{t("kép elkészítése")}</button>
           <button className="ghost" style={{ marginLeft: 8 }} disabled={busyKey !== null || !characters.length || !cfg?.faceSwapConfigured}
-            onClick={() => void startBulkEdits(true)}>Készítés az összes modellre · {bulkCategory === "fanvue" ? "Fanvue" : "TikTok"} ({bulkFiles.length * characters.length} kép)</button>
+            onClick={() => void startBulkEdits(true)}>{t("Készítés az összes modellre ·")}{" "}{bulkCategory === "fanvue" ? "Fanvue" : "TikTok"} ({bulkFiles.length * characters.length}{" "}{t("kép)")}</button>
         </div>}
         <div style={{ margin: "8px 0 16px" }}>
-          <p className="muted">Ha egy korábbi feltöltés megszakadt, válaszd ki fent a modellt és a galéria helyét, majd folytasd a már feltöltött képeket.</p>
+          <p className="muted">{t("Ha egy korábbi feltöltés megszakadt, válaszd ki fent a modellt és a galéria helyét, majd folytasd a már feltöltött képeket.")}</p>
           <button className="ghost" disabled={busyKey !== null || !toolChar || !cfg?.faceSwapConfigured}
-            onClick={() => void recoverBulkEdits()}>Korábbi feltöltések folytatása a kiválasztott modellre</button>
+            onClick={() => void recoverBulkEdits()}>{t("Korábbi feltöltések folytatása a kiválasztott modellre")}</button>
           <button className="ghost" style={{ marginLeft: 8 }} disabled={busyKey !== null || !characters.length || !cfg?.faceSwapConfigured}
-            onClick={() => void recoverBulkEdits(true)}>Korábbi feltöltések folytatása az összes modellre</button>
+            onClick={() => void recoverBulkEdits(true)}>{t("Korábbi feltöltések folytatása az összes modellre")}</button>
         </div>
         <div style={{ display: "flex", gap: 8, marginBottom: 10, flexWrap: "wrap" }}> 
-          <input aria-label="Pinterest keresés" placeholder="Keresés Pinterest képek között…" value={pinterestQuery}
+          <input aria-label={t("Pinterest keresés")} placeholder={t("Keresés Pinterest képek között…")} value={pinterestQuery}
             onChange={(e) => setPinterestQuery(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") void searchPinterest(); }} style={{ flex: 1, minWidth: 180 }} />
-          <button className="ghost" disabled={pinterestQuery.trim().length < 2} onClick={() => void searchPinterest()}>Pinterest keresés</button>
+          <button className="ghost" disabled={pinterestQuery.trim().length < 2} onClick={() => void searchPinterest()}>{t("Pinterest keresés")}</button>
           <a href={`https://www.pinterest.com/search/pins/?q=${encodeURIComponent(pinterestQuery.trim())}`}
-            target="_blank" rel="noopener noreferrer" className="ghost" style={{ padding: "10px 14px", textDecoration: "none" }}>
-            Megnyitás Pinteresten
-          </a>
+            target="_blank" rel="noopener noreferrer" className="ghost" style={{ padding: "10px 14px", textDecoration: "none" }}>{t("Megnyitás Pinteresten")}</a>
         </div>
-        <p className="muted">Ha a Pinterest kereséshez még nincs API-hozzáférés, nyisd meg a Pinterestet, mentsd le a kiválasztott képet, majd töltsd fel itt az „Átalakítandó kép feltöltése” gombbal.</p>
+        <p className="muted">{t("Ha a Pinterest kereséshez még nincs API-hozzáférés, nyisd meg a Pinterestet, mentsd le a kiválasztott képet, majd töltsd fel itt az „Átalakítandó kép feltöltése” gombbal.")}</p>
         {pinterestMessage && <p className="muted" role="status">{pinterestMessage}</p>}
         {pinterestPins.length > 0 && <div className="grid" style={{ gridTemplateColumns: "repeat(auto-fill, minmax(125px, 1fr))" }}>
           {pinterestPins.map((pin) => <div key={pin.id}>
             {/* eslint-disable-next-line @next/next/no-img-element -- Pinterest CDN preview */}
-            <img src={pin.imageUrl} alt="Pinterest találat" style={{ width: "100%", height: 150, objectFit: "cover", borderRadius: 8 }} />
-            <button className="ghost" disabled={busyKey !== null} onClick={() => { setSwapPinUrl(pin.imageUrl); setSwapAsset(""); setSwapPreview(pin.imageUrl); }}>Ezzel készítem</button>
-            <a href={pin.pinUrl} target="_blank" rel="noreferrer" style={{ display: "block" }}>Megnyitás a Pinteresten</a>
+            <img src={pin.imageUrl} alt={t("Pinterest találat")} style={{ width: "100%", height: 150, objectFit: "cover", borderRadius: 8 }} />
+            <button className="ghost" disabled={busyKey !== null} onClick={() => { setSwapPinUrl(pin.imageUrl); setSwapAsset(""); setSwapPreview(pin.imageUrl); }}>{t("Ezzel készítem")}</button>
+            <a href={pin.pinUrl} target="_blank" rel="noreferrer" style={{ display: "block" }}>{t("Megnyitás a Pinteresten")}</a>
           </div>)}</div>}
         {(swapAsset || swapPinUrl) && (swapPreview || gallery.find((item) => item.assetId === swapAsset)?.url) && (
           /* eslint-disable-next-line @next/next/no-img-element -- local preview or signed URL */
-          <img src={swapPreview || gallery.find((item) => item.assetId === swapAsset)?.url || ""} alt="Átalakítandó kép előnézete" style={{ display: "block", maxWidth: "100%", maxHeight: 350, objectFit: "contain", borderRadius: 8 }} />
+          <img src={swapPreview || gallery.find((item) => item.assetId === swapAsset)?.url || ""} alt={t("Átalakítandó kép előnézete")} style={{ display: "block", maxWidth: "100%", maxHeight: 350, objectFit: "contain", borderRadius: 8 }} />
         )}
         <div style={{ display: "flex", gap: 8, marginTop: 8, alignItems: "center" }}>
           <button disabled={busyKey !== null || (!swapAsset && !swapPinUrl) || !toolChar || !cfg?.faceSwapConfigured}
             onClick={() => run("fullSwap", "character_swap", {
               ...(swapPinUrl ? { imageUrl: swapPinUrl } : { sourceAssetId: swapAsset }), useCharacterReference: true, editModel: characterEditModel,
-            }, { characterId: toolChar })}>{characters.find((c) => c.id === toolChar)?.name ?? "Karakter"} arcának behelyezése</button>
+            }, { characterId: toolChar })}>{characters.find((c) => c.id === toolChar)?.name ?? "Karakter"}{" "}{t("arcának behelyezése")}</button>
           <Badge k="fullSwap" /><Price k="fullSwap" />
         </div>
         <Results k="fullSwap" kind="image" />
         {msg.fullSwap && <p className="muted">{msg.fullSwap}</p>}
         <div style={{ borderTop: "1px solid var(--border)", marginTop: 20, paddingTop: 16 }}>
-          <h4 style={{ margin: "0 0 8px" }}>Tömeges feldolgozás állapota</h4>
+          <h4 style={{ margin: "0 0 8px" }}>{t("Tömeges feldolgozás állapota")}</h4>
           {msg.bulkSwap && <p role="status" className="muted">{msg.bulkSwap}</p>}
           {bulkStatus.length > 0 && <div role="status" style={{ marginTop: 12 }}>
             {bulkStatus.map((item, index) => <p key={`${index}-${item.name}`} style={{ margin: "4px 0" }}>
@@ -956,14 +956,14 @@ export default function ToolsPage() {
       </div>
 
       <div className="card" style={{ marginTop: 12 }}>
-        <h3 style={{ marginTop: 0 }}>Upscale · Background Removal · Skin Enhancer · Fix Face</h3>
+        <h3 style={{ marginTop: 0 }}>{t("Upscale · Background Removal · Skin Enhancer · Fix Face")}</h3>
         <Picker media="image" selected={simpleAsset} onSelect={setSimpleAsset} />
-        <input placeholder="asset ID" value={simpleAsset} onChange={(e) => setSimpleAsset(e.target.value)} style={{ marginTop: 8 }} />
+        <input placeholder={t("asset ID")} value={simpleAsset} onChange={(e) => setSimpleAsset(e.target.value)} style={{ marginTop: 8 }} />
         <div style={{ display: "flex", gap: 8, marginTop: 8, flexWrap: "wrap" }}>
-          <button className="ghost" disabled={busyKey !== null || !simpleAsset} onClick={() => run("up", "upscale", { sourceAssetId: simpleAsset })}>Upscale</button>
-          <button className="ghost" disabled={busyKey !== null || !simpleAsset} onClick={() => run("bg", "background_removal", { sourceAssetId: simpleAsset })}>Háttér eltávolítás</button>
-          <button className="ghost" disabled={busyKey !== null || !simpleAsset} onClick={() => run("skin", "skin_enhance", { sourceAssetId: simpleAsset })}>Skin Enhancer</button>
-          <button className="ghost" disabled={busyKey !== null || !simpleAsset} onClick={() => run("face", "fix_face", { sourceAssetId: simpleAsset })}>Fix Face</button>
+          <button className="ghost" disabled={busyKey !== null || !simpleAsset} onClick={() => run("up", "upscale", { sourceAssetId: simpleAsset })}>{t("Upscale")}</button>
+          <button className="ghost" disabled={busyKey !== null || !simpleAsset} onClick={() => run("bg", "background_removal", { sourceAssetId: simpleAsset })}>{t("Háttér eltávolítás")}</button>
+          <button className="ghost" disabled={busyKey !== null || !simpleAsset} onClick={() => run("skin", "skin_enhance", { sourceAssetId: simpleAsset })}>{t("Skin Enhancer")}</button>
+          <button className="ghost" disabled={busyKey !== null || !simpleAsset} onClick={() => run("face", "fix_face", { sourceAssetId: simpleAsset })}>{t("Fix Face")}</button>
         </div>
         <div style={{ display: "flex", gap: 6, marginTop: 6, flexWrap: "wrap" }}>
           <Badge k="up" /><Price k="up" /><Badge k="bg" /><Price k="bg" /><Badge k="skin" /><Price k="skin" /><Badge k="face" /><Price k="face" />
@@ -973,32 +973,32 @@ export default function ToolsPage() {
       </div>
 
       <details className="card" style={{ marginTop: 12 }}>
-        <summary>Kézi hangkészítés vagy saját hang feltöltése (opcionális)</summary>
-        <h3>ElevenLabs-hang a modellvideóhoz</h3>
-        <p className="muted">Írd be a szöveget, válaszd ki az ElevenLabs-hangot, majd a kész modellvideóval indítsd a Lip Sync műveletet. Kész MP3/WAV hangot is feltölthetsz.</p>
-        <button className="ghost" type="button" disabled={busyKey !== null} onClick={() => void loadElevenVoices()}>ElevenLabs-hangok betöltése</button>
+        <summary>{t("Kézi hangkészítés vagy saját hang feltöltése (opcionális)")}</summary>
+        <h3>{t("ElevenLabs-hang a modellvideóhoz")}</h3>
+        <p className="muted">{t("Írd be a szöveget, válaszd ki az ElevenLabs-hangot, majd a kész modellvideóval indítsd a Lip Sync műveletet. Kész MP3/WAV hangot is feltölthetsz.")}</p>
+        <button className="ghost" type="button" disabled={busyKey !== null} onClick={() => void loadElevenVoices()}>{t("ElevenLabs-hangok betöltése")}</button>
         {elevenVoices.length > 0 && <div style={{ marginTop: 8 }}>
           <select aria-label="ElevenLabs-hang" value={elevenVoice} onChange={(e) => setElevenVoice(e.target.value)}>
             {elevenVoices.map((voice) => <option key={voice.id} value={voice.id}>{voice.name}</option>)}
           </select>
-          <textarea aria-label="Felmondandó szöveg" maxLength={1500} placeholder="Mit mondjon a modell?" value={elevenText}
+          <textarea aria-label={t("Felmondandó szöveg")} maxLength={1500} placeholder={t("Mit mondjon a modell?")} value={elevenText}
             onChange={(e) => setElevenText(e.target.value)} style={{ display: "block", width: "100%", minHeight: 95, marginTop: 8 }} />
-          <button type="button" disabled={busyKey !== null || !elevenText.trim()} onClick={() => void generateElevenSpeech()}>Hang készítése</button>
+          <button type="button" disabled={busyKey !== null || !elevenText.trim()} onClick={() => void generateElevenSpeech()}>{t("Hang készítése")}</button>
         </div>}
         {msg.eleven && <p role="status" className="muted">{msg.eleven}</p>}
-        <label>Videó</label>
+        <label>{t("Videó")}</label>
         <Picker media="video" selected={talkVideo} onSelect={setTalkVideo} />
-        <input placeholder="videó asset ID" value={talkVideo} onChange={(e) => setTalkVideo(e.target.value)} style={{ marginTop: 6 }} />
-        <label>Hang (mp3/wav)</label>
+        <input placeholder={t("videó asset ID")} value={talkVideo} onChange={(e) => setTalkVideo(e.target.value)} style={{ marginTop: 6 }} />
+        <label>{t("Hang (mp3/wav)")}</label>
         <div style={{ display: "flex", gap: 8 }}>
-          <button className="ghost" disabled={busyKey !== null} onClick={async () => { const id = await upload("audio/mpeg,audio/wav"); if (id) setTalkAudio(id); }}>Hang feltöltése</button>
-          <input placeholder="hang asset ID" value={talkAudio} onChange={(e) => setTalkAudio(e.target.value)} style={{ flex: 1 }} />
+          <button className="ghost" disabled={busyKey !== null} onClick={async () => { const id = await upload("audio/mpeg,audio/wav"); if (id) setTalkAudio(id); }}>{t("Hang feltöltése")}</button>
+          <input placeholder={t("hang asset ID")} value={talkAudio} onChange={(e) => setTalkAudio(e.target.value)} style={{ flex: 1 }} />
         </div>
         <div style={{ display: "flex", gap: 8, marginTop: 8, alignItems: "center" }}>
           <button disabled={busyKey === "talk" || !talkVideo || !talkAudio}
-            onClick={() => run("talk", "talking_video", { videoAssetId: talkVideo, audioAssetId: talkAudio })}>Talking Video</button>
+            onClick={() => run("talk", "talking_video", { videoAssetId: talkVideo, audioAssetId: talkAudio })}>{t("Talking Video")}</button>
           <button className="ghost" disabled={busyKey === "talk" || !talkVideo || !talkAudio}
-            onClick={() => run("talk", "lip_sync", { videoAssetId: talkVideo, audioAssetId: talkAudio })}>Lip Sync</button>
+            onClick={() => run("talk", "lip_sync", { videoAssetId: talkVideo, audioAssetId: talkAudio })}>{t("Lip Sync")}</button>
           <Badge k="talk" /><Price k="talk" />
         </div>
         <Results k="talk" kind="video" />
@@ -1006,53 +1006,53 @@ export default function ToolsPage() {
       </details>
 
       <div className="card" style={{ marginTop: 12 }}>
-        <h3 style={{ marginTop: 0 }}>Video-to-Video · Image-to-Video</h3>
-        <h4>Szereplőcsere a feltöltött videóban</h4>
-        <p className="muted">A videó elejéről választott látható képkockán a kiválasztott modellre cseréljük a szereplőt, majd a forrásvideó mozgását használjuk. MP4, 3 másodperc–5 perc, legfeljebb 48 MB.</p>
-        {motionMethod === "anchored" && <p className="muted">A teljes forrásvideót legfeljebb 30 másodperces részekre bontjuk. Minden folytatás az előző elkészült rész utolsó képkockáját használja. A részek sorszámozva, külön kerülnek a Galériába; te vághatod össze őket. A generált részek hossza eltérhet a forrástól. A kreditár a teljes feldolgozott forrásra vonatkozik.</p>}
-        <button className="ghost" type="button" disabled={busyKey !== null} onClick={() => void uploadVideo()}>Mozgásvideó feltöltése (MP4, max. 48 MB)</button>
+        <h3 style={{ marginTop: 0 }}>{t("Video-to-Video · Image-to-Video")}</h3>
+        <h4>{t("Szereplőcsere a feltöltött videóban")}</h4>
+        <p className="muted">{t("A videó elejéről választott látható képkockán a kiválasztott modellre cseréljük a szereplőt, majd a forrásvideó mozgását használjuk. MP4, 3 másodperc–5 perc, legfeljebb 48 MB.")}</p>
+        {motionMethod === "anchored" && <p className="muted">{t("A teljes forrásvideót legfeljebb 30 másodperces részekre bontjuk. Minden folytatás az előző elkészült rész utolsó képkockáját használja. A részek sorszámozva, külön kerülnek a Galériába; te vághatod össze őket. A generált részek hossza eltérhet a forrástól. A kreditár a teljes feldolgozott forrásra vonatkozik.")}</p>}
+        <button className="ghost" type="button" disabled={busyKey !== null} onClick={() => void uploadVideo()}>{t("Mozgásvideó feltöltése (MP4, max. 48 MB)")}</button>
         {msg.videoUpload && <p className="muted">{msg.videoUpload}</p>}
         {videoPreview && <video controls src={videoPreview} style={{ display: "block", maxWidth: "100%", maxHeight: 320, marginTop: 8 }} />}
-        {v2vVideo && <p className="muted">Mozgásvideó kiválasztva. Fent válaszd ki a modellt.</p>}
+        {v2vVideo && <p className="muted">{t("Mozgásvideó kiválasztva. Fent válaszd ki a modellt.")}</p>}
         {motionMethod === "anchored" && <div style={{ marginTop: 12 }}>
-          <label htmlFor="motion-start-mode">Indulókép</label>
+          <label htmlFor="motion-start-mode">{t("Indulókép")}</label>
           <select id="motion-start-mode" value={motionStartMode} disabled={busyKey !== null}
             onChange={event => setMotionStartMode(event.target.value as "generated" | "upload")}>
-            <option value="generated">Jelenetkép generálása a videóból</option>
-            <option value="upload">Saját indulókép feltöltése</option>
+            <option value="generated">{t("Jelenetkép generálása a videóból")}</option>
+            <option value="upload">{t("Saját indulókép feltöltése")}</option>
           </select>
           {motionStartMode === "upload" && <>
-            <p className="muted">A videó ebből a képből indul, a mozgást a feltöltött mozgásvideó adja. A képet nem generáljuk újra. Korábbi videó képkockáját is feltöltheted.</p>
+            <p className="muted">{t("A videó ebből a képből indul, a mozgást a feltöltött mozgásvideó adja. A képet nem generáljuk újra. Korábbi videó képkockáját is feltöltheted.")}</p>
             <button className="ghost" type="button" disabled={busyKey !== null || !toolChar} onClick={async () => {
               setBusyKey("motionStartUpload");
               try {
                 let preview = "";
                 const id = await upload("image/*", file => { preview = URL.createObjectURL(file); });
-                if (id) { setMotionStartImage({ assetId: id, preview, characterId: toolChar }); setMsg(current => ({ ...current, motionStart: "Indulókép feltöltve. Ellenőrizd, majd indítsd a videót." })); }
+                if (id) { setMotionStartImage({ assetId: id, preview, characterId: toolChar }); setMsg(current => ({ ...current, motionStart: t("Indulókép feltöltve. Ellenőrizd, majd indítsd a videót.") })); }
               } catch (error) {
-                setMsg(current => ({ ...current, motionStart: error instanceof Error ? error.message : "Képfeltöltési hiba" }));
+                setMsg(current => ({ ...current, motionStart: error instanceof Error ? error.message : t("Képfeltöltési hiba") }));
               } finally { setBusyKey(null); }
-            }}>Saját indulókép feltöltése</button>
+            }}>{t("Saját indulókép feltöltése")}</button>
             {motionStartImage?.characterId === toolChar && (
               /* eslint-disable-next-line @next/next/no-img-element -- uploaded local preview */
-              <img src={motionStartImage.preview} alt="Saját indulókép a mozgásvideóhoz" style={{ display: "block", maxWidth: "100%", maxHeight: 360, marginTop: 8 }} />
+              <img src={motionStartImage.preview} alt={t("Saját indulókép a mozgásvideóhoz")} style={{ display: "block", maxWidth: "100%", maxHeight: 360, marginTop: 8 }} />
             )}
             {msg.motionStart && <p className="muted" role="status">{msg.motionStart}</p>}
           </>}
         </div>}
         <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap", marginTop: 8 }}>
-          <select aria-label="Videócsere minősége" value={motionQuality} onChange={(e) => setMotionQuality(e.target.value as "pro" | "standard")}>
-            <option value="pro">Magas minőség · jobb arctartás</option><option value="standard">Alap minőség</option>
+          <select aria-label={t("Videócsere minősége")} value={motionQuality} onChange={(e) => setMotionQuality(e.target.value as "pro" | "standard")}>
+            <option value="pro">{t("Magas minőség · jobb arctartás")}</option><option value="standard">{t("Alap minőség")}</option>
           </select>
-          <select aria-label="Videókészítés módja" value={motionMethod} onChange={(e) => setMotionMethod(e.target.value as "anchored" | "legacy")}>
-            <option value="anchored">Jelenetkép + mozgás (új)</option>
-            <option value="legacy">Régi gyors szereplőcsere</option>
+          <select aria-label={t("Videókészítés módja")} value={motionMethod} onChange={(e) => setMotionMethod(e.target.value as "anchored" | "legacy")}>
+            <option value="anchored">{t("Jelenetkép + mozgás (új)")}</option>
+            <option value="legacy">{t("Régi gyors szereplőcsere")}</option>
           </select>
-          <label htmlFor="motion-voice-mode">Videó hangja</label>
+          <label htmlFor="motion-voice-mode">{t("Videó hangja")}</label>
           <select id="motion-voice-mode" value={motionVoiceMode}
             onChange={(e) => setMotionVoiceMode(e.target.value as "model" | "original")}>
-            <option value="original">Eredeti videó hangja</option>
-            <option value="model">A kiválasztott modell hangja</option>
+            <option value="original">{t("Eredeti videó hangja")}</option>
+            <option value="model">{t("A kiválasztott modell hangja")}</option>
           </select>
           <button disabled={busyKey !== null || !toolChar || !v2vVideo
             || motionMethod === "anchored" && motionStartMode === "upload" && motionStartImage?.characterId !== toolChar} onClick={() => {
@@ -1075,16 +1075,16 @@ export default function ToolsPage() {
             run("modelMotion", "character_motion_video", { videoAssetId: v2vVideo, quality: motionQuality, motionMethod,
               voiceMode: motionVoiceMode }, { characterId: toolChar });
           }}>
-            {motionMethod === "anchored" ? motionStartMode === "upload" ? "Feltöltött képből videó készítése" : "Jelenetkép készítése ellenőrzésre" : "Szereplő cseréje a kiválasztott modellre"}
+            {motionMethod === "anchored" ? motionStartMode === "upload" ? t("Feltöltött képből videó készítése") : t("Jelenetkép készítése ellenőrzésre") : t("Szereplő cseréje a kiválasztott modellre")}
           </button>
           <Badge k="modelMotion" /><Price k="modelMotion" />
         </div>
         {motionMethod === "anchored" && motionStartMode === "generated" && <>
-          <label htmlFor="scene-prompt">Mit változtassunk a jelenetképen? (nem kötelező)</label>
+          <label htmlFor="scene-prompt">{t("Mit változtassunk a jelenetképen? (nem kötelező)")}</label>
           <textarea id="scene-prompt" maxLength={500} value={scenePrompt} onChange={(e) => setScenePrompt(e.target.value)}
-            placeholder="Például: kissé dúsabb alak, természetes arányokkal; a helyszín és a kellékek maradjanak." />
-          <p className="muted">A jelenetkép külön, kisebb költségű lépés. Ha nem tetszik, írd át a kérést és készíts újat. A videó csak a jóváhagyó gombbal indul.</p>
-          <p className="muted">Az arcvonásokat is ellenőrizd a jelenetképen. A magas minőségű videó a részleteket jobban őrző mozgásmodellt használja; a végső arcot és mimikát a kész videóban is nézd meg.</p>
+            placeholder={t("Például: kissé dúsabb alak, természetes arányokkal; a helyszín és a kellékek maradjanak.")} />
+          <p className="muted">{t("A jelenetkép külön, kisebb költségű lépés. Ha nem tetszik, írd át a kérést és készíts újat. A videó csak a jóváhagyó gombbal indul.")}</p>
+          <p className="muted">{t("Az arcvonásokat is ellenőrizd a jelenetképen. A magas minőségű videó a részleteket jobban őrző mozgásmodellt használja; a végső arcot és mimikát a kész videóban is nézd meg.")}</p>
           <Results k="scenePreview" kind="image" />
           {msg.scenePreview && <p className="muted" role="status">{msg.scenePreview}</p>}
           {sceneChoice && sceneChoice.videoId === v2vVideo && sceneChoice.characterId === toolChar &&
@@ -1095,7 +1095,7 @@ export default function ToolsPage() {
                 run("modelMotion", "character_motion_video", { videoAssetId: v2vVideo, quality: motionQuality,
                   motionMethod: "anchored", voiceMode: motionVoiceMode,
                   scenePreviewJobId: sceneChoice.jobId, sceneImageAssetId: sceneChoice.assetId }, { characterId: toolChar });
-              }}>A jelenetkép jó, videó készítése</button>
+              }}>{t("A jelenetkép jó, videó készítése")}</button>
           )}
         </>}
         <Results k="modelMotion" kind="video" />
@@ -1104,21 +1104,21 @@ export default function ToolsPage() {
             const latest = results.modelMotion.find((item) => item.mediaType === "video" && item.assetId);
             if (latest) {
               setTalkVideo(latest.assetId);
-              setMsg((current) => ({ ...current, talk: "A kész modellvideó kiválasztva. Töltsd fel az ElevenLabsban készített hangot, majd indítsd a Lip Sync műveletet." }));
+              setMsg((current) => ({ ...current, talk: t("A kész modellvideó kiválasztva. Töltsd fel az ElevenLabsban készített hangot, majd indítsd a Lip Sync műveletet.") }));
             }
-          }}>Kész modellvideó használata a hanghoz</button>
+          }}>{t("Kész modellvideó használata a hanghoz")}</button>
         )}
         {msg.modelMotion && <p className="muted">{msg.modelMotion}</p>}
         <div style={{ borderTop: "1px solid var(--border)", marginTop: 20, paddingTop: 16 }}>
-          <h4>Új mozgás egy sikerült modellvideóból</h4>
-          <p className="muted">Válassz egy korábbi, kész videót ugyanettől a modelltől. Egyetlen új, 8 másodperces, 1080p videó készül eltérő, természetes mozgással. A jelenet és az arc kiindulópontja a videó egyik jól látható képkockája. Az eredmény a galériába kerül; a mozdulatokat és az arcot közzététel előtt nézd meg. Ez külön fizetős generálás.</p>
+          <h4>{t("Új mozgás egy sikerült modellvideóból")}</h4>
+          <p className="muted">{t("Válassz egy korábbi, kész videót ugyanettől a modelltől. Egyetlen új, 8 másodperces, 1080p videó készül eltérő, természetes mozgással. A jelenet és az arc kiindulópontja a videó egyik jól látható képkockája. Az eredmény a galériába kerül; a mozdulatokat és az arcot közzététel előtt nézd meg. Ez külön fizetős generálás.")}</p>
           <Picker media="video" selected={variationVideo} onSelect={setVariationVideo} approvedOnly />
-          <select aria-label="Új mozgás stílusa" value={variationStyle}
+          <select aria-label={t("Új mozgás stílusa")} value={variationStyle}
             onChange={(e) => setVariationStyle(e.target.value as "playful" | "confident" | "casual")}
             style={{ marginTop: 8 }}>
-            <option value="playful">Játékos</option>
-            <option value="confident">Magabiztos</option>
-            <option value="casual">Laza, természetes</option>
+            <option value="playful">{t("Játékos")}</option>
+            <option value="confident">{t("Magabiztos")}</option>
+            <option value="casual">{t("Laza, természetes")}</option>
           </select>
           <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap", marginTop: 8 }}>
             <button disabled={busyKey !== null || !toolChar || !approvedVideos.some((g) => g.assetId === variationVideo && g.characterId === toolChar)}
@@ -1128,19 +1128,19 @@ export default function ToolsPage() {
                   videoAssetId: variationVideo, quality: "pro", motionMethod: "creative",
                   motionStyle: variationStyle, voiceMode: "original",
                 }, { characterId: toolChar });
-              }}>Egy új, jó minőségű videó készítése</button>
+              }}>{t("Egy új, jó minőségű videó készítése")}</button>
             <Badge k="newMotion" /><Price k="newMotion" />
           </div>
           <Results k="newMotion" kind="video" />
           {msg.newMotion && <p className="muted">{msg.newMotion}</p>}
         </div>
         <div style={{ borderTop: "1px solid var(--border)", marginTop: 20, paddingTop: 16 }}>
-          <h4>Új szöveg ugyanazon a helyszínen</h4>
-          <p className="muted">Válassz egy jól sikerült, természetesen mozgó modellvideót a galériából. A saját hangján felmondott új szöveghez a szájmozgást igazítjuk; a helyszínt és a gesztusok időzítését az alapvideó adja. Olyan felvételt válassz, amelynek mozdulatai illenek a mondandóhoz. A videó a hang és a forrás közül a rövidebb hosszáig tart, legfeljebb 30 másodpercig. Egy indítás egy eredményt készít.</p>
+          <h4>{t("Új szöveg ugyanazon a helyszínen")}</h4>
+          <p className="muted">{t("Válassz egy jól sikerült, természetesen mozgó modellvideót a galériából. A saját hangján felmondott új szöveghez a szájmozgást igazítjuk; a helyszínt és a gesztusok időzítését az alapvideó adja. Olyan felvételt válassz, amelynek mozdulatai illenek a mondandóhoz. A videó a hang és a forrás közül a rövidebb hosszáig tart, legfeljebb 30 másodpercig. Egy indítás egy eredményt készít.")}</p>
           <Picker media="video" selected={sceneVideo} onSelect={setSceneVideo} approvedOnly />
-          <label htmlFor="scene-text">Mit mondjon a modell?</label>
+          <label htmlFor="scene-text">{t("Mit mondjon a modell?")}</label>
           <textarea id="scene-text" rows={5} maxLength={450} value={sceneText}
-            onChange={(e) => setSceneText(e.target.value)} placeholder="Írd be a magyar szöveget..." />
+            onChange={(e) => setSceneText(e.target.value)} placeholder={t("Írd be a magyar szöveget...")} />
           <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap", marginTop: 8 }}>
             <button disabled={busyKey !== null || !toolChar || !approvedVideos.some((g) => g.assetId === sceneVideo && g.characterId === toolChar) || sceneText.trim().length < 20}
               onClick={() => {
@@ -1149,38 +1149,36 @@ export default function ToolsPage() {
                   videoAssetId: sceneVideo, quality: "pro", motionMethod: "talking_scene",
                   speechText: sceneText.trim(), voiceMode: "model",
                 }, { characterId: toolChar });
-              }}>Egy beszélő jelenet készítése</button>
+              }}>{t("Egy beszélő jelenet készítése")}</button>
             <Badge k="talkingScene" /><Price k="talkingScene" />
           </div>
           <Results k="talkingScene" kind="video" />
           {msg.talkingScene && <p className="muted">{msg.talkingScene}</p>}
         </div>
         <details style={{ marginTop: 14 }}>
-          <summary>Csak arc és haj cseréje az eredeti videóban</summary>
-          <p className="muted">Az eredeti test és háttér megtartásához válaszd ezt. A fenti szereplőcsere a teljes látható személyt célozza.</p>
+          <summary>{t("Csak arc és haj cseréje az eredeti videóban")}</summary>
+          <p className="muted">{t("Az eredeti test és háttér megtartásához válaszd ezt. A fenti szereplőcsere a teljes látható személyt célozza.")}</p>
           <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap", marginTop: 8 }}>
-          <select aria-label="Videó felbontás" value={videoResolution} onChange={(e) => setVideoResolution(e.target.value as "480p" | "720p")}>
-            <option value="720p">720p</option><option value="480p">480p</option>
+          <select aria-label={t("Videó felbontás")} value={videoResolution} onChange={(e) => setVideoResolution(e.target.value as "480p" | "720p")}>
+            <option value="720p">{t("720p")}</option><option value="480p">{t("480p")}</option>
           </select>
-          <button disabled={busyKey !== null || !toolChar || !v2vVideo} onClick={() => run("videoSwap", "video_character_swap", { videoAssetId: v2vVideo, resolution: videoResolution }, { characterId: toolChar })}>
-            Csak arc és haj áthelyezése
-          </button>
+          <button disabled={busyKey !== null || !toolChar || !v2vVideo} onClick={() => run("videoSwap", "video_character_swap", { videoAssetId: v2vVideo, resolution: videoResolution }, { characterId: toolChar })}>{t("Csak arc és haj áthelyezése")}</button>
           <Badge k="videoSwap" /><Price k="videoSwap" />
         </div>
         <Results k="videoSwap" kind="video" />
         {msg.videoSwap && <p className="muted">{msg.videoSwap}</p>}
         </details>
         <details style={{ marginTop: 14 }}>
-          <summary>Egyéb videós eszközök</summary>
-        <label>Forrás (videó az i2v-hez: kép fent)</label>
+          <summary>{t("Egyéb videós eszközök")}</summary>
+        <label>{t("Forrás (videó az i2v-hez: kép fent)")}</label>
         <Picker media="video" selected={v2vVideo} onSelect={setV2vVideo} />
-        <input placeholder="videó asset ID" value={v2vVideo} onChange={(e) => setV2vVideo(e.target.value)} style={{ marginTop: 6 }} />
-        <input placeholder="stílus/mozgás prompt" value={v2vPrompt} onChange={(e) => setV2vPrompt(e.target.value)} style={{ marginTop: 6 }} />
+        <input placeholder={t("videó asset ID")} value={v2vVideo} onChange={(e) => setV2vVideo(e.target.value)} style={{ marginTop: 6 }} />
+        <input placeholder={t("stílus/mozgás prompt")} value={v2vPrompt} onChange={(e) => setV2vPrompt(e.target.value)} style={{ marginTop: 6 }} />
         <div style={{ display: "flex", gap: 8, marginTop: 8, alignItems: "center" }}>
           <button disabled={busyKey === "v2v" || !v2vVideo || !v2vPrompt.trim()}
-            onClick={() => run("v2v", "video_to_video", { videoAssetId: v2vVideo, prompt: v2vPrompt, duration: vDuration, aspectRatio: vRatio })}>Videó→videó</button>
+            onClick={() => run("v2v", "video_to_video", { videoAssetId: v2vVideo, prompt: v2vPrompt, duration: vDuration, aspectRatio: vRatio })}>{t("Videó→videó")}</button>
           <button className="ghost" disabled={busyKey === "motion" || !v2vVideo || !v2vPrompt.trim()}
-            onClick={() => run("motion", "motion_control", { videoAssetId: v2vVideo, prompt: v2vPrompt, duration: vDuration, aspectRatio: vRatio }, { characterId: toolChar || undefined })}>Kameramozgás (régi)</button>
+            onClick={() => run("motion", "motion_control", { videoAssetId: v2vVideo, prompt: v2vPrompt, duration: vDuration, aspectRatio: vRatio }, { characterId: toolChar || undefined })}>{t("Kameramozgás (régi)")}</button>
           <Badge k="v2v" /><Price k="v2v" />
         </div>
         <Results k="v2v" kind="video" />
@@ -1189,34 +1187,34 @@ export default function ToolsPage() {
       </div>
 
       <div className="card" style={{ marginTop: 12 }}>
-        <h3 style={{ marginTop: 0 }}>Image Editor · Pinterest Composition · Image-to-Video · TTS</h3>
+        <h3 style={{ marginTop: 0 }}>{t("Image Editor · Pinterest Composition · Image-to-Video · TTS")}</h3>
         <Picker media="image" selected={edAsset} onSelect={setEdAsset} />
-        <input placeholder="asset ID" value={edAsset} onChange={(e) => setEdAsset(e.target.value)} style={{ marginTop: 6 }} />
-        <input placeholder="szerkesztési prompt" value={edPrompt} onChange={(e) => setEdPrompt(e.target.value)} style={{ marginTop: 6 }} />
+        <input placeholder={t("asset ID")} value={edAsset} onChange={(e) => setEdAsset(e.target.value)} style={{ marginTop: 6 }} />
+        <input placeholder={t("szerkesztési prompt")} value={edPrompt} onChange={(e) => setEdPrompt(e.target.value)} style={{ marginTop: 6 }} />
         <div style={{ display: "flex", gap: 8, marginTop: 8, alignItems: "center" }}>
-          <button disabled={busyKey === "edit" || !edAsset || !edPrompt.trim()} onClick={() => run("edit", "image_edit", { imageAssetIds: [edAsset], prompt: edPrompt })}>Szerkesztés</button>
+          <button disabled={busyKey === "edit" || !edAsset || !edPrompt.trim()} onClick={() => run("edit", "image_edit", { imageAssetIds: [edAsset], prompt: edPrompt })}>{t("Szerkesztés")}</button>
           <button className="ghost" disabled={busyKey === "pinterest" || !edAsset || !edPrompt.trim()}
-            onClick={() => run("pinterest", "pinterest_composition", { sourceAssetId: edAsset, prompt: edPrompt }, { characterId: toolChar || undefined })}>Pinterest-kompozíció</button>
+            onClick={() => run("pinterest", "pinterest_composition", { sourceAssetId: edAsset, prompt: edPrompt }, { characterId: toolChar || undefined })}>{t("Pinterest-kompozíció")}</button>
           <Badge k="edit" /><Price k="edit" />
         </div>
         <div style={{ display: "flex", gap: 8, marginTop: 8, alignItems: "center" }}>
-          <input placeholder="i2v prompt" value={vPrompt} onChange={(e) => setVPrompt(e.target.value)} style={{ flex: 1 }} />
-          <select value={vDuration} onChange={(e) => setVDuration(e.target.value)}><option value="5">5 mp</option><option value="10">10 mp</option></select>
+          <input placeholder={t("i2v prompt")} value={vPrompt} onChange={(e) => setVPrompt(e.target.value)} style={{ flex: 1 }} />
+          <select value={vDuration} onChange={(e) => setVDuration(e.target.value)}><option value="5">{t("5 mp")}</option><option value="10">{t("10 mp")}</option></select>
           <select value={vRatio} onChange={(e) => setVRatio(e.target.value)}><option>16:9</option><option>9:16</option><option>1:1</option></select>
           <button disabled={busyKey === "i2v" || !edAsset || !vPrompt.trim() || !vModel}
-            onClick={() => run("i2v", "video_from_image", { sourceAssetId: edAsset, prompt: vPrompt, duration: vDuration, aspectRatio: vRatio, model: vModel }, { characterId: toolChar || undefined })}>I2V</button>
+            onClick={() => run("i2v", "video_from_image", { sourceAssetId: edAsset, prompt: vPrompt, duration: vDuration, aspectRatio: vRatio, model: vModel }, { characterId: toolChar || undefined })}>{t("I2V")}</button>
           <Badge k="i2v" /><Price k="i2v" />
         </div>
         <div style={{ display: "flex", gap: 8, marginTop: 8, alignItems: "center" }}>
-          <input placeholder="TTS szöveg" value={ttsText} onChange={(e) => setTtsText(e.target.value)} style={{ flex: 1 }} />
-          <select value={ttsVoice} onChange={(e) => setTtsVoice(e.target.value)}><option>Jennifer (en)</option><option>Dexter (en)</option><option>Arista (hu)</option></select>
-          <button disabled={busyKey === "tts" || !ttsText.trim()} onClick={() => run("tts", "tts", { text: ttsText, voice: ttsVoice, speed: 1 })}>TTS</button>
+          <input placeholder={t("TTS szöveg")} value={ttsText} onChange={(e) => setTtsText(e.target.value)} style={{ flex: 1 }} />
+          <select value={ttsVoice} onChange={(e) => setTtsVoice(e.target.value)}><option>{t("Jennifer (en)")}</option><option>{t("Dexter (en)")}</option><option>{t("Arista (hu)")}</option></select>
+          <button disabled={busyKey === "tts" || !ttsText.trim()} onClick={() => run("tts", "tts", { text: ttsText, voice: ttsVoice, speed: 1 })}>{t("TTS")}</button>
           <Badge k="tts" /><Price k="tts" />
         </div>
         <Results k="edit" kind="image" /><Results k="i2v" kind="video" /><Results k="tts" kind="video" />
         {(msg.edit || msg.i2v || msg.tts) && <p className="muted">{[msg.edit, msg.i2v, msg.tts].filter(Boolean).join(" · ")}</p>}
       </div>
-      <p className="muted" style={{ marginTop: 10 }}>Viral Reels, Trends, Niche, Carousel és TikTok-import a Tartalom menüben érhető el.</p>
+      <p className="muted" style={{ marginTop: 10 }}>{t("Viral Reels, Trends, Niche, Carousel és TikTok-import a Tartalom menüben érhető el.")}</p>
     </main>
   );
 }

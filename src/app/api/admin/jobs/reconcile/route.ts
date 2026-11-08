@@ -1,3 +1,4 @@
+import { isInternalOwner } from "@/lib/security/internalAccess";
 // Admin recovery v2 – mezők: lookupJobId | lookupIdempotencyKey, verifiedProviderJobId,
 // verifiedProvider (fal|replicate), action, confirmNotRunning, reason.
 // Minden művelet atomi, auditált adatbázis-RPC – a route csak hitelesít és továbbít.
@@ -16,6 +17,8 @@ export async function POST(req: NextRequest) {
   );
   const { data: { user } } = await sb.auth.getUser(req.headers.get("authorization")?.replace(/^Bearer\s+/i, "") ?? "");
   if (!user) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+  // Exact authenticated owner only; retain the independent admin-role and RPC checks below.
+  if (!isInternalOwner(user.email)) return NextResponse.json({ error: "forbidden" }, { status: 403 });
   const svc = serviceClient();
   // Jogosultság KIZÁRÓLAG szerveroldali profiles.role-ból (user_metadata tiltott)
   const { data: profile } = await svc.from("profiles").select("role").eq("id", user.id).single();

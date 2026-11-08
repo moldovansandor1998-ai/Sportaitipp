@@ -1,3 +1,4 @@
+import { isInternalOwner } from "@/lib/security/internalAccess";
 // Admin: felhasználó role/ban kezelés (szerveroldali role-ellenőrzés + audit).
 export const runtime = "nodejs";
 
@@ -16,6 +17,8 @@ export async function POST(req: NextRequest) {
   const sb = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!);
   const { data: { user } } = await sb.auth.getUser(req.headers.get("authorization")?.replace(/^Bearer\s+/i, "") ?? "");
   if (!user) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+  // Exact authenticated owner only; retain the independent admin-role and RPC checks below.
+  if (!isInternalOwner(user.email)) return NextResponse.json({ error: "forbidden" }, { status: 403 });
   const svc = serviceClient();
   const { data: me } = await svc.from("profiles").select("role").eq("id", user.id).single();
   if ((me as { role: string } | null)?.role !== "admin") return NextResponse.json({ error: "forbidden" }, { status: 403 });

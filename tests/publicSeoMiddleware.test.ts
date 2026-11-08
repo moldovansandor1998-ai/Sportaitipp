@@ -9,7 +9,7 @@ vi.mock("@supabase/ssr", () => ({
 }));
 
 describe("public crawler middleware", () => {
-  it.each(["/", "/en", "/hu", "/robots.txt", "/sitemap.xml", "/icon.svg", SOCIAL_IMAGE_PATH,
+  it.each(["/", "/en", "/hu", "/ro", "/it", "/de", "/fr", "/sk", "/pl", "/robots.txt", "/sitemap.xml", "/icon.svg", SOCIAL_IMAGE_PATH,
     ...["image-generation", "video-motion", "voice-talking-video", "content-planning", "creative-library"].map(name => `/images/feature-photos/${name}.png`),
   ])("keeps %s public for anonymous crawlers", async (path) => {
     const request = new NextRequest("https://startaicreator.com" + path);
@@ -33,10 +33,20 @@ describe("public crawler middleware", () => {
     expect(response.headers.get("X-Robots-Tag")).toContain("noindex");
   });
 
-  it.each([["/", "en"], ["/en", "en"], ["/hu", "hu"], ["/login", "hu"]])("forwards trusted locale for %s rather than caller input", async (path, expected) => {
+  it.each([["/", "en"], ["/en", "en"], ["/hu", "hu"], ["/ro", "ro"], ["/it", "it"], ["/de", "de"], ["/fr", "fr"], ["/sk", "sk"], ["/pl", "pl"], ["/login", "en"]])("forwards trusted locale for %s rather than caller input", async (path, expected) => {
     const request = new NextRequest("https://startaicreator.com" + path, { headers: { [PUBLIC_LOCALE_HEADER]: expected === "en" ? "hu" : "en" } });
     const response = await middleware(request);
     expect(request.headers.get(PUBLIC_LOCALE_HEADER)).toBe(expected);
     expect(response.headers.get("x-middleware-request-" + PUBLIC_LOCALE_HEADER)).toBe(expected);
   });
+  it.each([
+    ["/ro", "de", "ro"], ["/", "fr", "en"], ["/en", "pl", "en"],
+    ["/login", "ro", "ro"], ["/privacy", "de", "hu"], ["/settings", "pl", "pl"],
+    ["/login", "invalid", "en"],
+  ])("uses explicit public URL before a validated preference on %s", async (path, cookie, expected) => {
+    const request = new NextRequest("https://startaicreator.com" + path, { headers: { cookie: `start-ai-locale=${cookie}`, [PUBLIC_LOCALE_HEADER]: "fr" } });
+    await middleware(request);
+    expect(request.headers.get(PUBLIC_LOCALE_HEADER)).toBe(expected);
+  });
+
 });

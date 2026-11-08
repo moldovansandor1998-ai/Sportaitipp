@@ -1,7 +1,8 @@
+import { isInternalOwner, isInternalPath } from "@/lib/security/internalAccess";
 import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
 
-const PROTECTED_PREFIXES = ["/dashboard", "/characters", "/gallery", "/jobs", "/settings", "/calendar", "/tools", "/content", "/projects", "/plans", "/admin"];
+const PROTECTED_PREFIXES = ["/generate", "/model-studio", "/x-comments", "/dashboard", "/characters", "/gallery", "/jobs", "/settings", "/calendar", "/tools", "/content", "/projects", "/plans", "/admin"];
 
 export async function updateSession(request: NextRequest) {
   let response = NextResponse.next({ request });
@@ -29,7 +30,11 @@ export async function updateSession(request: NextRequest) {
   const needsAuth = PROTECTED_PREFIXES.some((p) => path.startsWith(p));
 
   if (userId) {
-    const { data: profile } = await supabase.from("profiles").select("banned_until").eq("id", userId).single();
+    const { data: profile } = await supabase.from("profiles").select("banned_until,role").eq("id", userId).single();
+    if (!path.startsWith("/api/") && isInternalPath(path) && !isInternalOwner(typeof data?.claims?.email === "string" ? data.claims.email : null)) {
+      const url = request.nextUrl.clone(); url.pathname = "/dashboard"; url.search = "";
+      return NextResponse.redirect(url);
+    }
     const bannedUntil = (profile as { banned_until: string | null } | null)?.banned_until;
     if (bannedUntil && new Date(bannedUntil).getTime() > Date.now()) {
       if (path.startsWith("/api/")) {

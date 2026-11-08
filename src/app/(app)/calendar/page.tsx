@@ -1,4 +1,5 @@
 "use client";
+import { useAppTranslation } from "@/components/i18n/AppLanguageProvider";
 // Content Calendar: listanézet, létrehozás, státuszkezelés (scheduled → posted/cancelled), törlés.
 import { useCallback, useEffect, useState } from "react";
 import { browserClient } from "@/lib/supabase/client";
@@ -10,6 +11,7 @@ interface Post {
 const PLATFORMS = ["instagram", "tiktok", "facebook", "x", "other"];
 
 export default function CalendarPage() {
+  const { t, locale } = useAppTranslation();
   const [posts, setPosts] = useState<Post[]>([]);
   const [platform, setPlatform] = useState("instagram");
   const [body, setBody] = useState("");
@@ -42,7 +44,7 @@ export default function CalendarPage() {
     await load();
   }
   async function remove(id: string) {
-    if (!confirm("Törlöd ezt a bejegyzést?")) return;
+    if (!confirm(t("Törlöd ezt a bejegyzést?"))) return;
     await fetch(`/api/calendar/${id}`, { method: "DELETE", headers: { authorization: `Bearer ${await token()}` } });
     await load();
   }
@@ -52,36 +54,36 @@ export default function CalendarPage() {
 
   return (
     <main style={{ maxWidth: 760 }}>
-      <h1 style={{ fontSize: 22, marginTop: 0 }}>Content Calendar</h1>
+      <h1 style={{ fontSize: 22, marginTop: 0 }}>{t("Content Calendar")}</h1>
       <div className="card">
         <div style={{ display: "grid", gridTemplateColumns: "1fr 2fr 1fr auto", gap: 8 }}>
           <select value={platform} onChange={(e) => setPlatform(e.target.value)}>
-            {PLATFORMS.map((p) => <option key={p}>{p}</option>)}
+            {PLATFORMS.map((p) => <option key={p} value={p}>{p === "other" ? t("other") : p}</option>)}
           </select>
-          <input placeholder="posztszöveg…" value={body} onChange={(e) => setBody(e.target.value)} />
+          <input placeholder={t("posztszöveg…")} value={body} onChange={(e) => setBody(e.target.value)} />
           <input type="datetime-local" value={when} onChange={(e) => setWhen(e.target.value)} />
-          <button onClick={add} disabled={!when}>Ütemezés</button>
+          <button onClick={add} disabled={!when}>{t("Ütemezés")}</button>
         </div>
       </div>
-      <h3>Ütemezett ({upcoming.length})</h3>
+      <h3>{t("Ütemezett (")}{upcoming.length})</h3>
       {upcoming.map((p) => (
         <div key={p.id} className="card" style={{ marginBottom: 8, padding: 12 }}>
           <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
             <span className="badge">{p.platform}</span>
-            <span className="muted" style={{ flex: 1 }}>{new Date(p.scheduled_at).toLocaleString("hu-HU")} – {p.body || "(média)"}</span>
-            <button className="ghost" style={{ padding: "4px 10px" }} onClick={() => setStatus(p.id, "posted")}>posted</button>
-            <button className="ghost" style={{ padding: "4px 10px" }} onClick={() => setStatus(p.id, "cancelled")}>mégse</button>
-            <button className="ghost" style={{ padding: "4px 10px" }} onClick={() => remove(p.id)}>törlés</button>
+            <span className="muted" style={{ flex: 1 }}>{new Date(p.scheduled_at).toLocaleString(locale)} – {p.body || t("(média)")}</span>
+            <button className="ghost" style={{ padding: "4px 10px" }} onClick={() => setStatus(p.id, "posted")}>{t("posted")}</button>
+            <button className="ghost" style={{ padding: "4px 10px" }} onClick={() => setStatus(p.id, "cancelled")}>{t("mégse")}</button>
+            <button className="ghost" style={{ padding: "4px 10px" }} onClick={() => remove(p.id)}>{t("törlés")}</button>
           </div>
         </div>
       ))}
-      {upcoming.length === 0 && <p className="muted">Nincs ütemezett bejegyzés.</p>}
+      {upcoming.length === 0 && <p className="muted">{t("Nincs ütemezett bejegyzés.")}</p>}
       {past.length > 0 && (<>
-        <h3>Lezárt</h3>
+        <h3>{t("Lezárt")}</h3>
         {past.map((p) => (
           <div key={p.id} className="card" style={{ marginBottom: 6, padding: 10, opacity: 0.7 }}>
-            <span className="badge">{p.platform} · {p.status}</span>{" "}
-            <span className="muted">{new Date(p.scheduled_at).toLocaleString("hu-HU")} – {p.body || "(média)"}</span>
+            <span className="badge">{p.platform} · {t(p.status)}</span>{" "}
+            <span className="muted">{new Date(p.scheduled_at).toLocaleString(locale)} – {p.body || t("(média)")}</span>
           </div>
         ))}
       </>)}

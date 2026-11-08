@@ -1,4 +1,6 @@
 "use client";
+import CardSubscriptionPlans from "@/components/billing/CardSubscriptionPlans";
+import { useAppTranslation } from "@/components/i18n/AppLanguageProvider";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { browserClient } from "@/lib/supabase/client";
 import { CRYPTO_NETWORK, formatUsdt, type CryptoOrder } from "@/lib/billing/crypto";
@@ -19,6 +21,7 @@ async function api(path: string, body?: Record<string, unknown>) {
 }
 
 export default function PlansPage() {
+  const { t, locale } = useAppTranslation();
   const [plans, setPlans] = useState<Plan[]>([]);
   const [orders, setOrders] = useState<CryptoOrder[]>([]);
   const [selected, setSelected] = useState<CryptoOrder | null>(null);
@@ -43,7 +46,7 @@ export default function PlansPage() {
   async function buy(planId: string) {
     setBusy(true); setError(""); setWatch(false);
     try { const result = await api("orders", { planId }); select(result.order); await refresh(); }
-    catch (e) { setError(e instanceof Error ? e.message : "A vásárlás nem indítható."); }
+    catch (e) { setError(e instanceof Error ? e.message : t("A vásárlás nem indítható.")); }
     finally { setBusy(false); }
   }
   const verify = useCallback(async () => {
@@ -53,13 +56,13 @@ export default function PlansPage() {
       const result = await api("verify", { orderId: selected.id, txHash: tx.trim() });
       if (result.status === "completed") {
         setSelected({ ...selected, status: "completed" }); setWatch(false);
-        setMsg(`${selected.credits.toLocaleString("hu-HU")} kreditet jóváírtunk a fiókodban.`);
+        setMsg(t("{count} kreditet jóváírtunk a fiókodban.", { count: selected.credits.toLocaleString(locale) }));
         await refresh();
       } else { setMsg(result.message); setWatch(true); }
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Az ellenőrzés nem sikerült."); setWatch(false);
+      setError(e instanceof Error ? e.message : t("Az ellenőrzés nem sikerült.")); setWatch(false);
     } finally { verifying.current = false; setBusy(false); }
-  }, [selected, tx, refresh]);
+  }, [selected, tx, refresh, t, locale]);
   useEffect(() => {
     if (!watch) return;
     const timer = setInterval(() => { void verify(); }, 16_000);
@@ -67,54 +70,55 @@ export default function PlansPage() {
   }, [watch, verify]);
 
   async function copy(value: string) {
-    try { await navigator.clipboard.writeText(value); setMsg("Vágólapra másolva."); }
-    catch { setError("A másolás nem sikerült. Jelöld ki és másold ki a szöveget."); }
+    try { await navigator.clipboard.writeText(value); setMsg(t("Vágólapra másolva.")); }
+    catch { setError(t("A másolás nem sikerült. Jelöld ki és másold ki a szöveget.")); }
   }
   const expired = selected ? Date.parse(selected.expires_at) < Date.now() : false;
 
   return <main style={{ maxWidth: 920 }}>
-    <h1 style={{ fontSize: 26, marginTop: 0 }}>Kreditvásárlás</h1>
-    <p className="muted">Egyszeri feltöltés USDT-vel a TRON (TRC20) hálózaton. Nincs automatikus megújítás.</p>
-    <p><strong>Egyenleged: {balance === null ? "…" : balance.toLocaleString("hu-HU")} kredit</strong></p>
+    <h1 style={{ fontSize: 26, marginTop: 0 }}>{t("Kreditvásárlás")}</h1>
+    <CardSubscriptionPlans />
+    <p className="muted">{t("Egyszeri feltöltés USDT-vel a TRON (TRC20) hálózaton. Nincs automatikus megújítás.")}</p>
+    <p><strong>{t("Egyenleged:")}{" "}{balance === null ? "…" : balance.toLocaleString(locale)} {t("kredit")}</strong></p>
     <div className="grid">
       {plans.map(p => <section key={p.id} className="card">
         <h2 style={{ marginTop: 0, fontSize: 20 }}>{p.name}</h2>
-        <p style={{ fontSize: 28, margin: "8px 0" }}>{Number(p.price_usdt)} <span style={{ fontSize: 16 }}>USDT</span></p>
-        <p><strong>{p.credits.toLocaleString("hu-HU")} kredit</strong></p>
-        <p className="muted">Saját karakterekhez, képekhez, videókhoz és hangeszközökhöz.</p>
-        <button disabled={busy} onClick={() => buy(p.id)}>Fizetés USDT TRC20-val</button>
+        <p style={{ fontSize: 28, margin: "8px 0" }}>{Number(p.price_usdt)} <span style={{ fontSize: 16 }}>{t("USDT")}</span></p>
+        <p><strong>{p.credits.toLocaleString(locale)} {t("kredit")}</strong></p>
+        <p className="muted">{t("Saját karakterekhez, képekhez, videókhoz és hangeszközökhöz.")}</p>
+        <button disabled={busy} onClick={() => buy(p.id)}>{t("Fizetés USDT TRC20-val")}</button>
       </section>)}
     </div>
-    <p className="muted" style={{ fontSize: 13 }}>A fizetéskor néhány milliomod–legfeljebb 0,10 USDT egyedi kedvezményt kapsz. Pontosan a fizetési kérelemben szereplő összeget küldd: ez azonosítja a rendelésedet.</p>
+    <p className="muted" style={{ fontSize: 13 }}>{t("A fizetéskor néhány milliomod–legfeljebb 0,10 USDT egyedi kedvezményt kapsz. Pontosan a fizetési kérelemben szereplő összeget küldd: ez azonosítja a rendelésedet.")}</p>
     {selected && <section className="card" style={{ marginTop: 24, border: "1px solid var(--accent, #8b5cf6)" }}>
-      <h2 style={{ marginTop: 0, fontSize: 21 }}>{selected.status === "completed" ? "Sikeres kreditfeltöltés" : "Fizetési adatok"}</h2>
-      {selected.status === "completed" ? <p>{selected.credits.toLocaleString("hu-HU")} kredit jóváírva.</p> : <>
-        {expired ? <p role="alert"><strong>A fizetési határidő lejárt. Erre a kérelemre már ne utalj.</strong> A határidő előtt elküldött tranzakciót továbbra is ellenőrizheted.</p> : <>
-          <p>Hálózat: <strong>{CRYPTO_NETWORK}</strong> · Token: <strong>USDT</strong></p>
-          <p style={{ fontSize: 27, overflowWrap: "anywhere" }}><strong>{formatUsdt(Number(selected.amount_units))} USDT</strong></p>
-          <button className="ghost" onClick={() => copy(formatUsdt(Number(selected.amount_units)))}>Pontos összeg másolása</button>
-          <p className="muted">Fogadó cím</p>
+      <h2 style={{ marginTop: 0, fontSize: 21 }}>{selected.status === "completed" ? t("Sikeres kreditfeltöltés") : t("Fizetési adatok")}</h2>
+      {selected.status === "completed" ? <p>{selected.credits.toLocaleString(locale)} {t("kredit jóváírva.")}</p> : <>
+        {expired ? <p role="alert"><strong>{t("A fizetési határidő lejárt. Erre a kérelemre már ne utalj.")}</strong> {t("A határidő előtt elküldött tranzakciót továbbra is ellenőrizheted.")}</p> : <>
+          <p>{t("Hálózat:")}{" "}<strong>{CRYPTO_NETWORK}</strong> {t("· Token:")}{" "}<strong>{t("USDT")}</strong></p>
+          <p style={{ fontSize: 27, overflowWrap: "anywhere" }}><strong>{formatUsdt(Number(selected.amount_units))} {t("USDT")}</strong></p>
+          <button className="ghost" onClick={() => copy(formatUsdt(Number(selected.amount_units)))}>{t("Pontos összeg másolása")}</button>
+          <p className="muted">{t("Fogadó cím")}</p>
           <code style={{ display: "block", overflowWrap: "anywhere", userSelect: "all", marginBottom: 12 }}>{selected.recipient}</code>
-          <button className="ghost" onClick={() => copy(selected.recipient)}>Tárcacím másolása</button>
-          <p className="muted">Határidő: {new Date(selected.expires_at).toLocaleString("hu-HU")}</p>
-          <p>Csak USDT-t küldj, TRC20 hálózaton. A hálózati vagy kiutalási díjon felül a fenti pontos összegnek kell megérkeznie. Ne kerekítsd az összeget.</p>
+          <button className="ghost" onClick={() => copy(selected.recipient)}>{t("Tárcacím másolása")}</button>
+          <p className="muted">{t("Határidő:")}{" "}{new Date(selected.expires_at).toLocaleString(locale)}</p>
+          <p>{t("Csak USDT-t küldj, TRC20 hálózaton. A hálózati vagy kiutalási díjon felül a fenti pontos összegnek kell megérkeznie. Ne kerekítsd az összeget.")}</p>
         </>}
-        <label htmlFor="tx-hash" style={{ display: "block", marginTop: 20 }}>Utalás után illeszd be a tranzakcióazonosítót (TXID)</label>
+        <label htmlFor="tx-hash" style={{ display: "block", marginTop: 20 }}>{t("Utalás után illeszd be a tranzakcióazonosítót (TXID)")}</label>
         <input id="tx-hash" value={tx} onChange={e => { setTx(e.target.value); setWatch(false); }} autoComplete="off" spellCheck={false}
-          placeholder="64 karakteres tranzakcióazonosító" style={{ width: "100%", margin: "8px 0 12px" }} disabled={busy} />
-        <button onClick={() => void verify()} disabled={busy || !/^[a-f0-9]{64}$/i.test(tx.trim())}>{busy ? "Ellenőrzés…" : "Fizetés ellenőrzése és kredit jóváírása"}</button>
-        <p className="muted">A jóváírás a hálózati megerősítés után automatikus. Egy tranzakció egyszer használható fel. Megerősítésre várva ne utalj újra.</p>
+          placeholder={t("64 karakteres tranzakcióazonosító")} style={{ width: "100%", margin: "8px 0 12px" }} disabled={busy} />
+        <button onClick={() => void verify()} disabled={busy || !/^[a-f0-9]{64}$/i.test(tx.trim())}>{busy ? t("Ellenőrzés…") : t("Fizetés ellenőrzése és kredit jóváírása")}</button>
+        <p className="muted">{t("A jóváírás a hálózati megerősítés után automatikus. Egy tranzakció egyszer használható fel. Megerősítésre várva ne utalj újra.")}</p>
       </>}
     </section>}
-    {msg && <p role="status" style={{ marginTop: 16 }}>{msg}</p>}
-    {error && <p role="alert" style={{ marginTop: 16, color: "#fca5a5" }}>{error}</p>}
+    {msg && <p role="status" style={{ marginTop: 16 }}>{t(msg)}</p>}
+    {error && <p role="alert" style={{ marginTop: 16, color: "#fca5a5" }}>{t(error)}</p>}
     <section style={{ marginTop: 28 }}>
-      <h2 style={{ fontSize: 19 }}>Korábbi feltöltések és fizetési kérelmek</h2>
-      {orders.length === 0 ? <p className="muted">Még nincs USDT-fizetési kérelmed.</p> : orders.map(order => <div className="card" key={order.id} style={{ marginBottom: 8, display: "flex", flexWrap: "wrap", gap: 12, alignItems: "center", justifyContent: "space-between" }}>
-        <span>{order.credits.toLocaleString("hu-HU")} kredit · {formatUsdt(Number(order.amount_units))} USDT<br /><small className="muted">{new Date(order.created_at).toLocaleString("hu-HU")} · {order.status === "completed" ? "Jóváírva" : Date.parse(order.expires_at) < Date.now() ? "Lejárt fizetési határidő" : "Fizetésre / megerősítésre vár"}</small></span>
-        <button className="ghost" disabled={busy} onClick={() => select(order)}>Megnyitás</button>
+      <h2 style={{ fontSize: 19 }}>{t("Korábbi feltöltések és fizetési kérelmek")}</h2>
+      {orders.length === 0 ? <p className="muted">{t("Még nincs USDT-fizetési kérelmed.")}</p> : orders.map(order => <div className="card" key={order.id} style={{ marginBottom: 8, display: "flex", flexWrap: "wrap", gap: 12, alignItems: "center", justifyContent: "space-between" }}>
+        <span>{order.credits.toLocaleString(locale)} {t("kredit ·")}{formatUsdt(Number(order.amount_units))} {t("USDT")}<br /><small className="muted">{new Date(order.created_at).toLocaleString(locale)} · {order.status === "completed" ? t("Jóváírva") : Date.parse(order.expires_at) < Date.now() ? t("Lejárt fizetési határidő") : t("Fizetésre / megerősítésre vár")}</small></span>
+        <button className="ghost" disabled={busy} onClick={() => select(order)}>{t("Megnyitás")}</button>
       </div>)}
     </section>
-    <p className="muted">Eltérő összeg vagy elakadt fizetés esetén: <a href="mailto:moldovansandor1998@gmail.com">moldovansandor1998@gmail.com</a>. Írd meg a TXID-t és a rendelésazonosítót{selected ? ` (${selected.id})` : ""}.</p>
+    <p className="muted">{t("Eltérő összeg vagy elakadt fizetés esetén:")}{" "}<a href="mailto:moldovansandor1998@gmail.com">moldovansandor1998@gmail.com</a>{t(". Írd meg a TXID-t és a rendelésazonosítót")}{selected ? ` (${selected.id})` : ""}.</p>
   </main>;
 }

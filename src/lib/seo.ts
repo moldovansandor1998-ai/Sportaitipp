@@ -1,4 +1,6 @@
 import type { Metadata } from "next";
+import { landingContent } from "@/components/marketing/content";
+import { PUBLIC_LOCALES, OPEN_GRAPH_LOCALES, publicLocalePath, type PublicLocale } from "./public-locale";
 export const SITE_ORIGIN = "https://startaicreator.com";
 export const SOCIAL_IMAGE_PATH = "/images/social/start-ai-creator-og-v1.jpg";
 export const SOCIAL_IMAGE_WIDTH = 1200;
@@ -10,26 +12,24 @@ export function siteOrigin(): string {
     return url.protocol === "https:" && !url.username && !url.password ? url.origin : SITE_ORIGIN;
   } catch { return SITE_ORIGIN; }
 }
-export function landingMetadata(locale: "hu" | "en"): Metadata {
+export function publicLanguageAlternates(origin = siteOrigin()): Record<string, string> {
+  return { ...Object.fromEntries(PUBLIC_LOCALES.map(locale => [locale, origin + publicLocalePath(locale)])), "x-default": origin + "/" };
+}
+export function landingMetadata(locale: PublicLocale): Metadata {
   const origin = siteOrigin();
-  const path = locale === "en" ? "/" : "/hu";
-  const title = locale === "en" ? "Start AI Creator | AI characters, images and video tools" : "Start AI Creator | AI-karakterek, képek és videók";
-  const description = locale === "en"
-    ? "Explore AI character, image, video and voice tools in one creative workspace. Manage references and organize your content with Start AI Creator."
-    : "AI-karakterek létrehozása és kezelése referenciaképekkel, kép- és videóeszközökkel, hangmunkafolyamatokkal és rendezett galériával a Start AI Creator platformon.";
+  const path = publicLocalePath(locale);
+  const copy = landingContent[locale];
+  const title = `Start AI Creator | ${copy.seoTitle}`;
+  const description = copy.seoDescription;
   const image = {
-    url: origin + SOCIAL_IMAGE_PATH,
-    width: SOCIAL_IMAGE_WIDTH,
-    height: SOCIAL_IMAGE_HEIGHT,
-    type: "image/jpeg",
-    alt: locale === "en"
-      ? "Start AI Creator: characters, images, video and voice. AI-generated creative illustration."
-      : "Start AI Creator: karakterek, képek, videó és hang. AI-val készült kreatív illusztráció.",
+    url: origin + SOCIAL_IMAGE_PATH, width: SOCIAL_IMAGE_WIDTH, height: SOCIAL_IMAGE_HEIGHT,
+    type: "image/jpeg", alt: copy.socialAlt,
   };
   return {
     title: { absolute: title }, description,
-    alternates: { canonical: origin + path, languages: { en: origin + "/", hu: origin + "/hu", "x-default": origin + "/" } },
-    openGraph: { title, description, type: "website", siteName: "Start AI Creator", url: origin + path, locale: locale === "en" ? "en_US" : "hu_HU", alternateLocale: [locale === "en" ? "hu_HU" : "en_US"], images: [image] },
+    alternates: { canonical: origin + path, languages: publicLanguageAlternates(origin) },
+    openGraph: { title, description, type: "website", siteName: "Start AI Creator", url: origin + path,
+      locale: OPEN_GRAPH_LOCALES[locale], alternateLocale: PUBLIC_LOCALES.filter(other => other !== locale).map(other => OPEN_GRAPH_LOCALES[other]), images: [image] },
     twitter: { card: "summary_large_image", title, description, images: [{ url: image.url, alt: image.alt }] },
     robots: { index: true, follow: true, googleBot: { index: true, follow: true, "max-image-preview": "large" } },
   };

@@ -1,4 +1,5 @@
 "use client";
+import { useAppTranslation } from "@/components/i18n/AppLanguageProvider";
 // AI Image Generator – TELJES felület. A loraPath-et KIZÁRÓLAG a szerver állítja be;
 // kreditár a generálás ELŐTT (estimate), állapot-poll, retry, eredmény + letöltés + galéria.
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -15,6 +16,7 @@ interface JobRow { id: string; type: string; status: string; error: { message?: 
 interface ResultItem { assetId: string; galleryItemId: string; mediaType: string; url: string | null; }
 
 export default function GeneratePage() {
+  const { t } = useAppTranslation();
   const [characters, setCharacters] = useState<CharacterRow[]>([]);
   const [mode, setMode] = useState<"easy" | "expert">("easy");
   const [characterId, setCharacterId] = useState("");
@@ -112,7 +114,7 @@ export default function GeneratePage() {
     void guardedRun({
       guard: submittingRef.current,
       setBusy,
-      onError: (msg) => setError(msg === "INSUFFICIENT_CREDITS" ? "Nincs elég kredited." : msg),
+      onError: (msg) => setError(msg === "INSUFFICIENT_CREDITS" ? t("Nincs elég kredited.") : msg),
       fn: async () => {
         setError(null); setJob(null);
         // új tracker CSAK szabad guardnál – a futó attempt alatt nem íródik felül
@@ -121,8 +123,8 @@ export default function GeneratePage() {
           tracker: trackerRef.current, fetchImpl: fetch, token: await token(),
           body: { type: "image_generation", characterId, payload: payload() },
         });
-        if ("skipped" in result) throw new Error("A kérés már fut.");
-        if (!result.ok) throw new Error(result.error ?? `Hiba ${result.status}`);
+        if ("skipped" in result) throw new Error(t("A kérés már fut."));
+        if (!result.ok) throw new Error(result.error ?? t("Hiba {code}", { code: result.status }));
         return result;
       },
     }).then((r) => {
@@ -142,23 +144,21 @@ export default function GeneratePage() {
 
   return (
     <main style={{ maxWidth: 720 }}>
-      <h1 style={{ fontSize: 22, marginTop: 0 }}>AI Image Generator</h1>
+      <h1 style={{ fontSize: 22, marginTop: 0 }}>{t("AI Image Generator")}</h1>
       <div style={{ display: "flex", gap: 8, marginBottom: 16 }}>
-        <button className={mode === "easy" ? "" : "ghost"} onClick={() => setMode("easy")}>Easy Mode</button>
-        <button className={mode === "expert" ? "" : "ghost"} onClick={() => setMode("expert")}>Expert Mode</button>
+        <button className={mode === "easy" ? "" : "ghost"} onClick={() => setMode("easy")}>{t("Easy Mode")}</button>
+        <button className={mode === "expert" ? "" : "ghost"} onClick={() => setMode("expert")}>{t("Expert Mode")}</button>
       </div>
       <div className="card">
-        <label>Karakter (kötelező – csak aktív)</label>
+        <label>{t("Karakter (kötelező – csak aktív)")}</label>
         <select value={characterId} onChange={(e) => setCharacterId(e.target.value)}>
-          {!characterId && <option value="">– nincs aktív karaktered –</option>}
+          {!characterId && <option value="">{t("– nincs aktív karaktered –")}</option>}
           {characters.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
         </select>
         {activeChar && (
           <div style={{ marginTop: 8 }}>
-            <a href={`/tools?characterId=${encodeURIComponent(activeChar.id)}#character-image`}>
-              Kép készítése {activeChar.name} referenciáival · WaveSpeed / Seedream
-            </a>
-            <p className="muted" style={{ margin: "6px 0 0" }}>Feltöltött jelenetképből a karakter mentett arcával és hajával. Az alábbi szöveges generátor Flux LoRA-t használ.</p>
+            <a href={`/tools?characterId=${encodeURIComponent(activeChar.id)}#character-image`}>{t("Kép készítése")}{" "}{activeChar.name}{" "}{t("referenciáival · WaveSpeed / Seedream")}</a>
+            <p className="muted" style={{ margin: "6px 0 0" }}>{t("Feltöltött jelenetképből a karakter mentett arcával és hajával. Az alábbi szöveges generátor Flux LoRA-t használ.")}</p>
           </div>
         )}
 
@@ -166,77 +166,77 @@ export default function GeneratePage() {
           <>
             {EASY_FIELDS.map((f) => (
               <div key={f.key}>
-                <label>{f.label}</label>
-                <input value={easy[f.key]} onChange={(e) => setEasy({ ...easy, [f.key]: e.target.value })} placeholder={f.placeholder} />
+                <label>{t(f.label)}</label>
+                <input value={easy[f.key]} onChange={(e) => setEasy({ ...easy, [f.key]: e.target.value })} placeholder={t(f.placeholder)} />
               </div>
             ))}
           </>
         ) : (
           <>
-            <label>Prompt</label>
+            <label>{t("Prompt")}</label>
             <textarea rows={4} value={prompt} onChange={(e) => setPrompt(e.target.value)} />
-            <label>Negative prompt (opcionális)</label>
-            <input value={negative} onChange={(e) => setNegative(e.target.value)} placeholder="amit NE szeretnél a képen" />
+            <label>{t("Negative prompt (opcionális)")}</label>
+            <input value={negative} onChange={(e) => setNegative(e.target.value)} placeholder={t("amit NE szeretnél a képen")} />
           </>
         )}
 
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 10 }}>
           <div>
-            <label>Méret</label>
+            <label>{t("Méret")}</label>
             <select value={imageSize} onChange={(e) => setImageSize(e.target.value)}>
               <option value="square_hd">1:1</option>
-              <option value="portrait_4_3">3:4 álló</option>
-              <option value="landscape_4_3">4:3 fekvő</option>
+              <option value="portrait_4_3">{t("3:4 álló")}</option>
+              <option value="landscape_4_3">{t("4:3 fekvő")}</option>
             </select>
           </div>
           <div>
-            <label>Képek száma</label>
+            <label>{t("Képek száma")}</label>
             <input value={numImages} onChange={(e) => setNumImages(e.target.value)} inputMode="numeric" />
           </div>
           {mode === "expert" && (
             <>
               <div>
-                <label>Steps</label>
+                <label>{t("Steps")}</label>
                 <input value={steps} onChange={(e) => setSteps(e.target.value)} inputMode="numeric" />
               </div>
               <div>
-                <label>Seed</label>
-                <input value={seed} onChange={(e) => setSeed(e.target.value)} inputMode="numeric" placeholder="véletlen" />
+                <label>{t("Seed")}</label>
+                <input value={seed} onChange={(e) => setSeed(e.target.value)} inputMode="numeric" placeholder={t("véletlen")} />
               </div>
               <div>
-                <label>Guidance</label>
-                <input value={guidance} onChange={(e) => setGuidance(e.target.value)} inputMode="decimal" placeholder="pl. 3.5" />
+                <label>{t("Guidance")}</label>
+                <input value={guidance} onChange={(e) => setGuidance(e.target.value)} inputMode="decimal" placeholder={t("pl. 3.5")} />
               </div>
             </>
           )}
         </div>
         {mode === "easy" && (
           <>
-            <label style={{ marginTop: 10 }}>Prompt előnézet</label>
+            <label style={{ marginTop: 10 }}>{t("Prompt előnézet")}</label>
             <div className="muted" style={{ background: "var(--panel-2)", borderRadius: 8, padding: 10 }}>{finalPrompt || "…"}</div>
           </>
         )}
 
         <div style={{ display: "flex", gap: 10, alignItems: "center", marginTop: 16 }}>
-          <button onClick={start} disabled={busy || !characterId || !finalPrompt.trim()}>Generálás</button>
-          <span className="badge">{estimate === null ? "ár: –" : `ár: ${estimate} kredit`}</span>
-          {job && <span className="badge">{job.status}{job.error?.message ? ` – ${job.error.message}` : ""}</span>}
+          <button onClick={start} disabled={busy || !characterId || !finalPrompt.trim()}>{t("Generálás")}</button>
+          <span className="badge">{estimate === null ? t("ár: –") : t("ár: {p0} kredit", {p0: estimate})}</span>
+          {job && <span className="badge">{t(job.status)}{job.error?.message ? ` – ${job.error.message}` : ""}</span>}
         </div>
         {error && <p className="error">{error}</p>}
         {job && ["failed", "refunded", "cancelled"].includes(job.status) && (
-          <button className="ghost" style={{ marginTop: 8 }} onClick={retry} disabled={busy}>Újrapróbálás</button>
+          <button className="ghost" style={{ marginTop: 8 }} onClick={retry} disabled={busy}>{t("Újrapróbálás")}</button>
         )}
       </div>
 
       {results.length > 0 && (
         <div className="card" style={{ marginTop: 16 }}>
-          <h3 style={{ marginTop: 0 }}>Legutóbbi eredményeid (galériába mentve)</h3>
+          <h3 style={{ marginTop: 0 }}>{t("Legutóbbi eredményeid (galériába mentve)")}</h3>
           <div className="grid">
             {results.map((r) => (
               <div key={r.galleryItemId} className="card" style={{ padding: 8 }}>
                 {/* eslint-disable-next-line @next/next/no-img-element -- signed URL */}
                 <img src={r.url ?? ""} alt="" style={{ width: "100%", borderRadius: 6 }} />
-                <a href={r.url ?? "#"} download><button className="ghost" style={{ marginTop: 6, padding: "4px 10px" }}>Letöltés</button></a>
+                <a href={r.url ?? "#"} download><button className="ghost" style={{ marginTop: 6, padding: "4px 10px" }}>{t("Letöltés")}</button></a>
               </div>
             ))}
           </div>

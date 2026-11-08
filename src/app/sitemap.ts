@@ -1,8 +1,9 @@
 import type { MetadataRoute } from "next";
-import { siteOrigin } from "@/lib/seo";
+import { siteOrigin, publicLanguageAlternates } from "@/lib/seo";
+import { PUBLIC_LOCALES, publicLocalePath } from "@/lib/public-locale";
 export default function sitemap(): MetadataRoute.Sitemap {
   const origin = siteOrigin();
-  const languages = { en: `${origin}/`, hu: `${origin}/hu`, "x-default": `${origin}/` };
+  const languages = publicLanguageAlternates(origin);
   // /en remains a compatible alias, but only canonical pages belong in the sitemap.
-  return ["/", "/hu"].map(path => ({ url: origin + path, alternates: { languages } }));
+  return PUBLIC_LOCALES.map(locale => ({ url: origin + publicLocalePath(locale), alternates: { languages } }));
 }

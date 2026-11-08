@@ -1,4 +1,5 @@
 "use client";
+import { useAppTranslation } from "@/components/i18n/AppLanguageProvider";
 import { use, useCallback, useEffect, useRef, useState } from "react";
 import { browserClient } from "@/lib/supabase/client";
 import Image from "next/image";
@@ -15,6 +16,7 @@ interface VersionRow {
 interface JobMini { id: string; type: string; status: string; cost_estimate: number; error?: { message?: string } | null; }
 
 export default function CharacterDetailPage({ params }: { params: Promise<{ id: string }> }) {
+  const { t } = useAppTranslation();
   const { id } = use(params);
   const [character, setCharacter] = useState<CharacterRow | null>(null);
   const [refs, setRefs] = useState<RefRow[]>([]);
@@ -139,17 +141,17 @@ export default function CharacterDetailPage({ params }: { params: Promise<{ id: 
         if (!sign.ok) {
           const detail = await sign.json().catch(() => ({}));
           throw new Error(detail.error === "UPLOAD_SERVICE_NOT_CONFIGURED"
-            ? "A képfeltöltés szerveroldali beállítása hiányzik. Kérjük, jelezd az üzemeltetőnek."
+            ? t("A képfeltöltés szerveroldali beállítása hiányzik. Kérjük, jelezd az üzemeltetőnek.")
             : detail.error === "unauthorized"
-              ? "A munkamenet lejárt. Jelentkezz be újra."
-              : `Nem sikerült előkészíteni a feltöltést (${detail.error ?? `HTTP ${sign.status}`}).`);
+              ? t("A munkamenet lejárt. Jelentkezz be újra.")
+              : t("Nem sikerült előkészíteni a feltöltést ({p0}).", {p0: detail.error ?? `HTTP ${sign.status}`}));
         }
         const { objectPath, token } = await sign.json();
 
         // 2) Feltöltés közvetlenül a privát bucketbe
         const { error: uploadError } = await getSb().storage.from("references")
           .uploadToSignedUrl(objectPath, token, file, { contentType: file.type });
-        if (uploadError) throw new Error(`Feltöltés sikertelen: ${file.name} (${uploadError.message})`);
+        if (uploadError) throw new Error(t("Feltöltés sikertelen: {p0} ({p1})", {p0: file.name, p1: uploadError.message}));
 
         // 3) Szerveroldali finalize: méret/MIME/tulajdon/SHA-256 ellenőrzés + rekordok
         const fin = await fetch("/api/references/finalize", {
@@ -160,27 +162,27 @@ export default function CharacterDetailPage({ params }: { params: Promise<{ id: 
         if (!fin.ok) {
           const b = await fin.json();
           if (b.error === "DUPLICATE_IMAGE") { skipped++; continue; }
-          throw new Error(b.error ?? "Finalize hiba");
+          throw new Error(b.error ?? t("Finalize hiba"));
         }
       }
       await load();
-      if (skipped) setError(`${skipped} már feltöltött képet kihagytam; a többit hozzáadtam.`);
+      if (skipped) setError(t("{p0} már feltöltött képet kihagytam; a többit hozzáadtam.", {p0: skipped}));
     } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : "Ismeretlen hiba");
+      setError(e instanceof Error ? e.message : t("Ismeretlen hiba"));
     } finally { setBusy(false); }
   }
 
   async function removeReference(ref: RefRow) {
-    if (!window.confirm("Eltávolítod ezt a referenciafotót a listából? A már betanított modell ettől nem változik meg.")) return;
+    if (!window.confirm(t("Eltávolítod ezt a referenciafotót a listából? A már betanított modell ettől nem változik meg."))) return;
     setBusy(true); setError(null);
     try {
       const { data: { session } } = await browserClient().auth.getSession();
       const response = await fetch(`/api/references/${ref.id}`, {
         method: "DELETE", headers: { authorization: `Bearer ${session?.access_token}` },
       });
-      if (!response.ok) throw new Error("Nem sikerült eltávolítani a képet.");
+      if (!response.ok) throw new Error(t("Nem sikerült eltávolítani a képet."));
       await load();
-    } catch (e) { setError(e instanceof Error ? e.message : "Törlési hiba"); }
+    } catch (e) { setError(e instanceof Error ? e.message : t("Törlési hiba")); }
     finally { setBusy(false); }
   }
 
@@ -196,7 +198,7 @@ export default function CharacterDetailPage({ params }: { params: Promise<{ id: 
     setBusy(false);
     if (!res.ok) {
       const body = await res.json();
-      setError(body.error === "INSUFFICIENT_CREDITS" ? "Nincs elég kredited." : body.error ?? "Hiba");
+      setError(body.error === "INSUFFICIENT_CREDITS" ? t("Nincs elég kredited.") : body.error ?? "Hiba");
       return;
     }
     setTimeout(load, 1500); // after() aszinkron kick – állapot frissítés
@@ -205,8 +207,8 @@ export default function CharacterDetailPage({ params }: { params: Promise<{ id: 
 
   async function manualReview(stage: "references" | "test_image", versionId?: string) {
     const message = stage === "references"
-      ? "Átnézted a képeket, és megerősíted, hogy mind ugyanazt az általad használható karaktert mutatják? A szerver ezután a fájlokat is ellenőrzi."
-      : "Átnézted a tesztképet, és elfogadod a karakter hasonlóságát? Ez kézi jóváhagyás, nem automatikus arcazonosság-mérés.";
+      ? t("Átnézted a képeket, és megerősíted, hogy mind ugyanazt az általad használható karaktert mutatják? A szerver ezután a fájlokat is ellenőrzi.")
+      : t("Átnézted a tesztképet, és elfogadod a karakter hasonlóságát? Ez kézi jóváhagyás, nem automatikus arcazonosság-mérés.");
     if (!window.confirm(message)) return;
     setBusy(true); setError(null);
     try {
@@ -218,10 +220,10 @@ export default function CharacterDetailPage({ params }: { params: Promise<{ id: 
       });
       const result = await res.json();
       if (!res.ok) throw new Error(result.referenceId
-        ? `A ${refs.findIndex((r) => r.id === result.referenceId) + 1}. referenciafájl nem olvasható (${result.error}). Távolítsd el és töltsd fel újra.`
-        : result.detail ? `${result.error}: ${result.detail}` : result.error ?? "Az ellenőrzés nem sikerült");
+        ? t("A {p0}. referenciafájl nem olvasható ({p1}). Távolítsd el és töltsd fel újra.", {p0: refs.findIndex((r) => r.id === result.referenceId) + 1, p1: result.error})
+        : result.detail ? `${result.error}: ${result.detail}` : result.error ?? t("Az ellenőrzés nem sikerült"));
       await load();
-    } catch (e) { setError(e instanceof Error ? e.message : "Ellenőrzési hiba"); }
+    } catch (e) { setError(e instanceof Error ? e.message : t("Ellenőrzési hiba")); }
     finally { setBusy(false); }
   }
 
@@ -229,7 +231,7 @@ export default function CharacterDetailPage({ params }: { params: Promise<{ id: 
   async function startTestImage() {
     const latest = versions[0];
     if (!latest || latest.status !== "test_pending" || !latest.provider_model_ref) {
-      setError("A tesztképhez előbb meg kell várni a tréning sikeres végét."); return;
+      setError(t("A tesztképhez előbb meg kell várni a tréning sikeres végét.")); return;
     }
     await startJob("test_image", {
       prompt: "portrait of the character, studio lighting, neutral background",
@@ -253,16 +255,16 @@ export default function CharacterDetailPage({ params }: { params: Promise<{ id: 
       });
       const body = await res.json();
       if (!res.ok) throw new Error(body.referenceId
-        ? `A ${refs.findIndex((r) => r.id === body.referenceId) + 1}. referenciafájl nem olvasható (${body.error}). Távolítsd el és töltsd fel újra.`
+        ? t("A {p0}. referenciafájl nem olvasható ({p1}). Távolítsd el és töltsd fel újra.", {p0: refs.findIndex((r) => r.id === body.referenceId) + 1, p1: body.error})
         : body.error ?? "training-prep hiba");
       await startJob("character_training", body.payload, `character-training:${body.payload.versionId}`);
     } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : "Tréning-hiba");
+      setError(e instanceof Error ? e.message : t("Tréning-hiba"));
     } finally { startingTraining.current = false; setBusy(false); await load(); }
   }
 
   async function startRetraining() {
-    if (!window.confirm("Újratanítod a karaktert a most látható referenciafotókkal? Előbb jóvá kell hagynod őket, majd a Tréning gombbal elindítanod az új, 1500 kredites modellt. Az ellenőrzés idejére a karakter generálása szünetel.")) return;
+    if (!window.confirm(t("Újratanítod a karaktert a most látható referenciafotókkal? Előbb jóvá kell hagynod őket, majd a Tréning gombbal elindítanod az új, 1500 kredites modellt. Az ellenőrzés idejére a karakter generálása szünetel."))) return;
     setBusy(true); setError(null);
     try {
       const { data: { session } } = await browserClient().auth.getSession();
@@ -270,9 +272,9 @@ export default function CharacterDetailPage({ params }: { params: Promise<{ id: 
         method: "POST", headers: { authorization: `Bearer ${session?.access_token}` },
       });
       const body = await response.json();
-      if (!response.ok) throw new Error(body.error ?? "Az újratanítás előkészítése sikertelen.");
+      if (!response.ok) throw new Error(body.error ?? t("Az újratanítás előkészítése sikertelen."));
       await load();
-    } catch (e) { setError(e instanceof Error ? e.message : "Újratanítási hiba"); }
+    } catch (e) { setError(e instanceof Error ? e.message : t("Újratanítási hiba")); }
     finally { setBusy(false); }
   }
 
@@ -283,12 +285,12 @@ export default function CharacterDetailPage({ params }: { params: Promise<{ id: 
     try {
       const sb = browserClient();
       const { data: { user } } = await sb.auth.getUser();
-      if (!user) throw new Error("Jelentkezz be újra.");
+      if (!user) throw new Error(t("Jelentkezz be újra."));
       const { data, error: saveError } = await sb.from("characters").update({ gender })
         .eq("id", id).eq("owner_id", user.id).select("id").single();
-      if (saveError || !data) throw new Error(saveError?.message ?? "A mentés nem sikerült.");
+      if (saveError || !data) throw new Error(saveError?.message ?? t("A mentés nem sikerült."));
       await load();
-    } catch (err) { setError(err instanceof Error ? err.message : "A mentés nem sikerült."); }
+    } catch (err) { setError(err instanceof Error ? err.message : t("A mentés nem sikerült.")); }
     finally { setBusy(false); }
   }
 
@@ -303,28 +305,27 @@ export default function CharacterDetailPage({ params }: { params: Promise<{ id: 
   return (
     <main>
       <h1 style={{ fontSize: 22, marginTop: 0 }}>{character.name}</h1>
-      <label htmlFor="character-gender">Karakter neme</label>
+      <label htmlFor="character-gender">{t("Karakter neme")}</label>
       <select id="character-gender" disabled={busy}
         value={character.gender ?? (characterIdentityVariant(id) === "male" ? "male" : "female")}
         onChange={(e) => void saveGender(e.target.value as "female" | "male")}>
-        <option value="female">Nő</option>
-        <option value="male">Férfi</option>
+        <option value="female">{t("Nő")}</option>
+        <option value="male">{t("Férfi")}</option>
       </select>
-      <p className="muted">
-        Státusz: {character.status} · Kredit: {credits ?? "…"} ·{" "}
-        {active ? "Aktív – generálható" : "A generáláshoz active státusz kell (QC → tréning → tesztkép → identity check)"}
+      <p className="muted">{t("Státusz:")}{" "}{t(character.status)}{" "}{t("· Kredit:")}{" "}{credits ?? "…"} ·{" "}
+        {active ? t("Aktív – generálható") : t("A generáláshoz active státusz kell (QC → tréning → tesztkép → identity check)")}
       </p>
       {active && <a href={`/tools?characterId=${encodeURIComponent(id)}#character-image`}
-        className="button">Kép készítése {character.name} referenciáival · WaveSpeed / Seedream</a>}
+        className="button">{t("Kép készítése")}{" "}{character.name}{" "}{t("referenciáival · WaveSpeed / Seedream")}</a>}
 
       <div className="card" style={{ marginTop: 16 }}>
-        <h3 style={{ marginTop: 0 }}>Referenciafotók ({refs.length})</h3>
-        <p className="muted">Arc-, félalakos és teljes alakos képek, különböző szögekből. Javasolt: min. 10 db, egy személy/kép.</p>
-        {error && <p role="alert" className="error">{error}</p>}
+        <h3 style={{ marginTop: 0 }}>{t("Referenciafotók (")}{refs.length})</h3>
+        <p className="muted">{t("Arc-, félalakos és teljes alakos képek, különböző szögekből. Javasolt: min. 10 db, egy személy/kép.")}</p>
+        {error && <p role="alert" className="error">{t(error)}</p>}
         <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
           {(["face", "half_body", "full_body"] as const).map((kind) => (
             <label key={kind} className="ghost" style={{ display: "inline-flex", gap: 6, alignItems: "center", margin: 0, cursor: busy ? "wait" : "pointer" }}>
-              + {kind === "face" ? "Arc" : kind === "half_body" ? "Félalak" : "Teljes alak"}
+              + {kind === "face" ? t("Arc") : kind === "half_body" ? t("Félalak") : t("Teljes alak")}
               <input type="file" accept="image/jpeg,image/png,image/webp" multiple disabled={busy}
                 style={{ position: "absolute", width: 1, height: 1, opacity: 0 }}
                 onChange={(e) => {
@@ -340,59 +341,59 @@ export default function CharacterDetailPage({ params }: { params: Promise<{ id: 
           {refs.map((r) => (
             <li key={r.id} className="muted">
               {previews[r.asset_id] && <Image unoptimized width={70} height={70} src={previews[r.asset_id]} alt={`${r.kind} referencia`} style={{ objectFit: "cover", borderRadius: 8, verticalAlign: "middle", marginRight: 8 }} />}
-              {r.kind} · {r.qc_status}{r.is_primary && " · elsődleges"}{" "}
+              {r.kind} · {r.qc_status}{r.is_primary && t(" · elsődleges")}{" "}
               <button className="ghost" disabled={busy} onClick={() => removeReference(r)}
-                style={{ marginLeft: 8, padding: "6px 10px" }}>Eltávolítás</button>
+                style={{ marginLeft: 8, padding: "6px 10px" }}>{t("Eltávolítás")}</button>
             </li>
           ))}
         </ul>
-        {active && <p className="muted">Az újonnan feltöltött vagy eltávolított referenciák csak újratanítás után módosítják a jelenlegi modellt.</p>}
+        {active && <p className="muted">{t("Az újonnan feltöltött vagy eltávolított referenciák csak újratanítás után módosítják a jelenlegi modellt.")}</p>}
       </div>
 
       <div className="card" style={{ marginTop: 16 }}>
-        <h3 style={{ marginTop: 0 }}>Karakter létrehozása</h3>
-        <p className="muted">A referenciafájlok épségét a szerver ellenőrzi. A szereplő azonosságát és a tesztkép hasonlóságát jelenleg te hagyod jóvá a képek megtekintése után.</p>
-        {trainingInProgress && <p role="status" className="muted">A LoRA tréning már elindult és folyamatban van. Nem kell újra megnyomni; a feladat állapota lent frissül.</p>}
-        {preparedVersion && !trainingInProgress && <p role="status" className="muted">A v{preparedVersion.version_no} dataset elkészült, de a tréning még nem indult el. A Tréning gomb ugyanazzal a datasettel és verzióval folytatja.</p>}
-        {active && <p className="muted">Új képek használatához indíts új verziót. Ezután a referenciákat újra jóvá kell hagyni, majd a tréning 1500 kreditbe kerül.</p>}
+        <h3 style={{ marginTop: 0 }}>{t("Karakter létrehozása")}</h3>
+        <p className="muted">{t("A referenciafájlok épségét a szerver ellenőrzi. A szereplő azonosságát és a tesztkép hasonlóságát jelenleg te hagyod jóvá a képek megtekintése után.")}</p>
+        {trainingInProgress && <p role="status" className="muted">{t("A LoRA tréning már elindult és folyamatban van. Nem kell újra megnyomni; a feladat állapota lent frissül.")}</p>}
+        {preparedVersion && !trainingInProgress && <p role="status" className="muted">{t("A v")}{preparedVersion.version_no}{" "}{t("dataset elkészült, de a tréning még nem indult el. A Tréning gomb ugyanazzal a datasettel és verzióval folytatja.")}</p>}
+        {active && <p className="muted">{t("Új képek használatához indíts új verziót. Ezután a referenciákat újra jóvá kell hagyni, majd a tréning 1500 kreditbe kerül.")}</p>}
         <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
           {active && <button className="ghost" disabled={busy || refs.length < 3}
-            onClick={startRetraining}>Újratanítás előkészítése</button>}
+            onClick={startRetraining}>{t("Újratanítás előkészítése")}</button>}
           {providers?.referenceQc && <button className="ghost" disabled={busy || refs.length === 0}
-            onClick={() => startJob("reference_qc", { refIds: refs.map((r) => r.id) })}>1. Automatikus referencia-QC</button>}
+            onClick={() => startJob("reference_qc", { refIds: refs.map((r) => r.id) })}>{t("1. Automatikus referencia-QC")}</button>}
           <button className="ghost" disabled={busy || refs.length < 3 || character.status !== "collecting_refs"}
-            onClick={() => manualReview("references")}>1. Referenciák kézi jóváhagyása</button>
+            onClick={() => manualReview("references")}>{t("1. Referenciák kézi jóváhagyása")}</button>
           <button className="ghost" disabled={busy || trainingInProgress || approvedRefs.length < 3 || !providers?.training}
-            onClick={startTraining}>2. Tréning (LoRA)</button>
+            onClick={startTraining}>{t("2. Tréning (LoRA)")}</button>
           <button className="ghost" disabled={busy || character.status !== "test_pending" || !versions.some((v) => v.status === "test_pending" && v.provider_model_ref) || !providers?.testImage}
-            onClick={startTestImage}>3. Tesztkép</button>
+            onClick={startTestImage}>{t("3. Tesztkép")}</button>
           {providers?.identityCheck && <button className="ghost" disabled={busy || !latestRealVersion}
-            title={latestRealVersion ? "" : "Mock tréning után nem elérhető – éles providerrel (fal/Replicate) tanított verzió kell"}
-            onClick={() => startJob("identity_check", {})}>4. Automatikus azonosság-ellenőrzés</button>}
+            title={latestRealVersion ? "" : t("Mock tréning után nem elérhető – éles providerrel (fal/Replicate) tanított verzió kell")}
+            onClick={() => startJob("identity_check", {})}>{t("4. Automatikus azonosság-ellenőrzés")}</button>}
           <button className="ghost" disabled={busy || character.status !== "test_pending" || !latestRealVersion?.test_image_asset_id || !previews[latestRealVersion.test_image_asset_id]}
-            onClick={() => manualReview("test_image", latestRealVersion?.id)}>4. Tesztkép kézi jóváhagyása</button>
+            onClick={() => manualReview("test_image", latestRealVersion?.id)}>{t("4. Tesztkép kézi jóváhagyása")}</button>
           <button disabled={busy || !active || !providers?.generation}
             onClick={() => startJob("image_generation", {
               prompt: applyCharacterIdentity("Candid realistic photograph of this adult woman from the waist up, natural body proportions and anatomy, relaxed posture, everyday clothing, authentic skin texture with subtle imperfections, natural window light, unretouched documentary photography, 50mm lens", characterIdentityVariant(id, character.gender)),
               imageSize: "portrait_4_3",
-            })}>5. Élethű félalak</button>
+            })}>{t("5. Élethű félalak")}</button>
           <button className="ghost" disabled={busy || !active || !providers?.generation}
             onClick={() => startJob("image_generation", {
               prompt: applyCharacterIdentity("Candid full body photograph of this adult woman standing naturally, entire person visible from head to shoes, realistic human anatomy and proportions, relaxed pose, everyday clothing, authentic skin texture, natural daylight, unretouched documentary photography, 50mm lens", characterIdentityVariant(id, character.gender)),
               imageSize: "portrait_4_3",
-            })}>Élethű teljes alak</button>
+            })}>{t("Élethű teljes alak")}</button>
         </div>
       </div>
 
       {versions.length > 0 && (
         <div className="card" style={{ marginTop: 16 }}>
-          <h3 style={{ marginTop: 0 }}>Verziók</h3>
+          <h3 style={{ marginTop: 0 }}>{t("Verziók")}</h3>
           {versions.map((v) => (
             <div key={v.id} style={{ display: "flex", gap: 10, padding: "6px 0", borderTop: "1px solid var(--border)" }}>
-              <span style={{ flex: 1 }}>v{v.version_no} · {v.provider ?? "–"}</span>
-              <span className="badge">{v.status}</span>
-              <span className="muted">{v.identity_score != null ? `identity: ${v.identity_score}` : "identity: –"}</span>
-              {v.test_image_asset_id && previews[v.test_image_asset_id] && <Image unoptimized width={90} height={90} src={previews[v.test_image_asset_id]} alt="Generált tesztkép" style={{ objectFit: "cover", borderRadius: 8 }} />}
+              <span style={{ flex: 1 }}>{t("v")}{v.version_no} · {v.provider ?? "–"}</span>
+              <span className="badge">{t(v.status)}</span>
+              <span className="muted">{t("identity: {score}", { score: v.identity_score ?? "–" })}</span>
+              {v.test_image_asset_id && previews[v.test_image_asset_id] && <Image unoptimized width={90} height={90} src={previews[v.test_image_asset_id]} alt={t("Generált tesztkép")} style={{ objectFit: "cover", borderRadius: 8 }} />}
             </div>
           ))}
         </div>
@@ -400,12 +401,12 @@ export default function CharacterDetailPage({ params }: { params: Promise<{ id: 
 
       {jobs.length > 0 && (
         <div className="card" style={{ marginTop: 16 }}>
-          <h3 style={{ marginTop: 0 }}>Feladatok</h3>
+          <h3 style={{ marginTop: 0 }}>{t("Feladatok")}</h3>
           {jobs.map((j) => (
             <div key={j.id} style={{ display: "flex", gap: 10, padding: "6px 0", borderTop: "1px solid var(--border)" }}>
               <span style={{ flex: 1 }}>{j.type}</span>
-              <span className="badge">{j.status}</span>
-              <span className="muted">{j.cost_estimate} kr</span>
+              <span className="badge">{t(j.status)}</span>
+              <span className="muted">{j.cost_estimate}{" "}{t("kr")}</span>
             </div>
           ))}
         </div>

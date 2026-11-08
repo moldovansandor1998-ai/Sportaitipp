@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { isInternalOwner } from "@/lib/security/internalAccess";
 import { serviceClient } from "@/lib/supabase/server";
 import { decrypt, encrypt, exchangeCode, xIdentity, xConfigured } from "@/server/x/client";
 
@@ -18,6 +19,8 @@ export async function GET(req: NextRequest) {
       .eq("state", state).gt("expires_at", new Date().toISOString())
       .select("owner_id,character_id,encrypted_verifier,return_origin").maybeSingle();
     if (!context) return redirect("failed");
+    const { data: owner } = await svc.auth.admin.getUserById(context.owner_id);
+    if (!isInternalOwner(owner.user?.email)) return redirect("failed", context.return_origin);
     const { data: character } = await svc.from("characters").select("id")
       .eq("id", context.character_id).eq("owner_id", context.owner_id).maybeSingle();
     if (!character) return redirect("failed", context.return_origin);

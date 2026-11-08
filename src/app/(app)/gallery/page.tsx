@@ -1,4 +1,5 @@
 "use client";
+import { useAppTranslation } from "@/components/i18n/AppLanguageProvider";
 // Teljes galéria: keresés, médiatípus-szűrés, albumok, tömeges kiválasztás/törlés, letöltés.
 import { useCallback, useEffect, useRef, useState } from "react";
 import Image from "next/image";
@@ -16,6 +17,7 @@ interface Album { id: string; name: string; }
 interface Character { id: string; name: string; }
 
 export default function GalleryPage() {
+  const { t } = useAppTranslation();
   const [items, setItems] = useState<Item[] | null>(null);
   const [recentVideos, setRecentVideos] = useState<Item[]>([]);
   const [videoCount, setVideoCount] = useState(0);
@@ -157,7 +159,7 @@ export default function GalleryPage() {
   }, [load, pendingCount]);
 
   async function createAlbum() {
-    const name = prompt("Album neve?");
+    const name = prompt(t("Album neve?"));
     if (!name) return;
     await fetch("/api/albums", {
       method: "POST",
@@ -179,7 +181,7 @@ export default function GalleryPage() {
     setSavingVideoApproval(true);
     setUsageError("");
     const accessToken = await token();
-    if (!accessToken) { setUsageError("Jelentkezz be újra."); setSavingVideoApproval(false); return; }
+    if (!accessToken) { setUsageError(t("Jelentkezz be újra.")); setSavingVideoApproval(false); return; }
     const results = await Promise.allSettled(ids.map((id) => fetch(`/api/gallery/${id}`, {
       method: "PATCH", headers: { authorization: `Bearer ${accessToken}`, "content-type": "application/json" },
       body: JSON.stringify({ goodBaseVideo: approved }),
@@ -193,42 +195,42 @@ export default function GalleryPage() {
     if (updated.length !== ids.length) {
       const failed = results.find(result => result.status === "fulfilled" && !result.value.ok);
       const detail = failed?.status === "fulfilled" ? (await failed.value.json().catch(() => null) as { error?: string; detail?: string } | null) : null;
-      setUsageError(`${ids.length - updated.length} videót nem sikerült megjelölni. ${detail?.detail ?? detail?.error ?? "Próbáld újra."}`);
+      setUsageError(t("{p0} videót nem sikerült megjelölni. {p1}", {p0: ids.length - updated.length, p1: detail?.detail ?? detail?.error ?? t("Próbáld újra.")}));
     }
     setSavingVideoApproval(false);
   }
   async function removeMany() {
-    if (!confirm(`${selected.size} elem törlése?`)) return;
+    if (!confirm(t("{p0} elem törlése?", {p0: selected.size}))) return;
     setDeleting(true); setUsageError("");
     try {
       const ids = [...selected];
-      const t = await token();
+      const accessToken = await token();
       const results = await Promise.allSettled(ids.map(gid => fetch(`/api/gallery/${gid}`, {
-        method: "DELETE", headers: { authorization: `Bearer ${t}` },
+        method: "DELETE", headers: { authorization: `Bearer ${accessToken}` },
       })));
       const removed = ids.filter((_, i) => results[i].status === "fulfilled" && results[i].value.ok);
-      if (removed.length !== ids.length) setUsageError(`${ids.length - removed.length} képet nem sikerült törölni. Próbáld újra.`);
+      if (removed.length !== ids.length) setUsageError(t("{p0} képet nem sikerült törölni. Próbáld újra.", {p0: ids.length - removed.length}));
       setItems(current => current?.filter(item => !removed.includes(item.galleryItemId)) ?? null);
       setSelected(new Set(ids.filter(id => !removed.includes(id))));
       setTotal(current => Math.max(0, current - removed.length));
       void load();
     } catch {
-      setUsageError("A képek törlése hálózati hiba miatt sikertelen.");
+      setUsageError(t("A képek törlése hálózati hiba miatt sikertelen."));
     } finally {
       setDeleting(false);
     }
   }
   async function removeOne(id: string) {
-    if (!confirm("Törlöd ezt az elemet?")) return;
+    if (!confirm(t("Törlöd ezt az elemet?"))) return;
     setDeleting(true); setUsageError("");
     try {
       const result = await fetch(`/api/gallery/${id}`, { method: "DELETE", headers: { authorization: `Bearer ${await token()}` } });
-      if (!result.ok) { setUsageError("A kép törlése sikertelen. Próbáld újra."); return; }
+      if (!result.ok) { setUsageError(t("A kép törlése sikertelen. Próbáld újra.")); return; }
       setItems(current => current?.filter(item => item.galleryItemId !== id) ?? null);
       setTotal(current => Math.max(0, current - 1));
       setSelected(current => { const next = new Set(current); next.delete(id); return next; });
       void load();
-    } catch { setUsageError("A kép törlése hálózati hiba miatt sikertelen."); }
+    } catch { setUsageError(t("A kép törlése hálózati hiba miatt sikertelen.")); }
     finally { setDeleting(false); }
   }
   async function setUsed(ids: string[], used: boolean) {
@@ -239,7 +241,7 @@ export default function GalleryPage() {
       method: "PATCH", headers: auth, body: JSON.stringify({ used }),
     })));
     const failed = results.filter(result => result.status === "rejected" || !result.value.ok);
-    if (failed.length) setUsageError(`${failed.length} kép állapotát nem sikerült menteni.`);
+    if (failed.length) setUsageError(t("{p0} kép állapotát nem sikerült menteni.", {p0: failed.length}));
     setSelected(new Set());
     setSavingUsage(null);
     await load();
@@ -253,13 +255,13 @@ export default function GalleryPage() {
         method: "PATCH", headers: { authorization: `Bearer ${await token()}`, "content-type": "application/json" },
         body: JSON.stringify({ category: destination }),
       });
-      if (!response.ok) throw new Error("A kép áthelyezése nem sikerült.");
+      if (!response.ok) throw new Error(t("A kép áthelyezése nem sikerült."));
       setItems(current => contentCategory === "all"
         ? current?.map(item => item.galleryItemId === id ? { ...item, contentCategory: destination as "tiktok" | "fanvue" } : item) ?? null
         : current?.filter(item => item.galleryItemId !== id) ?? null);
       setSelected(current => { const next = new Set(current); next.delete(id); return next; });
       if (contentCategory !== "all") setTotal(current => Math.max(0, current - 1));
-    } catch { setUsageError("A kép áthelyezése nem sikerült. Próbáld újra."); }
+    } catch { setUsageError(t("A kép áthelyezése nem sikerült. Próbáld újra.")); }
     finally { setMovingCategory(null); }
   }
   async function editImage() {
@@ -277,13 +279,13 @@ export default function GalleryPage() {
       });
       if (!response.ok) {
         const body = await response.json().catch(() => ({}));
-        throw new Error(body.error === "INSUFFICIENT_CREDITS" ? "Nincs elég kredit a szerkesztéshez." : "A képszerkesztés indítása nem sikerült.");
+        throw new Error(body.error === "INSUFFICIENT_CREDITS" ? t("Nincs elég kredit a szerkesztéshez.") : t("A képszerkesztés indítása nem sikerült."));
       }
       setEditingItem(null); setEditPrompt("");
-      setEditStatus("A szerkesztés elindult. Az eredeti kép megmarad; az új kép elkészülte után ebben a galériában jelenik meg.");
+      setEditStatus(t("A szerkesztés elindult. Az eredeti kép megmarad; az új kép elkészülte után ebben a galériában jelenik meg."));
       await load();
     } catch (error) {
-      setEditStatus(error instanceof Error ? error.message : "A képszerkesztés nem sikerült.");
+      setEditStatus(error instanceof Error ? error.message : t("A képszerkesztés nem sikerült."));
     } finally { setEditBusy(false); }
   }
   function toggle(id: string) {
@@ -294,13 +296,13 @@ export default function GalleryPage() {
     const chosen = (items ?? []).filter(it => selected.has(it.galleryItemId));
     if (!chosen.length) return;
     setDownloading(true);
-    setDownloadStatus(`Letöltés: 0/${chosen.length}`);
+    setDownloadStatus(t("Letöltés: 0/{p0}", {p0: chosen.length}));
     try {
       const files: { name: string; bytes: ArrayBuffer }[] = [];
       for (const [index, item] of chosen.entries()) {
-        if (!item.url) throw new Error("Egy kijelölt fájl nem érhető el. Frissítsd a galériát.");
+        if (!item.url) throw new Error(t("Egy kijelölt fájl nem érhető el. Frissítsd a galériát."));
         const response = await fetch(item.url);
-        if (!response.ok) throw new Error(`Nem sikerült letölteni a(z) ${index + 1}. fájlt.`);
+        if (!response.ok) throw new Error(t("Nem sikerült letölteni a(z) {p0}. fájlt.", {p0: index + 1}));
         const bytes = await response.arrayBuffer();
         const ext = item.contentType === "image/png" ? "png" : item.contentType === "image/webp" ? "webp"
           : item.contentType === "image/jpeg" ? "jpg" : item.contentType === "video/mp4" ? "mp4"
@@ -310,7 +312,7 @@ export default function GalleryPage() {
         files.push({ name: item.motionPart
           ? `${model}_${item.motionPart.sequence.slice(0, 8)}_resz-${String(item.motionPart.index).padStart(2, "0")}-${item.motionPart.total}.${ext}`
           : `${String(index + 1).padStart(3, "0")}_${model}_${item.assetId.slice(0, 8)}.${ext}`, bytes });
-        setDownloadStatus(`Letöltés: ${index + 1}/${chosen.length}`);
+        setDownloadStatus(t("Letöltés: {p0}/{p1}", {p0: index + 1, p1: chosen.length}));
       }
       const url = URL.createObjectURL(zipFiles(files));
       const link = document.createElement("a");
@@ -320,9 +322,9 @@ export default function GalleryPage() {
       link.click();
       link.remove();
       window.setTimeout(() => URL.revokeObjectURL(url), 60_000);
-      setDownloadStatus(`${files.length} fájl ZIP-ben letöltve.`);
+      setDownloadStatus(t("{p0} fájl ZIP-ben letöltve.", {p0: files.length}));
     } catch (error) {
-      setDownloadStatus(error instanceof Error ? error.message : "A közös letöltés nem sikerült.");
+      setDownloadStatus(error instanceof Error ? error.message : t("A közös letöltés nem sikerült."));
     } finally {
       setDownloading(false);
     }
@@ -337,22 +339,22 @@ export default function GalleryPage() {
   return (
     <main>
       <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
-        <h1 style={{ fontSize: 22, margin: 0 }}>Galériám</h1>
+        <h1 style={{ fontSize: 22, margin: 0 }}>{t("Galériám")}</h1>
         <button className={contentCategory === "all" && typeFilter === "all" ? "" : "ghost"}
           disabled={contentCategory === "all" && typeFilter === "all"}
-          onClick={() => { setContentCategory("all"); setTypeFilter("all"); setPage(0); setSelected(new Set()); setItems(null); }}>Összes</button>
+          onClick={() => { setContentCategory("all"); setTypeFilter("all"); setPage(0); setSelected(new Set()); setItems(null); }}>{t("Összes")}</button>
         <button className={contentCategory === "tiktok" ? "" : "ghost"} disabled={contentCategory === "tiktok" && typeFilter === "all"}
-          onClick={() => { setContentCategory("tiktok"); setTypeFilter("all"); setPage(0); setSelected(new Set()); setItems(null); }}>TikTok</button>
+          onClick={() => { setContentCategory("tiktok"); setTypeFilter("all"); setPage(0); setSelected(new Set()); setItems(null); }}>{t("TikTok")}</button>
         <button className={contentCategory === "fanvue" ? "" : "ghost"} disabled={contentCategory === "fanvue" && typeFilter === "all"}
-          onClick={() => { setContentCategory("fanvue"); setTypeFilter("all"); setPage(0); setSelected(new Set()); setItems(null); }}>Fanvue</button>
+          onClick={() => { setContentCategory("fanvue"); setTypeFilter("all"); setPage(0); setSelected(new Set()); setItems(null); }}>{t("Fanvue")}</button>
         <button className={contentCategory === "all" && typeFilter === "video" ? "" : "ghost"}
           disabled={contentCategory === "all" && typeFilter === "video" && albumFilter === "all" && view === "available"}
-          onClick={() => { setContentCategory("all"); setTypeFilter("video"); setPage(0); setAlbumFilter("all"); setView("available"); setSelected(new Set()); setItems(null); }}>Videók</button>
+          onClick={() => { setContentCategory("all"); setTypeFilter("video"); setPage(0); setAlbumFilter("all"); setView("available"); setSelected(new Set()); setItems(null); }}>{t("Videók")}</button>
         <button className={view === "available" ? "" : "ghost"} disabled={view === "available"}
-          onClick={() => { setView("available"); setPage(0); setSelected(new Set()); setItems(null); }}>Használatlan</button>
+          onClick={() => { setView("available"); setPage(0); setSelected(new Set()); setItems(null); }}>{t("Használatlan")}</button>
         <button className={view === "used" ? "" : "ghost"} disabled={view === "used"}
-          onClick={() => { setView("used"); setPage(0); setSelected(new Set()); setItems(null); }}>Felhasznált</button>
-        <select aria-label="Modell galériája" value={characterFilter} onChange={(e) => {
+          onClick={() => { setView("used"); setPage(0); setSelected(new Set()); setItems(null); }}>{t("Felhasznált")}</button>
+        <select aria-label={t("Modell galériája")} value={characterFilter} onChange={(e) => {
           setItems(null); setRecentVideos([]); setVideoCount(0); setPage(0);
           setSelected(new Set());
           characterFilterRef.current = e.target.value;
@@ -361,76 +363,74 @@ export default function GalleryPage() {
           if (typeFilter !== "all") params.set("mediaType", typeFilter);
           window.history.replaceState(null, "", `/gallery?${params}`);
         }}>
-          <option value="all">Összes modell</option>
+          <option value="all">{t("Összes modell")}</option>
           {characters.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
-          <option value="unassigned">Egyéb képek (modell nélkül)</option>
+          <option value="unassigned">{t("Egyéb képek (modell nélkül)")}</option>
         </select>
-        <input placeholder="keresés (asset típus)…" value={q} onChange={(e) => setQ(e.target.value)} style={{ flex: 1, minWidth: 140 }} />
+        <input placeholder={t("keresés (asset típus)…")} value={q} onChange={(e) => setQ(e.target.value)} style={{ flex: 1, minWidth: 140 }} />
         <select value={albumFilter} onChange={(e) => { setAlbumFilter(e.target.value); setPage(0); }}>
-          <option value="all">minden album</option>
+          <option value="all">{t("minden album")}</option>
           {albums.map((a) => <option key={a.id} value={a.id}>{a.name}</option>)}
         </select>
-        <select aria-label="Médiatípus" value={typeFilter} onChange={(e) => { setTypeFilter(e.target.value); if (e.target.value === "video") { setContentCategory("all"); setAlbumFilter("all"); } setPage(0); setSelected(new Set()); setItems(null); }}>
-          <option value="all">mind</option><option value="image">kép</option><option value="video">videó</option><option value="audio">hang</option>
+        <select aria-label={t("Médiatípus")} value={typeFilter} onChange={(e) => { setTypeFilter(e.target.value); if (e.target.value === "video") { setContentCategory("all"); setAlbumFilter("all"); } setPage(0); setSelected(new Set()); setItems(null); }}>
+          <option value="all">{t("mind")}</option><option value="image">{t("kép")}</option><option value="video">{t("videó")}</option><option value="audio">{t("hang")}</option>
         </select>
-        <button className="ghost" onClick={createAlbum}>+ Album</button>
+        <button className="ghost" onClick={createAlbum}>{t("+ Album")}</button>
         {albums.length > 0 && selected.size > 0 && (
           <select value="" onChange={(e) => e.target.value && assignToAlbum(e.target.value)}>
-            <option value="">→ albumba…</option>
+            <option value="">{t("→ albumba…")}</option>
             {albums.map((a) => <option key={a.id} value={a.id}>{a.name}</option>)}
           </select>
         )}
-        {selected.size > 0 && <button className="ghost" disabled={deleting} onClick={removeMany}>{deleting ? "Törlés…" : `Törlés (${selected.size})`}</button>}
+        {selected.size > 0 && <button className="ghost" disabled={deleting} onClick={removeMany}>{deleting ? t("Törlés…") : t("Törlés ({p0})", {p0: selected.size})}</button>}
         {selected.size > 0 && <button className="ghost" disabled={downloading} onClick={() => void downloadSelected()}>
-          {downloading ? "ZIP készítése…" : `Kijelöltek letöltése ZIP-ben (${selected.size})`}
+          {downloading ? t("ZIP készítése…") : t("Kijelöltek letöltése ZIP-ben ({p0})", {p0: selected.size})}
         </button>}
         {items && items.some(it => selected.has(it.galleryItemId) && it.mediaType === "video") &&
-          <button className="ghost" disabled={savingVideoApproval} onClick={() => void setVideoApproval(items.filter(it => selected.has(it.galleryItemId) && it.mediaType === "video").map(it => it.galleryItemId), true)}>
-            Jó alapvideóként jelölés
-          </button>}
+          <button className="ghost" disabled={savingVideoApproval} onClick={() => void setVideoApproval(items.filter(it => selected.has(it.galleryItemId) && it.mediaType === "video").map(it => it.galleryItemId), true)}>{t("Jó alapvideóként jelölés")}</button>}
         {selected.size > 0 && <button className="ghost" disabled={savingUsage !== null}
-          onClick={() => void setUsed([...selected], view === "available")}>{view === "available" ? "Felhasználva jelölés" : "Vissza a használatlanokhoz"} ({selected.size})</button>}
+          onClick={() => void setUsed([...selected], view === "available")}>{view === "available" ? t("Felhasználva jelölés") : t("Vissza a használatlanokhoz")} ({selected.size})</button>}
       </div>
-      {usageError && <p className="error" role="alert">{usageError}</p>}
+      {usageError && <p className="error" role="alert">{t(usageError)}</p>}
       {editStatus && <p role="status">{editStatus}</p>}
       {editingItem && (
-        <div className="card" role="dialog" aria-modal="true" aria-label="Kép módosítása" style={{ marginTop: 16 }}>
-          <h2>Kép módosítása</h2>
-          {editingItem.url && <Image src={editingItem.url} alt="Szerkesztendő kép" width={240} height={360} style={{ width: "auto", maxWidth: "100%", height: 240, objectFit: "contain" }} />}
-          <label htmlFor="gallery-edit-prompt">Mit változtassak a képen? Írd le magyarul.</label>
+        <div className="card" role="dialog" aria-modal="true" aria-label={t("Kép módosítása")} style={{ marginTop: 16 }}>
+          <h2>{t("Kép módosítása")}</h2>
+          {editingItem.url && <Image src={editingItem.url} alt={t("Szerkesztendő kép")} width={240} height={360} style={{ width: "auto", maxWidth: "100%", height: 240, objectFit: "contain" }} />}
+          <label htmlFor="gallery-edit-prompt">{t("Mit változtassak a képen? Írd le magyarul.")}</label>
           <textarea id="gallery-edit-prompt" rows={3} maxLength={1500} value={editPrompt}
-            onChange={(e) => setEditPrompt(e.target.value)} placeholder="Például: a ruha legyen piros, minden más maradjon ugyanaz" />
+            onChange={(e) => setEditPrompt(e.target.value)} placeholder={t("Például: a ruha legyen piros, minden más maradjon ugyanaz")} />
           <div style={{ display: "flex", gap: 8, marginTop: 8 }}>
-            <button disabled={editBusy || !editPrompt.trim()} onClick={() => void editImage()}>{editBusy ? "Indítás…" : "Új kép készítése"}</button>
-            <button className="ghost" disabled={editBusy} onClick={() => { setEditingItem(null); setEditPrompt(""); }}>Mégsem</button>
+            <button disabled={editBusy || !editPrompt.trim()} onClick={() => void editImage()}>{editBusy ? t("Indítás…") : t("Új kép készítése")}</button>
+            <button className="ghost" disabled={editBusy} onClick={() => { setEditingItem(null); setEditPrompt(""); }}>{t("Mégsem")}</button>
           </div>
-          <p className="muted">Az eredeti kép megmarad. Az új kép ugyanahhoz a modellhez és galériához kerül.</p>
+          <p className="muted">{t("Az eredeti kép megmarad. Az új kép ugyanahhoz a modellhez és galériához kerül.")}</p>
         </div>
       )}
       {downloadStatus && <p role="status">{downloadStatus}</p>}
-      {videoError && <p role="status">{videoError}</p>}
-      {typeFilter !== "video" && recentVideos.length > 0 && <section aria-label="Legutóbbi videók" style={{ marginTop: 20, marginBottom: 24 }}>
-        <h2 style={{ fontSize: 20 }}>Legutóbbi videók ({videoCount})</h2>
-        <p className="muted">A kiválasztott modell elkészült, használatlan videói, TikTok és Fanvue kategóriából is.</p>
+      {videoError && <p role="status">{t(videoError)}</p>}
+      {typeFilter !== "video" && recentVideos.length > 0 && <section aria-label={t("Legutóbbi videók")} style={{ marginTop: 20, marginBottom: 24 }}>
+        <h2 style={{ fontSize: 20 }}>{t("Legutóbbi videók (")}{videoCount})</h2>
+        <p className="muted">{t("A kiválasztott modell elkészült, használatlan videói, TikTok és Fanvue kategóriából is.")}</p>
         <div className="grid">{recentVideos.map(it => <div className="card" key={it.galleryItemId} style={{ padding: 10 }}>
-          {it.motionPart && <p className="muted">{it.motionPart.index}/{it.motionPart.total}. rész · {it.motionPart.sequence.slice(0, 8)}</p>}
+          {it.motionPart && <p className="muted">{it.motionPart.index}/{it.motionPart.total}{t(". rész ·")}{" "}{it.motionPart.sequence.slice(0, 8)}</p>}
           <GalleryVideo url={it.url} onRefresh={() => void load()} />
-          <p>{characters.find(c => c.id === it.characterId)?.name ?? "Egyéb"} · {it.contentCategory === "fanvue" ? "Fanvue" : "TikTok"}</p>
+          <p>{characters.find(c => c.id === it.characterId)?.name ?? t("Egyéb")} · {it.contentCategory === "fanvue" ? "Fanvue" : "TikTok"}</p>
         </div>)}</div>
-        <button className="ghost" onClick={() => { setContentCategory("all"); setTypeFilter("video"); setAlbumFilter("all"); setView("available"); setPage(0); setSelected(new Set()); setItems(null); }}>Összes videó megnyitása ({videoCount})</button>
+        <button className="ghost" onClick={() => { setContentCategory("all"); setTypeFilter("video"); setAlbumFilter("all"); setView("available"); setPage(0); setSelected(new Set()); setItems(null); }}>{t("Összes videó megnyitása (")}{videoCount})</button>
       </section>}
-      <p className="muted">{view === "available" ? "Az itt felhasználva jelölt képek átkerülnek a Felhasznált képek nézetbe." : "A felhasznált képek megmaradnak, innen letölthetők és visszaállíthatók."}</p>
-      <p className="muted">{total} elem · {page + 1}. oldal{selected.size > 0 && ` · ${selected.size} kiválasztva`}</p>
+      <p className="muted">{view === "available" ? t("Az itt felhasználva jelölt képek átkerülnek a Felhasznált képek nézetbe.") : t("A felhasznált képek megmaradnak, innen letölthetők és visszaállíthatók.")}</p>
+      <p className="muted">{total}{" "}{t("elem ·")}{" "}{page + 1}{t(". oldal")}{selected.size > 0 && t(" · {p0} kiválasztva", {p0: selected.size})}</p>
       {total > 24 && <div style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 12 }}>
-        <button className="ghost" disabled={page === 0} onClick={() => { setPage(page - 1); setSelected(new Set()); }}>Előző oldal</button>
+        <button className="ghost" disabled={page === 0} onClick={() => { setPage(page - 1); setSelected(new Set()); }}>{t("Előző oldal")}</button>
         <span>{page + 1} / {Math.ceil(total / 24)}</span>
-        <button className="ghost" disabled={(page + 1) * 24 >= total} onClick={() => { setPage(page + 1); setSelected(new Set()); }}>Következő oldal</button>
+        <button className="ghost" disabled={(page + 1) * 24 >= total} onClick={() => { setPage(page + 1); setSelected(new Set()); }}>{t("Következő oldal")}</button>
       </div>}
-      <button className="ghost" onClick={() => void load()}>Galéria frissítése</button>
-      {pendingCount > 0 && <p className="muted">{pendingCount} kép vagy videó feldolgozás alatt. Az eredmények itt automatikusan frissülnek.</p>}
-      {failedEdits > 0 && <p role="status" style={{ color: "#f29a9a" }}>{failedEdits} képszerkesztés meghiúsult az elmúlt órában; ezek krediteit a rendszer visszaadta.</p>}
+      <button className="ghost" onClick={() => void load()}>{t("Galéria frissítése")}</button>
+      {pendingCount > 0 && <p className="muted">{pendingCount}{" "}{t("kép vagy videó feldolgozás alatt. Az eredmények itt automatikusan frissülnek.")}</p>}
+      {failedEdits > 0 && <p role="status" style={{ color: "#f29a9a" }}>{failedEdits}{" "}{t("képszerkesztés meghiúsult az elmúlt órában; ezek krediteit a rendszer visszaadta.")}</p>}
       {filtered.length === 0 ? (
-        <div className="empty">Nincs a szűrésnek megfelelő elem.</div>
+        <div className="empty">{t("Nincs a szűrésnek megfelelő elem.")}</div>
       ) : (
         <div className="grid">
           {filtered.map((it) => (
@@ -443,28 +443,27 @@ export default function GalleryPage() {
                 <GalleryVideo url={it.url} onRefresh={() => void load()} />
               ) : it.mediaType === "video" ? <GalleryVideo url={null} onRefresh={() => void load()} /> : <div className="skeleton" />}
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 8 }}>
-                {it.motionPart && <span className="badge">{it.motionPart.index}/{it.motionPart.total}. rész · {it.motionPart.sequence.slice(0, 8)}</span>}
-                <span className="badge">{characters.find((c) => c.id === it.characterId)?.name ?? "Egyéb"} · {it.contentCategory === "fanvue" ? "Fanvue" : "TikTok"} · {it.mediaType} · {it.mediaType === "video" && it.qcStatus === "approved" ? "Jó alapvideó" : it.qcStatus}{selected.has(it.galleryItemId) && " ✓"}</span>
+                {it.motionPart && <span className="badge">{it.motionPart.index}/{it.motionPart.total}{t(". rész ·")}{" "}{it.motionPart.sequence.slice(0, 8)}</span>}
+                <span className="badge">{characters.find((c) => c.id === it.characterId)?.name ?? t("Egyéb")} · {it.contentCategory === "fanvue" ? "Fanvue" : "TikTok"} · {t(it.mediaType)} · {it.mediaType === "video" && it.qcStatus === "approved" ? t("Jó alapvideó") : t(it.qcStatus)}{selected.has(it.galleryItemId) && " ✓"}</span>
                 <span style={{ display: "flex", gap: 6 }}>
                   <button className="ghost" style={{ padding: "4px 10px" }} disabled={movingCategory !== null}
-                    onClick={() => void moveCategory(it.galleryItemId)}>{movingCategory === it.galleryItemId ? "Áthelyezés…" : it.contentCategory === "fanvue" ? "→ TikTok" : "→ Fanvue"}</button>
+                    onClick={() => void moveCategory(it.galleryItemId)}>{movingCategory === it.galleryItemId ? t("Áthelyezés…") : it.contentCategory === "fanvue" ? "→ TikTok" : "→ Fanvue"}</button>
                   {it.mediaType === "image" && <button className="ghost" style={{ padding: "4px 10px" }}
-                    onClick={() => { setEditingItem(it); setEditPrompt(""); setEditStatus(""); }}>Módosítás</button>}
+                    onClick={() => { setEditingItem(it); setEditPrompt(""); setEditStatus(""); }}>{t("Módosítás")}</button>}
                   {it.mediaType === "video" && <button className="ghost" style={{ padding: "4px 10px" }} disabled={savingVideoApproval}
                     onClick={() => void setVideoApproval([it.galleryItemId], it.qcStatus !== "approved")}>
-                    {it.qcStatus === "approved" ? "Jó jelölés visszavonása" : "Jó alapvideó"}
+                    {it.qcStatus === "approved" ? t("Jó jelölés visszavonása") : t("Jó alapvideó")}
                   </button>}
                   <button className="ghost" style={{ padding: "4px 10px" }} onClick={() => toggle(it.galleryItemId)}
-                    aria-label={selected.has(it.galleryItemId) ? "Kijelölés megszüntetése" : "Kép kijelölése"}>{selected.has(it.galleryItemId) ? "✓" : "Kijelölés"}</button>
+                    aria-label={selected.has(it.galleryItemId) ? t("Kijelölés megszüntetése") : t("Kép kijelölése")}>{selected.has(it.galleryItemId) ? "✓" : t("Kijelölés")}</button>
                   <button className="ghost" style={{ padding: "4px 10px" }} disabled={savingUsage !== null}
-                    onClick={() => void setUsed([it.galleryItemId], view === "available")}>{view === "available" ? "Felhasználva" : "Vissza"}</button>
-                  <a href={it.url ?? "#"} download><button className="ghost" style={{ padding: "4px 10px" }}>Letöltés</button></a>
-                  <button className="ghost" style={{ padding: "4px 10px" }} disabled={deleting} onClick={() => removeOne(it.galleryItemId)}>Törlés</button>
+                    onClick={() => void setUsed([it.galleryItemId], view === "available")}>{view === "available" ? t("Felhasználva") : t("Vissza")}</button>
+                  <a href={it.url ?? "#"} download><button className="ghost" style={{ padding: "4px 10px" }}>{t("Letöltés")}</button></a>
+                  <button className="ghost" style={{ padding: "4px 10px" }} disabled={deleting} onClick={() => removeOne(it.galleryItemId)}>{t("Törlés")}</button>
                 </span>
               </div>
-              {it.usedByCharacterIds.length > 0 && <p className="muted" style={{ marginBottom: 0 }}>
-                Ugyanez a forráskép már felhasználva: {it.usedByCharacterIds.map(id =>
-                  characters.find(c => c.id === id)?.name ?? "Ismeretlen modell").join(", ")}
+              {it.usedByCharacterIds.length > 0 && <p className="muted" style={{ marginBottom: 0 }}>{t("Ugyanez a forráskép már felhasználva:")}{" "}{it.usedByCharacterIds.map(id =>
+                  characters.find(c => c.id === id)?.name ?? t("Ismeretlen modell")).join(", ")}
               </p>}
             </div>
           ))}
