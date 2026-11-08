@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: { default: "Castora", template: "%s · Castora" },
+  title: { default: "Start AI Creator", template: "%s · Start AI Creator" },
   description: "Saját AI-karakterplatform – karakterek, képek, videók, kreditek.",
 };
 

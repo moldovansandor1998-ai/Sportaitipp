@@ -6,7 +6,7 @@ export default function PrivacyPage() {
       <h1>Adatkezelési tájékoztató</h1>
       <p className="muted">Minta-szöveg – végleges változat jogi szakértői átnézés után.</p>
       <h3>1. Adatkezelő</h3>
-      <p>A Castora üzemeltetője (adatok a regisztráció során megadottak szerint).</p>
+      <p>A Start AI Creator üzemeltetője (adatok a regisztráció során megadottak szerint).</p>
       <h3>2. Kezelt adatok</h3>
       <p>E-mail-cím, fiókadatok, feltöltött referenciák és generált tartalmak, kredittranzakciók. Adatokat más felhasználó nem láthat (RLS).</p>
       <h3>3. Tárolás</h3>

@@ -39,7 +39,7 @@ export class MockProvider implements ProviderAdapter {
   async getStatus(): Promise<"done"> { return "done"; }
 
   async getResult(providerJobId: string): Promise<NormalizedOutput> {
-    const svg = mockSvg(providerJobId, "Castora mock kimenet");
+    const svg = mockSvg(providerJobId, "Start AI Creator mock kimenet");
     return {
       files: [{
         kind: "image", dataUrl: `data:image/svg+xml;base64,${Buffer.from(svg).toString("base64")}`,

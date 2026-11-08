@@ -1,5 +1,4 @@
-import { redirect } from "next/navigation";
-
-export default function HomePage() {
-  redirect("/dashboard");
-}
+import LandingPage from "@/components/marketing/LandingPage";
+import { landingMetadata } from "@/lib/seo";
+export const metadata = landingMetadata("hu");
+export default function HomePage() { return <LandingPage locale="hu" />; }

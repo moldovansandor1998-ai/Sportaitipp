@@ -62,6 +62,6 @@ export function renderCarouselPage(title: string, bullets: string[], idx: number
 <text x="60" y="120" font-family="Arial" font-size="30" fill="#7cc4ff">${esc(title)}</text>
 <text x="60" y="220" font-family="Arial" font-size="52" font-weight="bold" fill="#ffffff">${idx + 1}/${total}</text>
 ${rows}
-<text x="60" y="1280" font-family="Arial" font-size="26" fill="#8b93a7">Castora Carousel</text>
+<text x="60" y="1280" font-family="Arial" font-size="26" fill="#8b93a7">Start AI Creator Carousel</text>
 </svg>`;
 }

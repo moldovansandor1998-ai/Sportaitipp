@@ -10,7 +10,7 @@ function layout(title: string, body: string): string {
     <h1 style="font-size:20px;margin:0 0 16px">${title}</h1>
     <div style="font-size:14px;line-height:1.6;color:#b8bdcb">${body}</div>
     <hr style="border:none;border-top:1px solid #232838;margin:24px 0"/>
-    <p style="font-size:12px;color:#6b7385">Castora – saját AI-karakterplatform</p>
+    <p style="font-size:12px;color:#6b7385">Start AI Creator – saját AI-karakterplatform</p>
   </div></body></html>`;
 }
 
@@ -21,7 +21,7 @@ const esc = (s: unknown): string =>
 export function renderTemplate(template: EmailTemplate, p: Record<string, unknown>): { subject: string; html: string } {
   switch (template) {
     case "welcome":
-      return { subject: "Üdvözlünk a Castorában!", html: layout("Üdvözlünk!", `<p>Köszönjük a regisztrációt. A kezdőkreditek jóváíródtak a fiókodon.</p>`) };
+      return { subject: "Üdvözlünk a Start AI Creator felületén!", html: layout("Üdvözlünk!", `<p>Köszönjük a regisztrációt. A kezdőkreditek jóváíródtak a fiókodon.</p>`) };
     case "verify_email":
       return { subject: "E-mail-cím megerősítése", html: layout("Megerősítés", `<p>Kattints a megerősítő linkre: <a href="${esc(p.confirmUrl)}" style="color:#7cc4ff">${esc(p.confirmUrl)}</a></p>`) };
     case "reset_password":

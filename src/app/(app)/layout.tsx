@@ -70,7 +70,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
     <div className="app-shell">
       <aside className={`sidebar ${collapsed ? "collapsed" : ""}`}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
-          {!collapsed && <strong>Castora</strong>}
+          {!collapsed && <strong>Start AI Creator</strong>}
           <button className="ghost" style={{ padding: "4px 10px" }} onClick={() => setCollapsed(!collapsed)}>☰</button>
         </div>
         {NAV.filter((item) => item.href !== "/admin" || isAdmin).map((item) => (

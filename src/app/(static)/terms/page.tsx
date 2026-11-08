@@ -6,7 +6,7 @@ export default function TermsPage() {
       <h1>Felhasználási feltételek</h1>
       <p className="muted">Minta-szöveg – végleges változat jogi szakértői átnézés után.</p>
       <h3>1. Szolgáltatás</h3>
-      <p>A Castora AI-tartalomgeneráló eszközöket biztosít saját, mesterséges karakterek létrehozásához.</p>
+      <p>A Start AI Creator AI-tartalomgeneráló eszközöket biztosít saját, mesterséges karakterek létrehozásához.</p>
       <h3>2. Tiltott tartalmak</h3>
       <p>Tilos kiskorúakat ábrázoló, valós személyről beleegyezés nélkül készült, vagy jogellenes tartalom generálása. A megszegés fiókzárást eredményez.</p>
       <h3>3. Hozzájárulás</h3>

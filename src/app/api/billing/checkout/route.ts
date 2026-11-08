@@ -26,7 +26,7 @@ export async function POST(req: NextRequest) {
     cancel_url: `${process.env.APP_URL}/plans?canceled=1`,
     "line_items[0][price_data][currency]": "huf",
     "line_items[0][price_data][unit_amount]": String((plan as { price_huf: number }).price_huf * 100),
-    "line_items[0][price_data][product_data][name]": `Castora ${(plan as { name: string }).name} – ${(plan as { credits: number }).credits} kredit`,
+    "line_items[0][price_data][product_data][name]": `Start AI Creator ${(plan as { name: string }).name} – ${(plan as { credits: number }).credits} kredit`,
     "line_items[0][quantity]": "1",
     "metadata[userId]": user.id,
     "metadata[planId]": (plan as { id: string }).id,
