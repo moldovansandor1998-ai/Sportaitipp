@@ -1,5 +1,1 @@
-{
-  "crons": [
-    { "path": "/api/jobs/process", "schedule": "* * * * *" }
-  ]
-}
+{"git":{"deploymentEnabled":false},"ignoreCommand":"exit 0"}
