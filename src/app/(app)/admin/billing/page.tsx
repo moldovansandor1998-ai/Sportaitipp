@@ -4,6 +4,11 @@ import { useEffect, useRef, useState } from 'react';
 import { loadOwnerFeeReport } from '@/lib/billing/owner-fee-report';
 
 const errors: Record<string, string> = {
+  WHOP_FEE_HTTP_ERROR: 'A Whop hibás HTTP-választ adott. A válasz törzsét nem jelenítjük meg.',
+  WHOP_FEE_SCHEMA_MISMATCH: 'A Whop válasza nem egyezik az ellenőrzött adatformátummal. Díjat nem becsültünk meg.',
+  WHOP_FEE_RESPONSE_INVALID: 'A Whop válasza nem volt érvényes vagy túl nagy volt.',
+  WHOP_FEE_TIMEOUT: 'A Whop díjlekérése túllépte az időkorlátot.',
+  WHOP_FEE_NETWORK_ERROR: 'A Whop díjlekérésénél hálózati vagy válaszolvasási hiba történt.',
   AUTH_REQUIRED: 'Ebben a böngészőben nincs használható bejelentkezés. Nyisd meg ezt az oldalt abban a böngészőben, ahol már be vagy jelentkezve.',
   OWNER_REQUIRED: 'A díjkimutatás csak a tulajdonosi fiókkal érhető el.',
   WHOP_FEE_READ_NOT_CONFIGURED: 'Az éles díjlekérés nincs beállítva.',
@@ -30,7 +35,7 @@ export default function OwnerBillingPage() {
       if (result.ok) setReport(result.text);
       else {
         setDenied(['OWNER_REQUIRED', 'WHOP_FEE_READ_FORBIDDEN', 'WHOP_FEE_READ_UNAUTHORIZED'].includes(result.code));
-        setMessage(`${errors[result.code] ?? 'A díjlekérés most nem sikerült.'} (${result.code})`);
+        setMessage(`${errors[result.code] ?? 'A díjlekérés most nem sikerült.'} (${result.code})${result.detail ? ` ${result.detail}` : ''}`);
       }
     } finally {
       clearTimeout(timeout);

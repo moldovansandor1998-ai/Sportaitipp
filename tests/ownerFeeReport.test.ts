@@ -55,4 +55,20 @@ describe('existing owner session fee report', () => {
     const middleware = readFileSync('src/lib/supabase/middleware.ts', 'utf8');
     expect(middleware).toContain('"/admin"'); expect(middleware).toContain('isInternalPath(path) && !isInternalOwner(');
   });
+  it('shows only bounded safe diagnostic fields and no arbitrary raw error properties', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify({ code: 'WHOP_FEE_SCHEMA_MISMATCH',
+      diagnostic: { stage: 'schema', upstreamStatus: 200, issueCount: 2,
+        issues: [{ path: 'card_processing.percentage', code: 'invalid_type', message: token, input: token }],
+        body: token, headers: { authorization: token }, message: token } }), { status: 502 })));
+    const result = await loadOwnerFeeReport();
+    expect(result).toEqual({ ok: false, code: 'WHOP_FEE_SCHEMA_MISMATCH', detail: JSON.stringify({ stage: 'schema',
+      upstreamStatus: 200, issueCount: 2, issues: [{ path: 'card_processing.percentage', code: 'invalid_type' }] }) });
+    expect(JSON.stringify(result)).not.toContain(token);
+  });
+  it('keeps numeric upstream failures visible rather than collapsing them to unavailable', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify({ code: 'WHOP_FEE_HTTP_ERROR',
+      diagnostic: { stage: 'http', upstreamStatus: 404, body: token } }), { status: 502 })));
+    expect(await loadOwnerFeeReport()).toEqual({ ok: false, code: 'WHOP_FEE_HTTP_ERROR', detail: '{"stage":"http","upstreamStatus":404}' });
+  });
+
 });

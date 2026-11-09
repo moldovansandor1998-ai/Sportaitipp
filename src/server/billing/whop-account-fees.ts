@@ -38,33 +38,62 @@ export function sanitizeWhopAccountFees(raw: unknown, retrievedAt: string) {
     currentRatesArePermanentCeilings: false, schedule };
 }
 
+class FeeBodyError extends Error {
+  constructor(readonly reason: 'empty' | 'too_large' | 'invalid_json' | 'invalid_encoding') { super(reason); }
+}
+
+const safeIssueKeys = new Set<string>([...feeNames, 'account_id', 'parent_account_id', 'markups', 'payments',
+  'payment_methods', 'payouts', 'percentage', 'fixed', 'amount', 'currency', 'decimals', 'display_decimals',
+  'category', 'ends_at', 'source', 'region', 'regions', 'default', 'reset']);
+function schemaDiagnostic(error: z.ZodError, upstreamStatus: number | undefined) {
+  return { stage: 'schema', upstreamStatus, issueCount: Math.min(error.issues.length, 10000),
+    issues: error.issues.slice(0, 8).map(issue => ({
+      path: issue.path.slice(0, 8).map(part => typeof part === 'string' && safeIssueKeys.has(part) ? part : '<entry>').join('.') || '<root>',
+      code: issue.code,
+    })) };
+}
+
 async function boundedJson(response: Response): Promise<unknown> {
-  if (!response.body || Number(response.headers.get('content-length')) > 1_000_000) throw new Error('Fee response invalid');
+  if (!response.body) throw new FeeBodyError('empty');
+  if (Number(response.headers.get('content-length')) > 1_000_000) throw new FeeBodyError('too_large');
   const reader = response.body.getReader(); const chunks: Uint8Array[] = []; let bytes = 0;
   try {
     while (true) {
       const part = await reader.read(); if (part.done) break;
       bytes += part.value.byteLength;
-      if (bytes > 1_000_000) { await reader.cancel(); throw new Error('Fee response too large'); }
+      if (bytes > 1_000_000) { await reader.cancel(); throw new FeeBodyError('too_large'); }
       chunks.push(part.value);
     }
   } finally { reader.releaseLock(); }
-  return JSON.parse(new TextDecoder('utf-8', { fatal: true }).decode(Buffer.concat(chunks)));
+  let text: string;
+  try { text = new TextDecoder('utf-8', { fatal: true }).decode(Buffer.concat(chunks)); }
+  catch { throw new FeeBodyError('invalid_encoding'); }
+  try { return JSON.parse(text); } catch { throw new FeeBodyError('invalid_json'); }
 }
 
 export async function readWhopAccountFees(env: Record<string, string | undefined> = process.env, fetcher = fetch) {
   if (env.VERCEL_ENV !== 'production' || env.WHOP_ENVIRONMENT === 'sandbox' || !env.WHOP_API_KEY)
     return { status: 503, body: { code: 'WHOP_FEE_READ_NOT_CONFIGURED' } };
+  let stage: 'network' | 'json' | 'schema' = 'network';
+  let upstreamStatus: number | undefined;
   try {
     const response = await fetcher(WHOP_FEE_URL, { method: 'GET', redirect: 'error', cache: 'no-store',
       signal: AbortSignal.timeout(8000), headers: { Authorization: `Bearer ${env.WHOP_API_KEY}`,
         Accept: 'application/json', 'Api-Version-Date': WHOP_API_VERSION_DATE } });
+    upstreamStatus = response.status;
     if (response.status === 403) return { status: 403, body: { code: 'WHOP_FEE_READ_FORBIDDEN', access: 'denied', scopeExpansionAttempted: false } };
     if (response.status === 401) return { status: 502, body: { code: 'WHOP_FEE_READ_UNAUTHORIZED', access: 'not_verified', scopeExpansionAttempted: false } };
-    if (!response.ok) return { status: 502, body: { code: 'WHOP_FEE_READ_UNAVAILABLE' } };
-    return { status: 200, body: { code: 'WHOP_FEES_READ', ...sanitizeWhopAccountFees(await boundedJson(response), new Date().toISOString()) } };
-  } catch {
-    // Never return, log or interpolate a credential, upstream body or exception.
-    return { status: 502, body: { code: 'WHOP_FEE_READ_UNAVAILABLE' } };
+    if (!response.ok) return { status: 502, body: { code: 'WHOP_FEE_HTTP_ERROR', diagnostic: { stage: 'http', upstreamStatus } } };
+    stage = 'json';
+    const raw = await boundedJson(response);
+    stage = 'schema';
+    return { status: 200, body: { code: 'WHOP_FEES_READ', ...sanitizeWhopAccountFees(raw, new Date().toISOString()) } };
+  } catch (error) {
+    // Diagnostics contain only fixed classifications, numeric status and bounded
+    // schema paths/codes. Never include values, headers, body, message or stack.
+    if (error instanceof z.ZodError) return { status: 502, body: { code: 'WHOP_FEE_SCHEMA_MISMATCH', diagnostic: schemaDiagnostic(error, upstreamStatus) } };
+    if (error instanceof FeeBodyError) return { status: 502, body: { code: 'WHOP_FEE_RESPONSE_INVALID', diagnostic: { stage: 'json', upstreamStatus, reason: error.reason } } };
+    const timedOut = error instanceof Error && ['AbortError', 'TimeoutError'].includes(error.name);
+    return { status: 502, body: { code: timedOut ? 'WHOP_FEE_TIMEOUT' : 'WHOP_FEE_NETWORK_ERROR', diagnostic: { stage, upstreamStatus } } };
   }
 }

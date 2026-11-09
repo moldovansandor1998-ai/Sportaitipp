@@ -65,4 +65,43 @@ describe('owner-only Whop fee read and secret isolation', () => {
     expect(JSON.stringify(failed)).not.toContain(fixtureKey);
     for (const log of logs) expect(log).not.toHaveBeenCalled();
   });
+  it.each([400, 404, 429, 500])('returns only numeric upstream status for HTTP %s', async status => {
+    const fetcher = vi.fn(async () => new Response(JSON.stringify({ secret: fixtureKey }), { status }));
+    const result = await readWhopAccountFees(env, fetcher);
+    expect(result).toEqual({ status: 502, body: { code: 'WHOP_FEE_HTTP_ERROR', diagnostic: { stage: 'http', upstreamStatus: status } } });
+    expect(fetcher).toHaveBeenCalledOnce();
+  });
+  it('distinguishes invalid JSON, body limits and empty responses without body output', async () => {
+    const fixtures = [
+      [new Response(fixtureKey), 'invalid_json'],
+      [new Response('{}', { headers: { 'content-length': '1000001' } }), 'too_large'],
+      [new Response(null), 'empty'],
+    ] as const;
+    for (const [response, reason] of fixtures) {
+      expect(await readWhopAccountFees(env, vi.fn(async () => response))).toEqual({ status: 502,
+        body: { code: 'WHOP_FEE_RESPONSE_INVALID', diagnostic: { stage: 'json', upstreamStatus: 200, reason } } });
+    }
+  });
+  it('reports bounded schema paths/codes, never field values or unknown dynamic keys', async () => {
+    const raw = rawSchedule();
+    const malformed = { ...raw, card_processing: { ...fee, percentage: fixtureKey },
+      payment_methods: { [fixtureKey]: { ...fee, fixed: { ...fixed, amount: fixtureKey } } } };
+    const result = await readWhopAccountFees(env, vi.fn(async () => new Response(JSON.stringify(malformed))));
+    const serialized = JSON.stringify(result);
+    expect(result.body).toMatchObject({ code: 'WHOP_FEE_SCHEMA_MISMATCH', diagnostic: { stage: 'schema', upstreamStatus: 200 } });
+    expect(serialized).toContain('card_processing.percentage'); expect(serialized).toContain('payment_methods.<entry>.fixed.amount');
+    expect(serialized).not.toContain(fixtureKey); expect(serialized).not.toContain('message');
+    const many = await readWhopAccountFees(env, vi.fn(async () => new Response('{}')));
+    const diagnostic = 'diagnostic' in many.body ? many.body.diagnostic : undefined;
+    expect(diagnostic && 'issues' in diagnostic ? diagnostic.issues.length : 0).toBe(8);
+  });
+  it('distinguishes timeout from other network failures without error message or retry', async () => {
+    for (const [error, code] of [[new DOMException(fixtureKey, 'TimeoutError'), 'WHOP_FEE_TIMEOUT'], [new Error(fixtureKey), 'WHOP_FEE_NETWORK_ERROR']] as const) {
+      const fetcher = vi.fn(async () => { throw error; });
+      const result = await readWhopAccountFees(env, fetcher);
+      expect(result.body).toMatchObject({ code, diagnostic: { stage: 'network' } });
+      expect(JSON.stringify(result)).not.toContain(fixtureKey); expect(fetcher).toHaveBeenCalledOnce();
+    }
+  });
+
 });
