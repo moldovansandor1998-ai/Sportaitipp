@@ -45,9 +45,11 @@ describe('existing owner session fee report', () => {
     vi.stubGlobal('fetch', fetcher);
     for (let i = 0; i < 3; i++) expect(await loadOwnerFeeReport()).toEqual({ ok: false, code: 'FEE_READ_UNAVAILABLE' });
   });
-  it('keeps clipboard output report-only and the page behind existing admin middleware', () => {
+  it('keeps PDF output report-only and the page behind existing admin middleware', () => {
     const page = readFileSync('src/app/(app)/admin/billing/page.tsx', 'utf8');
-    expect(page).toContain('navigator.clipboard.writeText(report)');
+    expect(page).toContain('downloadOwnerFeePdf(report)');
+    expect(page).not.toContain('navigator.clipboard');
+    expect(page).toContain('PDF-ben');
     expect(page).not.toMatch(/localStorage|document\.cookie|access_token|signInWith|dangerouslySetInnerHTML/);
     expect(page).toContain('if (pending.current || denied) return');
     expect(page).toContain('disabled={busy || denied}');

@@ -2,6 +2,7 @@
 import Link from 'next/link';
 import { useEffect, useRef, useState } from 'react';
 import { loadOwnerFeeReport } from '@/lib/billing/owner-fee-report';
+import { downloadOwnerFeePdf } from '@/lib/billing/fee-report-pdf';
 
 const errors: Record<string, string> = {
   WHOP_FEE_HTTP_ERROR: 'A Whop hibás HTTP-választ adott. A válasz törzsét nem jelenítjük meg.',
@@ -47,10 +48,10 @@ export default function OwnerBillingPage() {
     }
   }
 
-  async function copyReport() {
+  function downloadReport() {
     if (!report) return;
-    try { await navigator.clipboard.writeText(report); setMessage('A díjkimutatás másolva.'); }
-    catch { setMessage('A másolás nem sikerült. A kimutatás szövege kézzel is kijelölhető.'); }
+    try { downloadOwnerFeePdf(report); setMessage('A teljes PDF letöltését elindítottuk. A fájlt csatolhatod az üzenethez; másolás nem szükséges.'); }
+    catch { setMessage('A PDF letöltése nem indult el. A kimutatás megmaradt; próbáld újra a letöltés gombját.'); }
   }
 
   return <main style={{ maxWidth: 900 }}>
@@ -60,9 +61,14 @@ export default function OwnerBillingPage() {
     <p className="muted">Csak olvasás. Nem kapcsol be fizetést, és nem módosít kreditet vagy jogosultságot. A jelenlegi díjak nem garantált jövőbeli díjplafonok.</p>
     <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
       <button onClick={readFees} disabled={busy || denied}>{busy ? 'Lekérés…' : 'Whop-díjak lekérése'}</button>
-      <button className="ghost" onClick={copyReport} disabled={!report || busy}>Díjkimutatás másolása</button>
+      <button className="ghost" onClick={downloadReport} disabled={!report || busy}>Teljes díjkimutatás letöltése PDF-ben</button>
     </div>
     <p role="status" aria-live="polite">{message}</p>
-    {report && <pre aria-label="Whop díjkimutatás" style={{ whiteSpace: 'pre-wrap', overflowWrap: 'anywhere', userSelect: 'text' }}>{report}</pre>}
+    {report && <>
+      <p>A PDF a teljes, ellenőrzött díjtáblázatot tartalmazza, oldalszámokkal. A fájl ebben a böngészőben készül, nincs külső szolgáltatásnak feltöltve, és nem tartalmaz hozzáférési kulcsot.</p>
+      <details><summary>Kimutatás megtekintése</summary>
+        <pre aria-label="Whop díjkimutatás" style={{ whiteSpace: 'pre-wrap', overflowWrap: 'anywhere', userSelect: 'text' }}>{report}</pre>
+      </details>
+    </>}
   </main>;
 }
