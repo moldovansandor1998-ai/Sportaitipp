@@ -5,6 +5,10 @@ import { SOCIAL_IMAGE_PATH } from "@/lib/seo";
 
 const PUBLIC_PATHS = new Set([
   ...PUBLIC_LOCALES.map(publicLocalePath), "/en", "/robots.txt", "/sitemap.xml", "/icon.svg", SOCIAL_IMAGE_PATH,
+  "/media/showcase/cinematic-models.mp4",
+  "/media/showcase/cinematic-models.jpg",
+  "/media/showcase/product-studio.mp4",
+  "/media/showcase/product-studio.jpg",
   "/images/feature-photos/image-generation.png",
   "/images/feature-photos/video-motion.png",
   "/images/feature-photos/voice-talking-video.png",

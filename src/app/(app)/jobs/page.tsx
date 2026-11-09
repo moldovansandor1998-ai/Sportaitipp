@@ -1,9 +1,11 @@
 "use client";
+import JobProgress from '@/components/jobs/JobProgress';
+import type { ProgressInput } from '@/lib/jobs/progress';
 import { useAppTranslation } from "@/components/i18n/AppLanguageProvider";
 import { useEffect, useState } from "react";
 import { browserClient } from "@/lib/supabase/client";
 
-interface JobListRow {
+interface JobListRow extends ProgressInput {
   id: string; type: string; status: string;
   cost_estimate: number; cost_final: number | null; error: { message?: string } | null;
 }
@@ -19,9 +21,9 @@ export default function JobsPage() {
     const { data: { user } } = await getSb().auth.getUser();
     if (!user) return;
     const { data } = await getSb().from("generation_jobs")
-      .select("id,type,status,cost_estimate,cost_final,queued_at,started_at,finished_at,error")
+      .select("id,type,status,cost_estimate,cost_final,queued_at,started_at,created_at,finished_at,error,provider_meta")
       .eq("owner_id", user.id).order("created_at", { ascending: false }).limit(50);
-    setJobs(data ?? []);
+    setJobs((data ?? []).map(job => ({ ...job, checked_at: Date.now() })));
     if (data?.[0]) {
       const { data: ev } = await getSb().from("generation_job_events")
         .select("*").eq("job_id", data[0].id).order("created_at");
@@ -33,7 +35,7 @@ export default function JobsPage() {
   return (
     <main>
       <h1 style={{ fontSize: 22, marginTop: 0 }}>{t("Feladataim")}</h1>
-      <div className="card">
+      <div className="card jobs-list-scroll">
         <table width="100%" cellPadding={8} style={{ borderCollapse: "collapse" }}>
           <thead>
             <tr style={{ textAlign: "left", color: "var(--muted)", fontSize: 12 }}>
@@ -43,7 +45,7 @@ export default function JobsPage() {
           <tbody>
             {jobs.map((j) => (
               <tr key={j.id} style={{ borderTop: "1px solid var(--border)", fontSize: 14 }}>
-                <td>{j.type}</td><td><span className="badge">{t(j.status)}</span></td>
+                <td>{j.type}</td><td><JobProgress job={j} compact ownerFallback={<span className="badge">{t(j.status)}</span>} /></td>
                 <td>{j.cost_estimate}</td><td>{j.cost_final ?? "–"}</td>
                 <td className="error">{j.error?.message ?? ""}</td>
               </tr>

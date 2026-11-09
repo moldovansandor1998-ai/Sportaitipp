@@ -40,7 +40,7 @@ export const CreateJobSchema = z.object({
   type: JobTypeSchema,
   characterId: z.string().uuid().optional(),
   projectId: z.string().uuid().optional(),
-  payload: z.record(z.unknown()).default({}),
+  payload: z.record(z.string(), z.unknown()).default({}),
   idempotencyKey: z.string().min(8).max(120).optional(),
 }).superRefine((val, ctx) => {
   // Jobtípusonkénti payload-validáció – hiány esetén 400, kredit NEM vonódik le
