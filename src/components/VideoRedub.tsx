@@ -1,4 +1,6 @@
 "use client";
+import JobProgress from '@/components/jobs/JobProgress';
+import type { ProgressInput } from '@/lib/jobs/progress';
 import { useAppTranslation } from "@/components/i18n/AppLanguageProvider";
 
 import { useEffect, useId, useRef, useState } from "react";
@@ -6,7 +8,7 @@ import { REDUB_MAX_TEXT, type RedubDelivery } from "@/lib/videoRedub";
 import { TALKING_COMMENT_SCRIPT, type TalkingMotion } from "@/lib/imageTalking";
 
 interface Media { assetId: string; mediaType: string; url: string | null; characterId?: string | null; }
-interface Job { id: string; status: string; }
+interface Job extends ProgressInput { id: string; status: string; }
 interface Quote { key: string; credits: number; speechSeconds?: number; sourceSeconds?: number; }
 interface Props {
   mode?: "video" | "image";
@@ -177,7 +179,7 @@ const errors: Record<string, string> = {
       setSpeechSignature(signature); setVideoQuote(null);
       props.onRun("speech", { videoRedubSpeech: true, text: text.trim(), delivery });
     }}>{t("Hang készítése ·")}{" "}{speechQuote.credits}{" "}{t("kredit")}</button>}
-    {props.speechJob && <p className="muted" role="status">{t("Hang:")}{" "}{t(props.speechJob.status)}</p>}
+    {props.speechJob && <JobProgress job={props.speechJob} ownerFallback={<p className="muted" role="status">{t("Hang:")}{" "}{t(props.speechJob.status)}</p>} />}
     {ready && <audio key={props.speechJob?.id} src={audio!.url!} controls preload="metadata" style={{ display: "block", width: "100%", marginTop: 10 }} />}
     {!ready && audio && <p className="muted">{t("Az új szöveghez vagy előadásmódhoz készíts új hangot.")}</p>}
     <h3>{imageMode ? t("2. Beszélő videó készítése a képből") : t("2. A jóváhagyott hanghoz igazított szájmozgás")}</h3>
@@ -186,7 +188,7 @@ const errors: Record<string, string> = {
       <p>{t("A kész videó kb.")}{" "}<strong>{videoQuote.speechSeconds}{" "}{t("másodperc")}</strong>. {imageMode ? t("A teljes, meghallgatott beszédhez készül a mimika és a mozgás.") : <>{t("Alapvideó:")}{" "}{videoQuote.sourceSeconds}{" "}{t("másodperc.")}{Number(videoQuote.speechSeconds) > Number(videoQuote.sourceSeconds) ? t(" A felvétel ismétlődik, hogy a teljes szöveg beleférjen.") : t(" A felvétel a beszéd végén ér véget.")}</>}</p>
       <button type="button" disabled={locked} onClick={() => props.onRun("video", videoPayload)}>{imageMode ? t("Képből beszélő videó készítése") : t("Videó készítése szájszinkronnal")} · {videoQuote.credits}{" "}{t("kredit")}</button>
     </>}
-    {props.videoJob && <p className="muted" role="status">{t("Szájszinkron:")}{" "}{t(props.videoJob.status)}</p>}
+    {props.videoJob && <JobProgress job={props.videoJob} ownerFallback={<p className="muted" role="status">{t("Szájszinkron:")}{" "}{t(props.videoJob.status)}</p>} />}
     {(message || props.message) && <p className="muted" role="status">{message || props.message}</p>}
     {props.videoResults.filter(item => item.mediaType === "video" && item.url).map(item => <div key={item.assetId} style={{ marginTop: 12 }}>
       <video src={item.url!} controls playsInline style={{ maxWidth: "100%", maxHeight: 600 }} />

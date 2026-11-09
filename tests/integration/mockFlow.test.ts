@@ -1,3 +1,4 @@
+import { assertLocalIntegrationTarget } from "../helpers/localIntegration";
 // TELJES mock E2E folyamat valós (helyi) Supabase ellen:
 // regisztráció → karakter → referencia → QC → tréning → tesztkép → identity → active → generálás → galéria → kredit
 // CI-ban (INTEGRATION=1) kötelező a környezet – hiányában HIBA, nem skip!
@@ -69,6 +70,7 @@ describe.skipIf(!process.env.INTEGRATION)("E2E: teljes mock karakterfolyamat", (
   }
 
   beforeAll(async () => {
+    assertLocalIntegrationTarget();
     process.env.NEXT_PUBLIC_SUPABASE_URL = process.env.SUPABASE_URL;
     sb = createClient(process.env.SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!, {
       auth: { persistSession: false, autoRefreshToken: false },

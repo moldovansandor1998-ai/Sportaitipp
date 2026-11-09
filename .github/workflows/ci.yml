@@ -21,6 +21,12 @@ jobs:
         run: npm run typecheck
       - name: Lint
         run: npm run lint
+      - name: Media test prerequisites
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes --no-install-recommends ffmpeg
+          /usr/bin/ffmpeg -version
+          ffprobe -version
       - name: Unit tesztek
         run: npm test
       - name: Production build
@@ -67,6 +73,8 @@ jobs:
         run: psql "$DB_URL" -v ON_ERROR_STOP=1 -f tests/db/rls.sql
       - name: RPC / függvényjog / kredit-atomiság teszt
         run: psql "$DB_URL" -v ON_ERROR_STOP=1 -f tests/db/rpc.sql
+      - name: Reference input validation regression
+        run: psql "$DB_URL" -v ON_ERROR_STOP=1 -f tests/db/reference_credit_validation.sql
       - name: Teljes DB/integrációs tesztcsomag
         env:
           INTEGRATION: "1"
@@ -75,7 +83,7 @@ jobs:
           NEXT_PUBLIC_SUPABASE_URL: ${{ env.NEXT_PUBLIC_SUPABASE_URL }}
           NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ env.NEXT_PUBLIC_SUPABASE_ANON_KEY }}
         run: |
-          npx vitest run tests/integration tests/adminReconcile.test.ts \
+          npx vitest run tests/integration tests/adminReconcile.test.ts --no-file-parallelism \
             --reporter=json \
             --outputFile=/tmp/integration-report.json
       - name: Integrációs riport-ellenőrzés (4 fájl, 0 failed, 0 skipped)

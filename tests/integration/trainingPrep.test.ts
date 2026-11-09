@@ -1,4 +1,5 @@
-// training-prep (INTEGRATION=1): VALÓDI feltöltés a references bucketbe, >8MB ZIP-ág
+import { assertLocalIntegrationTarget } from "../helpers/localIntegration";
+// Local training-prep (INTEGRATION=1): valid JPEG uploads and durable normalized ZIP
 // (imagesZipUrl), ZIP a claim ELŐTT létrejön, TRAINING_ALREADY_ACTIVE-nál a második ZIP eltűnik,
 // a kötött verzió marad – nincs árva character_versions sor.
 import { describe, it, expect, beforeAll } from "vitest";
@@ -18,6 +19,7 @@ describe.skipIf(!ENABLED)("training-prep: ZIP-életciklus és hibaág-takarítá
   };
 
   beforeAll(async () => {
+    assertLocalIntegrationTarget();
     process.env.NEXT_PUBLIC_SUPABASE_URL = process.env.SUPABASE_URL;
     sb = createClient(process.env.SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!, {
       auth: { persistSession: false, autoRefreshToken: false },
@@ -34,9 +36,10 @@ describe.skipIf(!ENABLED)("training-prep: ZIP-életciklus és hibaág-takarítá
     characterId = (c as { id: string }).id;
     await sb.from("credit_accounts").update({ balance: 700 }).eq("user_id", userId);   // 300-as hold fedezete
 
-    // 3 db VALÓDI JPEG (~3,2 MB egyenként) feltöltése a references bucketbe → ZIP > 8 MB
-    const jpeg = Buffer.concat([Buffer.from([0xff, 0xd8, 0xff, 0xe0]), Buffer.alloc(3.2 * 1024 * 1024, 7)]);
+    // Valid images exercise the normalizer, rather than invalid bytes after JPEG magic.
+    const sharp = (await import("sharp")).default;
     for (let i = 0; i < 3; i++) {
+      const jpeg = await sharp({ create: { width: 1024, height: 1024, channels: 3, background: { r: 80 + i * 30, g: 100, b: 140 } } }).jpeg().toBuffer();
       const objectPath = `${userId}/prep-${Date.now()}-${i}.jpg`;
       const { error: upErr } = await sb.storage.from("references").upload(objectPath, jpeg, { contentType: "image/jpeg" });
       if (upErr) throw new Error(upErr.message);
@@ -58,7 +61,7 @@ describe.skipIf(!ENABLED)("training-prep: ZIP-életciklus és hibaág-takarítá
       method: "POST", headers: { authorization: `Bearer ${token}` },
     });
 
-    // 1) első prep: >8MB → imagesZipUrl ág, ZIP FELTÖLTŐDIK (a claim előtt létrejön)
+    // 1) Normalized ZIP is stored durably before the version claim.
     const r1 = await handler(mk(), { params: Promise.resolve({ id: characterId }) });
     expect(r1.status).toBe(200);
     const b1 = await r1.json() as { payload: { imagesZipUrl?: string; imagesDataUrl?: string; versionId: string; destination: string } };

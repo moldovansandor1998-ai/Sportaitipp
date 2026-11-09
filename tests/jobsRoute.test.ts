@@ -26,7 +26,7 @@ afterAll(() => {
 });
 
 const USER = "11111111-1111-1111-1111-111111111111";
-const CHAR = "22222222-2222-2222-2222-222222222222";
+const CHAR = "22222222-2222-4222-8222-222222222222";
 const VER = "33333333-3333-3333-3333-333333333333";
 
 function harness(opts: {
@@ -164,8 +164,8 @@ describe("POST /api/jobs – route handler (fetch-stub)", () => {
     expect(calls.lastKey).toBeTruthy();
   });
   it("saját projectId továbbmegy; idegen → 403; hibás → 400; projectId nélkül is működik", async () => {
-    const own = "44444444-4444-4444-4444-444444444444";
-    const foreign = "55555555-5555-5555-5555-555555555555";
+    const own = "44444444-4444-4444-8444-444444444444";
+    const foreign = "55555555-5555-4555-8555-555555555555";
     // saját
     let { calls } = harness({ character: ACTIVE, version: FAL_VER, project: { id: own } });
     let res = await post({ type: "image_generation", characterId: CHAR, projectId: own, payload: { prompt: "x" } });

@@ -15,7 +15,8 @@ afterAll(() => {
 afterEach(() => vi.unstubAllGlobals());
 
 const USER = "11111111-1111-1111-1111-111111111111";
-const CHAR = "22222222-2222-2222-2222-222222222222";
+// Use an RFC-valid UUID; Zod 4 validates version and variant bits.
+const CHAR = "22222222-2222-4222-8222-222222222222";
 const ACTIVE = { id: CHAR, owner_id: USER, status: "active", active_version_id: "33333333-3333-3333-3333-333333333333" };
 const FAL_VER = { id: "33333333-3333-3333-3333-333333333333", provider: "fal", provider_model_ref: "https://v3.fal.media/w/x.bin", status: "approved" };
 

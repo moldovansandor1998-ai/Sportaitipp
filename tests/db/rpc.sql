@@ -20,6 +20,12 @@ begin
 end $$;
 reset role;
 
+-- Synthetic existing-funded-account fixture, not a signup award.
+do $$ begin
+ if (select balance from public.credit_accounts where user_id='11111111-1111-1111-1111-111111111111')<>0 then raise exception 'New signup awarded credits'; end if;
+end $$;
+update public.credit_accounts set balance=200 where user_id='11111111-1111-1111-1111-111111111111';
+
 -- service szinten: atomiság, idempotencia, fedezetkezelés
 do $$
 declare
@@ -322,7 +328,7 @@ begin
   update public.generation_jobs set status = 'processing' where id = v_job;  -- uncertain → processing szabályos
   update public.generation_jobs set status = 'submission_uncertain' where id = v_job;
   -- hold megmarad, NINCS refund (nincs credit_holds sor ehhez a jobhoz → refund nem történhet)
-  if exists (select 1 from public.credit_transactions where job_id is null and type = 'refund' and note like '%' || v_job::text || '%') then
+  if exists (select 1 from public.credit_transactions where hold_id is null and type = 'refund' and note like '%' || v_job::text || '%') then
     raise exception 'UNCERTAIN BREACH: auto-refund történt';
   end if;
 end $$;
@@ -443,7 +449,7 @@ begin
   update public.generation_jobs set status = 'submitted' where id = v_job;
   update public.generation_jobs set status = 'processing' where id = v_job;
   update public.generation_jobs set status = 'finalizing' where id = v_job;
-  update public.generation_jobs set provider_job_id = 'fal_real_1' where id = v_job;
+  update public.generation_jobs set provider = 'fal', provider_job_id = 'fal_real_1' where id = v_job;
   perform public.complete_job_transactional(v_job, null, '{}'::uuid[], 'fal', 'https://weights.example/lora.bin');
 
   -- 2) pontosan a KÖTÖTT verzió fejlődött; tényleges provider + job ID + weights; NINCS legacy második verzió
@@ -470,7 +476,7 @@ begin
   declare v_job2 uuid;
   begin
     v_job2 := public.create_job_with_hold(
-      v_user, 'image_generation', null, null, '{}', 'test:bind2:' || v_char::text, 10);
+      v_user, 'upscale', null, null, '{}', 'test:bind2:' || v_char::text, 10);
     -- a verzió már 'test_pending' → a tréning-prekondíció amúgy is elutasítaná; a konkrét üzenet:
     begin
       perform public.create_job_with_hold(
