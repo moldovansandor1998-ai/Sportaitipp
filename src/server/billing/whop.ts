@@ -24,6 +24,19 @@ const variantSchema = z.object({
   adaptive_pricing_enabled: z.literal(false), split_pay_required_payments: z.null(),
   offer_cancel_discount: z.literal(false),
 });
+const variantIssuePaths = new Set(['id', 'account', 'account.id', 'product', 'product.id', 'currency',
+  'billing_type', 'billing_period', 'initial_price', 'renewal_price', 'trial_period_days', 'collect_tax',
+  'tax_type', 'adaptive_pricing_enabled', 'split_pay_required_payments', 'offer_cancel_discount']);
+const variantIssueCodes = new Set(['invalid_type', 'invalid_value', 'too_small', 'too_big', 'invalid_union']);
+type WhopReadinessDiagnostic = { stage: 'network' | 'http' | 'json' | 'size' | 'schema' | 'plan_mismatch';
+  status?: number; issues?: { path: string; code: string }[] };
+class WhopReadinessError extends Error {
+  constructor(readonly diagnostic: WhopReadinessDiagnostic) { super('Whop verification failed'); }
+}
+/** Only internally created, sanitized diagnostics may reach readiness logs. */
+export function whopReadinessDiagnostic(error: unknown): WhopReadinessDiagnostic | undefined {
+  return error instanceof WhopReadinessError ? error.diagnostic : undefined;
+}
 const membershipSchema = z.object({
   id, account: z.object({ id }), product_id: id, variant_id: id, user_id: id,
   status: z.enum(['active', 'trialing', 'past_due', 'completed', 'canceled', 'expired', 'unresolved', 'drafted', 'canceling']),
@@ -42,11 +55,16 @@ const paymentSchema = z.object({
 });
 
 export function verifyWhopVariant(raw: unknown, plan: WhopPlan) {
-  const variant = variantSchema.parse(raw);
+  const result = variantSchema.safeParse(raw);
+  if (!result.success) throw new WhopReadinessError({ stage: 'schema', issues: result.error.issues.slice(0, 5).map(issue => {
+    const path = issue.path.map(part => typeof part === 'string' ? part : 'unknown').join('.');
+    return { path: variantIssuePaths.has(path) ? path : 'unknown', code: variantIssueCodes.has(issue.code) ? issue.code : 'unknown' };
+  }) });
+  const variant = result.data;
   if (variant.id !== plan.planId || variant.account.id !== plan.accountId ||
       variant.product.id !== plan.productId || variant.currency !== plan.currency ||
       decimalMinor(String(variant.renewal_price)) !== decimalMinor(plan.monthlyBasePrice)) {
-    throw new Error('Whop plan mismatch');
+    throw new WhopReadinessError({ stage: 'plan_mismatch' });
   }
   return variant;
 }
@@ -109,16 +127,19 @@ export class WhopProvider {
     if (!token) throw new Error('Whop is not configured');
   }
   protected async request(path: string, body?: object, idempotencyKey?: string): Promise<unknown> {
-    const response = await this.fetcher(`${this.sandbox ? 'https://sandbox-api.whop.com' : 'https://api.whop.com'}/api/v1/${path}`, {
+    let response: Response;
+    try { response = await this.fetcher(`${this.sandbox ? 'https://sandbox-api.whop.com' : 'https://api.whop.com'}/api/v1/${path}`, {
       method: body ? 'POST' : 'GET', redirect: 'error', cache: 'no-store', signal: AbortSignal.timeout(4000),
       headers: { Authorization: `Bearer ${this.token}`, 'Content-Type': 'application/json',
         'Api-Version-Date': WHOP_API_VERSION_DATE, ...(idempotencyKey ? { 'Idempotency-Key': idempotencyKey } : {}) },
       ...(body ? { body: JSON.stringify(body) } : {}),
-    });
-    if (!response.ok) throw new Error('Whop request failed'); // Never log provider bodies or customer data.
-    const raw = await response.text();
-    if (raw.length > 1_000_000) throw new Error('Whop response too large');
-    return JSON.parse(raw);
+    }); } catch { throw new WhopReadinessError({ stage: 'network' }); }
+    if (!response.ok) throw new WhopReadinessError({ stage: 'http',
+      ...(Number.isInteger(response.status) && response.status >= 100 && response.status <= 599 ? { status: response.status } : {}) });
+    let raw: string;
+    try { raw = await response.text(); } catch { throw new WhopReadinessError({ stage: 'network' }); }
+    if (raw.length > 1_000_000) throw new WhopReadinessError({ stage: 'size' });
+    try { return JSON.parse(raw); } catch { throw new WhopReadinessError({ stage: 'json' }); }
   }
   async listPaymentPage(plan: Pick<WhopPlan, 'accountId' | 'planId'>, lane: 'paid' | 'refunds' | 'disputes', start: string, end: string, after: string | null) {
     const prefix = lane === 'paid' ? 'created' : lane === 'refunds' ? 'refunded' : 'dispute_created';
