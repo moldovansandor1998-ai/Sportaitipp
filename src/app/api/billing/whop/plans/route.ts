@@ -15,7 +15,7 @@ function logUnavailable(stage: ReadinessStage, error?: unknown) {
   const rawCode = stage === 'database_schema' && error && typeof error === 'object' && 'code' in error ? error.code : null;
   const code = typeof rawCode === 'string' && databaseErrorCodes.has(rawCode) ? rawCode : 'unknown';
   const provider = stage === 'provider_verification' ? whopReadinessDiagnostic(error) : undefined;
-  console.warn('[whop-plans] not ready', { stage, code, ...(provider ? { provider } : {}) });
+  console.warn('[whop-plans] not ready', JSON.stringify({ stage, code, ...(provider ? { provider } : {}) }));
 }
 
 export async function GET() {
