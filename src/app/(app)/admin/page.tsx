@@ -84,6 +84,7 @@ export default function AdminPage() {
   return (
     <main style={{ maxWidth: 760 }}>
       <h1 style={{ fontSize: 22, marginTop: 0 }}>{t("Admin")}</h1>
+      <p><a href="/admin/billing">{t("Whop díjkimutatás")}</a></p>
       <div className="card">
         <h3 style={{ marginTop: 0 }}>{t("submission_uncertain jobok (")}{jobs.length})</h3>
         {jobs.length === 0 && <p className="muted">{t("Nincs bizonytalan job.")}</p>}
