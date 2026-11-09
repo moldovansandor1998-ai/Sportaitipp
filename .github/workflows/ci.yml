@@ -21,6 +21,12 @@ jobs:
         run: npm run typecheck
       - name: Lint
         run: npm run lint
+      - name: Media test prerequisites
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes --no-install-recommends ffmpeg
+          /usr/bin/ffmpeg -version
+          ffprobe -version
       - name: Unit tesztek
         run: npm test
       - name: Production build
