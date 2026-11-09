@@ -19,9 +19,10 @@ const variantSchema = z.object({
   initial_price: z.literal(0), renewal_price: z.number().positive(),
   trial_period_days: z.union([z.literal(0), z.null()]),
   collect_tax: z.literal(true), tax_type: z.literal('exclusive'),
-  // This release settles only exact USD receipts. Localized pricing could
-  // otherwise accept a different currency and leave a paid buyer uncredited.
-  adaptive_pricing_enabled: z.literal(false), split_pay_required_payments: z.null(),
+  // Raw preference, not effective conversion support. Whop's /payment_quotes
+  // presentment_currency contract permits conversion only for one-time purchases.
+  // The literal renewal guard and exact approved USD comparison below remain required.
+  adaptive_pricing_enabled: z.boolean(), split_pay_required_payments: z.null(),
   offer_cancel_discount: z.literal(false),
 });
 const variantIssuePaths = new Set(['id', 'account', 'account.id', 'product', 'product.id', 'currency',
