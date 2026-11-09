@@ -1,4 +1,6 @@
 import "server-only";
+import { assertCreationAllowed, CreationAccessDenied, isCreationAccessCode } from "@/lib/security/creationAccess";
+import { hasOperatingTariff } from "@/lib/providers/operatingTariff";
 import { createHash } from "crypto";
 import sharp from "sharp";
 import { serviceClient } from "@/lib/supabase/server";
@@ -41,6 +43,9 @@ export async function runClaimedJob(job: JobRow, routerOverride?: ReturnType<typ
     }
     return; // éles provider: webhook/poll folytatja
   }
+  // A claimed-but-unsent job keeps its hold and data. The reaper can retry the
+  // read later; manual payment review is never auto-dismissed or auto-refunded.
+  if (!await allowUnsubmittedJob(job)) return;
   if ((job.type === "nureta_scene_image" && job.payload?.sourceAssetId)
     || (job.type === "character_motion_video" && job.payload?.sourceVideoAssetId && job.payload?.motionMethod === "anchored")
     || (job.type === "nureta_scene_video" && job.payload?.sceneImageAssetId)
@@ -53,15 +58,28 @@ export async function runClaimedJob(job: JobRow, routerOverride?: ReturnType<typ
         characterId: job.character_id ?? undefined, payload: job.type === "character_motion_video"
           ? { ...job.payload, videoAssetId: job.payload?.sourceVideoAssetId, voiceMode: job.payload?.replaceVoice === true ? "model" : "original" }
           : job.payload ?? {} });
-      if (prepared.error) { await failJob(job, prepared.error); return; }
+      if (prepared.error) {
+        if (isCreationAccessCode(prepared.error)) throw new CreationAccessDenied(prepared.error);
+        await failJob(job, prepared.error);
+        return;
+      }
       await mustUpdate("generation_jobs", { payload: prepared.payload }, job.id, "submitted");
       job = { ...job, payload: prepared.payload };
     } catch (error) {
-      await failJob(job, error instanceof Error ? error.message : "SCENE_PREPARATION_FAILED");
+      if (error instanceof CreationAccessDenied) await pauseCreation(job, error.code);
+      else await failJob(job, error instanceof Error ? error.message : "SCENE_PREPARATION_FAILED");
       return;
     }
   }
   if (activeRouter.candidates(job.type, job.payload ?? {}).length === 0) throw new Error("NO_PROVIDER_CONFIGURED");
+  if (hasOperatingTariff(job.payload ?? {})) {
+    try {
+      const estimate = await activeRouter.estimate(job.type, job.payload ?? {});
+      if (estimate.credits > job.cost_estimate) throw new Error("CREATION_COST_UNAVAILABLE");
+    } catch { await failJob(job, "CREATION_COST_UNAVAILABLE"); return; }
+  }
+  // Recheck after preparation/estimation, immediately before acquiring submission rights.
+  if (!await allowUnsubmittedJob(job)) return;
   // Ledger-mutex: két párhuzamos workerből pontosan egy nyeri meg a submit-jogot
   const { data: maySubmit } = await sb0.rpc("begin_provider_submission", { p_job: job.id });
   if (!maySubmit) return; // a submit-jog a másik feldolgozóé (vagy már lezajlott)
@@ -128,6 +146,20 @@ export async function runClaimedJob(job: JobRow, routerOverride?: ReturnType<typ
   }
 }
 
+async function pauseCreation(job: JobRow, code: string): Promise<void> {
+  await mustUpdate("generation_jobs", { error: { message: code,
+    recovery: "Creation access must be restored before submission; existing hold retained." } }, job.id, "submitted");
+}
+
+async function allowUnsubmittedJob(job: JobRow): Promise<boolean> {
+  try { await assertCreationAllowed(job.owner_id); return true; }
+  catch (error) {
+    if (!(error instanceof CreationAccessDenied)) throw error;
+    await pauseCreation(job, error.code);
+    return false;
+  }
+}
+
 /** Idempotens finalizálás: storage → assets (upsert) → gallery (dedup) → mock karakterlépés → charge → completed. */
 export async function finalizeJob(jobId: string, output: NormalizedOutput): Promise<void> {
   const sb = serviceClient();
@@ -151,6 +183,8 @@ async function finalizeLocked(
   jobId: string, job: JobRow, output: NormalizedOutput,
   sb: ReturnType<typeof serviceClient>,
 ): Promise<void> {
+  if (hasOperatingTariff(job.payload ?? {}) && output.files.length !== 1)
+    throw new Error("OPERATING_TARIFF_OUTPUT_COUNT_MISMATCH");
   let assetIds: string[];
   if (Array.isArray(output.meta.motionSequenceAssets)) {
     assetIds = output.meta.motionSequenceAssets as string[];

@@ -21,6 +21,8 @@ function authOk(): void {
   vi.stubGlobal("fetch", vi.fn(async (url: string | URL) => {
     const u = String(url);
     if (u.includes("/auth/v1/user")) return new Response(JSON.stringify({ user: { id: USER } }), { status: 200 });
+    if (u.includes("/rest/v1/profiles")) return Response.json({ id: USER, banned_until: null });
+    if (u.includes("/rest/v1/whop_card_memberships")) return Response.json([]);
     if (u.includes("/rest/v1/credit_transactions")) {
       const m = u.match(/idempotency_key=eq\.task(?:%3A|:)([^&]+)/i);
       if (m) {

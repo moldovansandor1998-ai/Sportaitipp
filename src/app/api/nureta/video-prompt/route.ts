@@ -1,3 +1,4 @@
+import { customerTariffRequired } from "@/lib/providers/operatingTariff";
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { z } from "zod";
@@ -14,6 +15,7 @@ export async function POST(request: NextRequest) {
   const auth = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!);
   const { data: { user } } = await auth.auth.getUser(request.headers.get("authorization")?.replace(/^Bearer\s+/i, "") ?? "");
   if (!user) return NextResponse.json({ error: "Jelentkezz be újra." }, { status: 401 });
+  if (customerTariffRequired(user.id)) return NextResponse.json({ error: "CREATION_COST_UNAVAILABLE" }, { status: 409 });
   const input = Input.safeParse(await request.json().catch(() => null));
   if (!input.success) return NextResponse.json({ error: "Érvénytelen videó vagy videóhossz." }, { status: 400 });
   const db = serviceClient();

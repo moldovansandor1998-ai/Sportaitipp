@@ -27,6 +27,7 @@ function baseStub(role = "user"): void {
       return new Response(JSON.stringify({ user: { id: USER, email: role === "admin" ? "moldovansandor1998@gmail.com" : "customer@example.com" } }), { status: 200 });
     }
     if (u.includes("/rest/v1/profiles")) return new Response(JSON.stringify({ role, banned_until: null }), { status: 200 });
+    if (u.includes("/rest/v1/whop_card_memberships")) return Response.json([]);
     if (u.includes("/rest/v1/credit_transactions")) return new Response(JSON.stringify([]), { status: 200 });
     if (u.includes("/rest/v1/rpc/")) return new Response(JSON.stringify("job-1"), { status: 200 });
     if (u.includes("/rest/v1/plans")) return new Response(JSON.stringify({ id: "starter", credits: 1000, price_huf: 4900, name: "Starter" }), { status: 200 });
@@ -77,6 +78,7 @@ describe("TikTok-import", () => {
       const u = String(url);
       if (u.includes("/auth/v1/user")) return new Response(JSON.stringify({ user: { id: USER, email: "moldovansandor1998@gmail.com" } }), { status: 200 });
       if (u.includes("/rest/v1/profiles")) return new Response(JSON.stringify({ role: "admin", banned_until: null }), { status: 200 });
+      if (u.includes("/rest/v1/whop_card_memberships")) return Response.json([]);
       if (u.includes("/rest/v1/credit_transactions")) return new Response(JSON.stringify([]), { status: 200 });
       if (u.includes("/rest/v1/rpc/")) return new Response(JSON.stringify("job-1"), { status: 200 });
       if (u.includes("/rest/v1/viral_trends")) return new Response(JSON.stringify({ id: "t-1" }), { status: 201 });

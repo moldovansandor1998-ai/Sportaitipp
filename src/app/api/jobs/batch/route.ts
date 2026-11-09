@@ -1,3 +1,4 @@
+import { customerTariffRequired } from "@/lib/providers/operatingTariff";
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { serviceClient } from "@/lib/supabase/server";
@@ -15,6 +16,8 @@ async function userId(req: NextRequest) {
 export async function POST(req: NextRequest) {
   const owner = await userId(req);
   if (!owner) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+  // Batch submission has no per-output price acceptance yet. Preserve owner automation.
+  if (customerTariffRequired(owner)) return NextResponse.json({ error: "CREATION_COST_UNAVAILABLE" }, { status: 409 });
   const body = await req.json().catch(() => null) as { characterId?: string; characterIds?: string[]; editModel?: string; contentCategory?: "tiktok" | "fanvue"; files?: Array<{ assetId: string; name: string }> } | null;
   const files = body?.files;
   const characterIds = body?.characterIds ?? (body?.characterId ? [body.characterId] : []);

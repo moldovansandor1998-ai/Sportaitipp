@@ -51,8 +51,9 @@ function harness(opts: {
       return new Response(JSON.stringify({ access_token: "t" }), { status: 200 });
     }
     // PostgREST REST hívások
+    if (u.includes("/rest/v1/whop_card_memberships")) return Response.json([]);
     if (u.includes("/rest/v1/profiles")) {
-      return new Response(JSON.stringify({ id: USER, age_verified_at: "2024-01-01T00:00:00Z" }), { status: 200 });
+      return new Response(JSON.stringify({ id: USER, banned_until: null, age_verified_at: "2024-01-01T00:00:00Z" }), { status: 200 });
     }
     if (u.includes("/rest/v1/characters")) {
       return new Response(JSON.stringify(opts.character ?? null), { status: 200 });

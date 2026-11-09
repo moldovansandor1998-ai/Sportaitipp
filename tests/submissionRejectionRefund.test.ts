@@ -4,6 +4,7 @@ import { failJob, runClaimedJob, type JobRow } from "@/server/jobs/runJob";
 import type { buildRouter } from "@/lib/providers";
 
 const state = vi.hoisted(() => ({ providerId: null as string | null, patches: [] as Array<Record<string, unknown>>, tables: [] as string[], rpc: vi.fn() }));
+vi.mock("@/lib/security/creationAccess", async importOriginal => ({ ...await importOriginal<typeof import("@/lib/security/creationAccess")>(), assertCreationAllowed: vi.fn(async () => {}) }));
 vi.mock("@/lib/providers", () => ({ buildRouter: () => ({}) }));
 vi.mock("@/lib/supabase/server", () => ({ serviceClient: () => ({
   rpc: state.rpc,

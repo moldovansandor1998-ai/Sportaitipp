@@ -1,7 +1,11 @@
 import "server-only";
+import { assertCreationAllowed } from "@/lib/security/creationAccess";
+import { customerTariffRequired, tariffPayload, CreationCostUnavailable } from "@/lib/providers/operatingTariff";
+import type { JobType } from "@/lib/providers/types";
 import { serviceClient } from "@/lib/supabase/server";
 
 export async function holdCredits(userId: string, jobId: string, amount: number) {
+  await assertCreationAllowed(userId);
   const sb = serviceClient();
   const { error } = await sb.rpc("credit_hold", {
     p_user: userId, p_job: jobId, p_amount: amount, p_key: `hold:${jobId}`,
@@ -26,6 +30,15 @@ export async function createJobWithHold(input: {
   userId: string; type: string; characterId?: string; projectId?: string;
   payload: Record<string, unknown>; idempotencyKey: string; costEstimate: number;
 }): Promise<string> {
+  await assertCreationAllowed(input.userId);
+  if (customerTariffRequired(input.userId)) {
+    const payload = tariffPayload(input.userId, input.type, input.payload);
+    const { buildRouter } = await import("@/lib/providers");
+    const estimate = await buildRouter().estimate(input.type as JobType, payload);
+    if (input.costEstimate !== estimate.credits) throw new CreationCostUnavailable();
+    input = { ...input, payload };
+  }
+  await assertCreationAllowed(input.userId);
   const sb = serviceClient();
   const { data: jobId, error } = await sb.rpc("create_job_with_hold", {
     p_owner: input.userId,

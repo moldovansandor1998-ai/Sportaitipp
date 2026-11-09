@@ -1,5 +1,7 @@
 import { resolveMotionStartImage } from "./motionStartImage";
 import "server-only";
+import { assertCreationAllowed, CreationAccessDenied, type CreationAccessCode } from "@/lib/security/creationAccess";
+import { tariffPayload } from "@/lib/providers/operatingTariff";
 import { CreateJobSchema, JobTypeSchema, TTS_VOICES } from "@/lib/security/validation";
 import { resolveCharacterLora, type LoraError } from "@/lib/jobs/characterLora";
 import { buildEasyPrompt, normalizeEasyInput } from "@/lib/promptBuilder";
@@ -10,7 +12,8 @@ import { isAllowedI2vModel } from "@/lib/providers/modelAllowlist";
 import { characterIdentityVariant } from "@/lib/characterIdentity";
 
 export type PrepError =
-  | "validation" | "AGE_VERIFICATION_REQUIRED" | LoraError
+  | CreationAccessCode
+  | "CREATION_COST_UNAVAILABLE" | "validation" | "AGE_VERIFICATION_REQUIRED" | LoraError
   | "CHARACTER_REQUIRED" | "EASY_INPUT_INVALID" | "TTS_VOICE_INVALID"
   | "I2V_MODEL_NOT_ALLOWED" | "URL_NOT_ALLOWED" | "IMAGE_INPUT_REQUIRED" | "SOURCE_IMAGE_REQUIRED"
   | "TRAINED_EDIT_UNAVAILABLE" | "VIDEO_FORMAT_UNSUPPORTED" | "SCENE_PREVIEW_REQUIRED" | "REDUB_DURATION_LIMIT" | "MOTION_DURATION_LIMIT"
@@ -37,8 +40,16 @@ export async function prepareValidatedJobInput(input: {
   });
   if (!parsed.success) return { type: input.type, payload: {}, error: "validation", status: 400 };
   const type = parsed.data.type;
+  // Also protects direct helper callers and paid auxiliary preparation, not only cookies.
+  try { await assertCreationAllowed(input.userId); }
+  catch (error) {
+    const denied = error as CreationAccessDenied;
+    return { type, payload: {}, error: denied.code, status: denied.status };
+  }
   const characterId = parsed.data.characterId;
-  const payload: Record<string, unknown> = { ...parsed.data.payload };
+  let payload: Record<string, unknown>;
+  try { payload = tariffPayload(input.userId, type, parsed.data.payload); }
+  catch { return { type, payload: {}, error: "CREATION_COST_UNAVAILABLE", status: 409 }; }
 
   // This path produced changed compositions and an all-black output in production.
   // Reject before holding credits until a pose-preserving replacement is verified.

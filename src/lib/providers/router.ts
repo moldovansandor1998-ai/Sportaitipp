@@ -1,6 +1,7 @@
 // Provider router: elsődleges + tartalék, circuit breaker, timeout, retry-számláló.
 // Tiszta függőségek (adapterek injektálhatók) → unit-tesztelhető (tests/providers.test.ts).
 import { ProviderAdapter, ProviderError, JobType } from "./types";
+import { applyOperatingTariff, hasOperatingTariff, operatingProvider } from "./operatingTariff";
 
 export interface RouterOptions {
   timeoutMs?: number;
@@ -46,11 +47,13 @@ export class ProviderRouter {
   candidates(jobType: JobType, payload?: Record<string, unknown>): ProviderAdapter[] {
     // Gallery edits use the source-preserving WaveSpeed model exclusively.
     // Other image edits keep their existing provider order.
-    const galleryEdit = jobType === "image_edit" && payload?.galleryEdit === true;
+    const galleryEdit = jobType === "image_edit" && (payload?.galleryEdit === true || (payload && hasOperatingTariff(payload)));
     const redub = (jobType === "tts" && payload?.videoRedubSpeech === true) || (jobType === "lip_sync" && payload?.videoRedub === true);
     const imageTalking = jobType === "talking_video" && payload?.imageTalking === true;
     const primaryName = this.primaryFor(jobType);
+    const pricedProvider = payload && hasOperatingTariff(payload) ? operatingProvider(jobType, payload) : null;
     const keyed = this.adapters
+      .filter(a => !pricedProvider || a.name === pricedProvider)
       .filter((a) => a.supports.includes(jobType) && (imageTalking ? a.name === "image_talking" : a.name !== "image_talking")
         && (redub ? a.name === "video_redub" : a.name !== "video_redub")
         && (jobType !== "image_edit" || (galleryEdit ? a.name === "wavespeed" : a.name !== "wavespeed"))
@@ -69,7 +72,7 @@ export class ProviderRouter {
   async estimate(jobType: JobType, payload: Record<string, unknown>) {
     const [first] = this.candidates(jobType, payload);
     if (!first) throw new Error(`no provider supports ${jobType}`);
-    return first.estimate(jobType, payload);
+    return applyOperatingTariff(jobType, payload, first.name, await first.estimate(jobType, payload));
   }
 
   async withTimeout<T>(p: Promise<T>): Promise<T> {

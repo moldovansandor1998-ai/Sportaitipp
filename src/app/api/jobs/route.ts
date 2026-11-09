@@ -1,3 +1,5 @@
+import { CreationAccessDenied } from "@/lib/security/creationAccess";
+import { CreationCostUnavailable, hasOperatingTariff } from "@/lib/providers/operatingTariff";
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { serviceClient } from "@/lib/supabase/server";
@@ -37,7 +39,17 @@ export async function POST(req: NextRequest) {
   } catch {
     return NextResponse.json({ error: "NO_PROVIDER_CONFIGURED" }, { status: 503 });
   }
-  const estimate = await router.estimate(type as never, prepared.payload);
+  let estimate;
+  try { estimate = await router.estimate(type as never, prepared.payload); }
+  catch (e) {
+    if (e instanceof CreationCostUnavailable) return NextResponse.json({ error: e.code }, { status: 409 });
+    return NextResponse.json({ error: "PROVIDER_ESTIMATE_FAILED" }, { status: 502 });
+  }
+
+  if (hasOperatingTariff(prepared.payload) && body.maxCredits === undefined)
+    return NextResponse.json({ error: "PRICE_CONFIRMATION_REQUIRED", credits: estimate.credits }, { status: 409 });
+  if (body.maxCredits !== undefined && (!Number.isSafeInteger(body.maxCredits) || estimate.credits > body.maxCredits))
+    return NextResponse.json({ error: "PRICE_CHANGED", credits: estimate.credits }, { status: 409 });
 
   let jobId: string;
   try {
@@ -50,7 +62,9 @@ export async function POST(req: NextRequest) {
       costEstimate: estimate.credits,
     });
   } catch (e: unknown) {
+    if (e instanceof CreationAccessDenied) return NextResponse.json({ error: e.code }, { status: e.status });
     const code = (e as { code?: string } | null)?.code ?? (e as Error)?.message;
+    if (code === "CREATION_COST_UNAVAILABLE") return NextResponse.json({ error: code }, { status: 409 });
     if (code === "INSUFFICIENT_CREDITS") return NextResponse.json({ error: "INSUFFICIENT_CREDITS" }, { status: 402 });
     if (code === "JOB_ALREADY_EXISTS") return NextResponse.json({ error: "JOB_ALREADY_EXISTS" }, { status: 409 });
     if (prepared.error === "PROJECT_NOT_OWNED") { /* már fent kezelve */ }

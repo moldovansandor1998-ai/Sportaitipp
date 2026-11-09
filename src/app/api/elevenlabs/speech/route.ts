@@ -1,3 +1,4 @@
+import { customerTariffRequired } from "@/lib/providers/operatingTariff";
 export const runtime = "nodejs";
 
 import { NextRequest, NextResponse } from "next/server";
@@ -9,6 +10,7 @@ export async function POST(req: NextRequest) {
   const sb = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!);
   const { data: { user } } = await sb.auth.getUser(req.headers.get("authorization")?.replace(/^Bearer\s+/i, "") ?? "");
   if (!user) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+  if (customerTariffRequired(user.id)) return NextResponse.json({ error: "CREATION_COST_UNAVAILABLE" }, { status: 409 });
   const key = process.env.ELEVENLABS_API_KEY;
   if (!key) return NextResponse.json({ error: "ELEVENLABS_NOT_CONFIGURED" }, { status: 503 });
   let body: { text?: unknown; voiceId?: unknown };
