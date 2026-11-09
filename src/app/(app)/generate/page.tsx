@@ -1,4 +1,6 @@
 "use client";
+import JobProgress from '@/components/jobs/JobProgress';
+import type { ProgressInput } from '@/lib/jobs/progress';
 import { useAppTranslation } from "@/components/i18n/AppLanguageProvider";
 // AI Image Generator – TELJES felület. A loraPath-et KIZÁRÓLAG a szerver állítja be;
 // kreditár a generálás ELŐTT (estimate), állapot-poll, retry, eredmény + letöltés + galéria.
@@ -12,7 +14,7 @@ import { guardedRun } from "@/lib/jobs/guardedRun";
 import { startJobWithTracker } from "@/lib/jobs/startJob";
 
 interface CharacterRow { id: string; name: string; active_version_id: string | null; }
-interface JobRow { id: string; type: string; status: string; error: { message?: string } | null; }
+interface JobRow extends ProgressInput { id: string; type: string; status: string; error: { message?: string } | null; }
 interface ResultItem { assetId: string; galleryItemId: string; mediaType: string; url: string | null; }
 
 export default function GeneratePage() {
@@ -88,13 +90,13 @@ export default function GeneratePage() {
     pollerRef.current.start(
       jobId,
       async () => {
-        const { data } = await getSb().from("generation_jobs").select("status,error").eq("id", jobId).single();
+        const { data } = await getSb().from("generation_jobs").select("status,error,type,queued_at,started_at,created_at,provider_meta").eq("id", jobId).single();
         const j = data as { status: string; error: { message?: string } | null } | null;
-        return { status: j?.status ?? "unknown", error: j?.error?.message ?? null };
+        return { status: j?.status ?? "unknown", error: j?.error?.message ?? null, progress: data ? { ...data, checked_at: Date.now() } : undefined };
       },
-      async (_id, status, error) => {
+      async (_id, status, error, progress) => {
         const errorMessage = typeof error === "string" && error.length > 0 ? error : null;
-        setJob({ id: jobId, type: "image_generation", status, error: errorMessage ? { message: errorMessage } : null });
+        setJob({ ...progress, id: jobId, type: "image_generation", status, error: errorMessage ? { message: errorMessage } : null });
         if (status === "completed") await loadResults(jobId);   // CSAK ennek a jobnak az eredményei
       },
     );
@@ -129,7 +131,7 @@ export default function GeneratePage() {
       },
     }).then((r) => {
       if ("ok" in r && r.ok) {
-        setJob({ id: r.value.jobId!, type: "image_generation", status: "queued", error: null });
+        setJob({ id: r.value.jobId!, type: "image_generation", status: "queued", checked_at: Date.now(), error: null });
         poll(r.value.jobId!);
       }
     });
@@ -222,6 +224,7 @@ export default function GeneratePage() {
           <span className="badge">{estimate === null ? t("ár: –") : t("ár: {p0} kredit", {p0: estimate})}</span>
           {job && <span className="badge">{t(job.status)}{job.error?.message ? ` – ${job.error.message}` : ""}</span>}
         </div>
+        {job && <JobProgress job={job} />}
         {error && <p className="error">{error}</p>}
         {job && ["failed", "refunded", "cancelled"].includes(job.status) && (
           <button className="ghost" style={{ marginTop: 8 }} onClick={retry} disabled={busy}>{t("Újrapróbálás")}</button>

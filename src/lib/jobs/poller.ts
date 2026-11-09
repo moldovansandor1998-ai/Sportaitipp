@@ -1,3 +1,4 @@
+import type { ProgressInput } from './progress';
 // Per-job polling – versenyhelyzet-mentes: inFlight jelző (egy jobhoz egyszerre egy fetch),
 // generation/cancellation token (stop/stopAll után a folyamatban lévő fetch eredménye NEM hív
 // onUpdate-et), terminal/maxAttempts/maxErrors kezelés, dupla start ellen.
@@ -25,8 +26,8 @@ export class JobPoller {
 
   start(
     jobId: string,
-    fetchStatus: () => Promise<{ status: PollStatus; error?: string | null }>,
-    onUpdate: (jobId: string, status: PollStatus, error?: string | null) => void,
+    fetchStatus: () => Promise<{ status: PollStatus; error?: string | null; progress?: ProgressInput }>,
+    onUpdate: (jobId: string, status: PollStatus, error?: string | null, progress?: ProgressInput) => void,
   ): void {
     if (this.entries.has(jobId)) return;
     const entry: Entry = { timer: undefined as never, inFlight: false, generation: 0, attempts: 0, errors: 0 };
@@ -42,7 +43,7 @@ export class JobPoller {
         const cur = this.entries.get(jobId);
         if (!cur || cur.generation !== gen) return;     // stop/stopAll közben – eredmény elvetve
         cur.errors = 0;
-        onUpdate(jobId, r.status, r.error ?? null);
+        onUpdate(jobId, r.status, r.error ?? null, r.progress);
         if (this.opts.isTerminal(r.status)) { this.stop(jobId); return; }
       } catch {
         const cur = this.entries.get(jobId);
