@@ -4,7 +4,6 @@ import type { AppLocale } from "@/lib/app-i18n";
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { isInternalOwner } from "@/lib/security/internalAccess";
 import { AppPreferences, LanguagePicker, useAppPreferences } from "@/components/AppPreferences";
 import { browserClient } from "@/lib/supabase/client";
 
@@ -43,22 +42,27 @@ function AppShell({ children, setIsAdmin }: { children: React.ReactNode; setIsAd
   const router = useRouter();
 
   useEffect(() => {
+    let cancelled = false;
     (async () => {
       const sb = browserClient();
       const { data: { user } } = await sb.auth.getUser();
-      if (!user) return;
-      setEmail(user.email ?? "");
-      const [creditResult, profileResult, cfg] = await Promise.all([
+      if (cancelled) return;
+      if (!user) { setIsAdmin(false); setEmail(""); return; }
+      const { data: { session } } = await sb.auth.getSession();
+      const [creditResult, access, cfg] = await Promise.all([
         sb.from("credit_accounts").select("balance").eq("user_id", user.id).single(),
-        sb.from("profiles").select("role").eq("id", user.id).single(),
+        session ? fetch("/api/account/access", { cache: "no-store", headers: { authorization: `Bearer ${session.access_token}` } })
+          .then(async response => response.ok && (await response.json()).isOwner === true).catch(() => false) : false,
         fetch("/api/config/provider"),
       ]);
+      if (cancelled) return;
       const { data } = creditResult;
       setCredits(data?.balance ?? 0);
-      void profileResult;
-      setIsAdmin(isInternalOwner(user.email));
+      setIsAdmin(access);
+      setEmail(access ? "support@fanvasia.com" : user.email ?? "");
       if (cfg.ok) setProviderMode(((await cfg.json()) as { mode: string }).mode);
-    })();
+    })().catch(() => { if (!cancelled) { setIsAdmin(false); setEmail(""); } });
+    return () => { cancelled = true; };
   }, [pathname, setIsAdmin]);
 
   useEffect(() => {
