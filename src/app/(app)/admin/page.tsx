@@ -3,6 +3,7 @@ import { useAppTranslation } from "@/components/i18n/AppLanguageProvider";
 // Admin munkaasztal: submission_uncertain jobok kezelése (reconcile) + kreditmódosítás.
 // Jogosultság a szerveren ellenőrzött (profiles.role) – az oldal csak adminnak mutat adatot.
 import { useCallback, useEffect, useState } from "react";
+import OwnerCardReviews from "@/components/billing/OwnerCardReviews";
 import { browserClient } from "@/lib/supabase/client";
 
 interface UncertainJob {
@@ -85,6 +86,7 @@ export default function AdminPage() {
     <main style={{ maxWidth: 760 }}>
       <h1 style={{ fontSize: 22, marginTop: 0 }}>{t("Admin")}</h1>
       <p><a href="/admin/billing">{t("Whop díjkimutatás")}</a></p>
+      <OwnerCardReviews />
       <div className="card">
         <h3 style={{ marginTop: 0 }}>{t("submission_uncertain jobok (")}{jobs.length})</h3>
         {jobs.length === 0 && <p className="muted">{t("Nincs bizonytalan job.")}</p>}

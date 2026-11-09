@@ -2,6 +2,7 @@ import type { AppMessages } from "../../app-i18n";
 
 export const workspaceMessages: AppMessages = {
   "en": {
+    "Whop díjkimutatás": "Whop fee report",
     "A videók listája nem tölthető be. Frissítsd a Galériát.": "The video list could not be loaded. Refresh the Gallery.",
     "A galéria nem tölthető be. Próbáld újra a Galéria frissítése gombbal.": "The gallery could not be loaded. Try the Refresh gallery button.",
     "Jelentkezz be újra.": "Please sign in again.",
@@ -393,6 +394,7 @@ export const workspaceMessages: AppMessages = {
     "Videó letöltése": "Download video"
   },
   "ro": {
+    "Whop díjkimutatás": "Raport de comisioane Whop",
     "A videók listája nem tölthető be. Frissítsd a Galériát.": "Lista videoclipurilor nu poate fi încărcată. Reîmprospătează galeria.",
     "A galéria nem tölthető be. Próbáld újra a Galéria frissítése gombbal.": "Galeria nu poate fi încărcată. Încearcă butonul Reîmprospătează galeria.",
     "Jelentkezz be újra.": "Autentifică-te din nou.",
@@ -784,6 +786,7 @@ export const workspaceMessages: AppMessages = {
     "Videó letöltése": "Descarcă videoclipul"
   },
   "it": {
+    "Whop díjkimutatás": "Report delle commissioni Whop",
     "A videók listája nem tölthető be. Frissítsd a Galériát.": "Impossibile caricare i video. Aggiorna la galleria.",
     "A galéria nem tölthető be. Próbáld újra a Galéria frissítése gombbal.": "Impossibile caricare la galleria. Prova il pulsante Aggiorna galleria.",
     "Jelentkezz be újra.": "Accedi di nuovo.",
@@ -1175,6 +1178,7 @@ export const workspaceMessages: AppMessages = {
     "Videó letöltése": "Scarica video"
   },
   "de": {
+    "Whop díjkimutatás": "Whop-Gebührenbericht",
     "A videók listája nem tölthető be. Frissítsd a Galériát.": "Die Videoliste konnte nicht geladen werden. Aktualisiere die Galerie.",
     "A galéria nem tölthető be. Próbáld újra a Galéria frissítése gombbal.": "Die Galerie konnte nicht geladen werden. Versuche es mit Galerie aktualisieren.",
     "Jelentkezz be újra.": "Melde dich erneut an.",
@@ -1566,6 +1570,7 @@ export const workspaceMessages: AppMessages = {
     "Videó letöltése": "Video herunterladen"
   },
   "fr": {
+    "Whop díjkimutatás": "Rapport des frais Whop",
     "A videók listája nem tölthető be. Frissítsd a Galériát.": "Impossible de charger les vidéos. Actualisez la galerie.",
     "A galéria nem tölthető be. Próbáld újra a Galéria frissítése gombbal.": "Impossible de charger la galerie. Essayez le bouton Actualiser la galerie.",
     "Jelentkezz be újra.": "Reconnectez-vous.",
@@ -1957,6 +1962,7 @@ export const workspaceMessages: AppMessages = {
     "Videó letöltése": "Télécharger la vidéo"
   },
   "sk": {
+    "Whop díjkimutatás": "Prehľad poplatkov Whop",
     "A videók listája nem tölthető be. Frissítsd a Galériát.": "Zoznam videí sa nepodarilo načítať. Obnovte galériu.",
     "A galéria nem tölthető be. Próbáld újra a Galéria frissítése gombbal.": "Galériu sa nepodarilo načítať. Skúste tlačidlo Obnoviť galériu.",
     "Jelentkezz be újra.": "Prihláste sa znova.",
@@ -2348,6 +2354,7 @@ export const workspaceMessages: AppMessages = {
     "Videó letöltése": "Stiahnuť video"
   },
   "pl": {
+    "Whop díjkimutatás": "Zestawienie opłat Whop",
     "A videók listája nem tölthető be. Frissítsd a Galériát.": "Nie udało się wczytać filmów. Odśwież galerię.",
     "A galéria nem tölthető be. Próbáld újra a Galéria frissítése gombbal.": "Nie udało się wczytać galerii. Użyj przycisku Odśwież galerię.",
     "Jelentkezz be újra.": "Zaloguj się ponownie.",

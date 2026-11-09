@@ -3,6 +3,7 @@
 export const runtime = "nodejs";
 export const maxDuration = 300;
 
+import { CreationCostUnavailable, hasOperatingTariff, OPERATING_TARIFF_VERSION } from "@/lib/providers/operatingTariff";
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { buildRouter, assertProviderConfigured, ProviderError } from "@/lib/providers";
@@ -37,10 +38,12 @@ export async function POST(req: NextRequest) {
   try {
     const estimate = await router.estimate(type as never, prepared.payload);
     return NextResponse.json({ credits: estimate.credits, secondsExpected: estimate.secondsExpected,
+      ...(hasOperatingTariff(prepared.payload) ? { tariffVersion: OPERATING_TARIFF_VERSION } : {}),
       ...(Array.isArray(prepared.payload.motionSegments) ? { motionParts: prepared.payload.motionSegments.length, sourceSeconds: prepared.payload.sourceSeconds } : {}),
       ...(prepared.payload.videoRedub === true || prepared.payload.imageTalking === true
         ? { ...(prepared.payload.videoRedub === true ? { sourceSeconds: prepared.payload.sourceSeconds } : {}), speechSeconds: prepared.payload.billableSeconds } : {}) });
   } catch (e: unknown) {
+    if (e instanceof CreationCostUnavailable) return NextResponse.json({ error: e.code }, { status: 409 });
     if (e instanceof ProviderError) {
       return NextResponse.json({ error: "PROVIDER_ESTIMATE_FAILED", retryable: e.retryable }, { status: 502 });
     }

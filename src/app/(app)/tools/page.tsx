@@ -1,6 +1,7 @@
 "use client";
 import JobProgress from '@/components/jobs/JobProgress';
 import type { ProgressInput } from '@/lib/jobs/progress';
+import { creationPricingText } from "@/lib/billing/creationAvailability";
 import { useAppTranslation } from "@/components/i18n/AppLanguageProvider";
 // AI eszközök – minden eszköz VALÓDI folyamattal: assetválasztó/feltöltés, paraméterek,
 // árbecslés, indítás, progress, eredmény (player/letöltés/galéria), retry.
@@ -545,14 +546,17 @@ export default function ToolsPage() {
         const est = await fetch("/api/jobs/estimate", { method: "POST", headers, body: JSON.stringify(bodyObj) });
         if (!est.ok) {
           const detail = await est.json().catch(() => ({})) as { error?: string };
-          throw new Error(detail.error === "MOTION_DURATION_LIMIT" ? t("3 másodperc és 5 perc közötti mozgásvideót válassz. A hosszabb videó automatikusan több részben készül el.")
+          throw new Error(detail.error === "CREATION_COST_UNAVAILABLE" ? creationPricingText[locale].costUnavailable
+            : detail.error === "MOTION_DURATION_LIMIT" ? t("3 másodperc és 5 perc közötti mozgásvideót válassz. A hosszabb videó automatikusan több részben készül el.")
             : detail.error === "VIDEO_FORMAT_UNSUPPORTED" ? t("A videó nem olvasható. Legfeljebb 48 MB-os MP4 fájlt válassz.")
             : t("Az indítás előtti ellenőrzés nem sikerült: {p0}. A generálás nem indult el.", {p0: detail.error ?? est.status}));
         }
         const estBody = await est.json().catch(() => { throw new Error(t("Árbecslés-válasz feldolgozása sikertelen.")); });
         if (typeof (estBody as { credits?: number }).credits !== "number") throw new Error(t("Árbecslés-válasz érvénytelen."));
         setPrices((p) => ({ ...p, [key]: (estBody as { credits: number }).credits }));
-        const result = await startJobWithTracker({ tracker: trackersRef.current[key], fetchImpl: fetch, token: await token(), body: bodyObj });
+        if (estBody.tariffVersion && !window.confirm(creationPricingText[locale].confirm.replace("{p0}", String(estBody.credits))))
+          throw new Error(creationPricingText[locale].cancelled);
+        const result = await startJobWithTracker({ tracker: trackersRef.current[key], fetchImpl: fetch, token: await token(), body: { ...bodyObj, maxCredits: estBody.credits } });
         if ("skipped" in result) throw new Error(t("A kérés már fut."));
         if (!result.ok) throw new Error(result.error ?? t("Hiba: {p0}", { p0: result.status }));
         return result;
@@ -1189,8 +1193,9 @@ export default function ToolsPage() {
       </div>
 
       <div className="card" style={{ marginTop: 12 }}>
-        <h3 style={{ marginTop: 0 }}>{t("Image Editor · Pinterest Composition · Image-to-Video · TTS")}</h3>
+        <h3 id="image-editor" style={{ marginTop: 0 }}>{t("Image Editor · Pinterest Composition · Image-to-Video · TTS")}</h3>
         <Picker media="image" selected={edAsset} onSelect={setEdAsset} />
+        <button className="ghost" disabled={busyKey !== null} onClick={async () => { const id = await upload("image/jpeg,image/png,image/webp", undefined, 10 * 1024 * 1024); if (id) setEdAsset(id); }}>{t("Kép feltöltése")}</button>
         <input placeholder={t("asset ID")} value={edAsset} onChange={(e) => setEdAsset(e.target.value)} style={{ marginTop: 6 }} />
         <input placeholder={t("szerkesztési prompt")} value={edPrompt} onChange={(e) => setEdPrompt(e.target.value)} style={{ marginTop: 6 }} />
         <div style={{ display: "flex", gap: 8, marginTop: 8, alignItems: "center" }}>

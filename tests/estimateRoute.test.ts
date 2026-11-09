@@ -25,7 +25,8 @@ function harness(): { rpc: string[] } {
   vi.stubGlobal("fetch", vi.fn(async (url: string | URL) => {
     const u = String(url);
     if (u.includes("/auth/v1/user")) return new Response(JSON.stringify({ id: USER }), { status: 200 });
-    if (u.includes("/rest/v1/profiles")) return new Response(JSON.stringify({ id: USER, age_verified_at: "2024-01-01T00:00:00Z" }), { status: 200 });
+    if (u.includes("/rest/v1/whop_card_memberships")) return Response.json([]);
+    if (u.includes("/rest/v1/profiles")) return new Response(JSON.stringify({ id: USER, banned_until: null, age_verified_at: "2024-01-01T00:00:00Z" }), { status: 200 });
     if (u.includes("/rest/v1/character_versions")) return new Response(JSON.stringify(FAL_VER), { status: 200 });
     if (u.includes("/rest/v1/characters")) return new Response(JSON.stringify(ACTIVE), { status: 200 });
     if (u.includes("/rest/v1/rpc/")) { calls.rpc.push(u.split("/rpc/")[1].split("?")[0]); return new Response("true", { status: 200 }); }
@@ -66,7 +67,8 @@ describe("/api/jobs/estimate", () => {
     vi.stubGlobal("fetch", vi.fn(async (url: string | URL) => {
       const u = String(url);
       if (u.includes("/auth/v1/user")) return new Response(JSON.stringify({ id: USER }), { status: 200 });
-      if (u.includes("/rest/v1/profiles")) return new Response(JSON.stringify({ id: USER, age_verified_at: "2024-01-01T00:00:00Z" }), { status: 200 });
+      if (u.includes("/rest/v1/whop_card_memberships")) return Response.json([]);
+    if (u.includes("/rest/v1/profiles")) return new Response(JSON.stringify({ id: USER, banned_until: null, age_verified_at: "2024-01-01T00:00:00Z" }), { status: 200 });
       if (u.includes("/rest/v1/characters")) return new Response(JSON.stringify({ ...ACTIVE, owner_id: "masik" }), { status: 200 });
       return new Response("null", { status: 200 });
     }));
