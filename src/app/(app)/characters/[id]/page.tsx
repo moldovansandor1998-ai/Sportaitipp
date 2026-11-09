@@ -1,4 +1,6 @@
 "use client";
+import JobProgress from '@/components/jobs/JobProgress';
+import type { ProgressInput } from '@/lib/jobs/progress';
 import { useAppTranslation } from "@/components/i18n/AppLanguageProvider";
 import { use, useCallback, useEffect, useRef, useState } from "react";
 import { browserClient } from "@/lib/supabase/client";
@@ -13,7 +15,7 @@ interface VersionRow {
   provider_model_ref: string | null;
   test_image_asset_id: string | null;
 }
-interface JobMini { id: string; type: string; status: string; cost_estimate: number; error?: { message?: string } | null; }
+interface JobMini extends ProgressInput { id: string; type: string; status: string; cost_estimate: number; error?: { message?: string } | null; }
 
 export default function CharacterDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { t } = useAppTranslation();
@@ -49,13 +51,13 @@ export default function CharacterDetailPage({ params }: { params: Promise<{ id: 
       .select("*").eq("character_id", id).order("version_no", { ascending: false });
     setVersions(v ?? []);
     const { data: j } = await getSb().from("generation_jobs")
-      .select("id,type,status,cost_estimate,error").eq("character_id", id)
+      .select("id,type,status,cost_estimate,error,queued_at,started_at,created_at,provider_meta").eq("character_id", id)
       .order("created_at", { ascending: false }).limit(10);
-    setJobs(j ?? []);
+    setJobs((j ?? []).map(job => ({ ...job, checked_at: Date.now() })));
   }, [id]);
   useEffect(() => { load(); }, [load]);
 
-  const runningJobIds = jobs.filter((job) => ["queued", "processing"].includes(job.status)).map((job) => job.id).join(",");
+  const runningJobIds = jobs.filter((job) => ["queued", "submitted", "processing", "retrying", "quality_check", "finalizing"].includes(job.status)).map((job) => job.id).join(",");
   // A provider webhookja késhet: a már futó feladatot külön lekérdezzük.
   useEffect(() => {
     if (!runningJobIds) return;
@@ -389,7 +391,7 @@ export default function CharacterDetailPage({ params }: { params: Promise<{ id: 
         <div className="card" style={{ marginTop: 16 }}>
           <h3 style={{ marginTop: 0 }}>{t("Verziók")}</h3>
           {versions.map((v) => (
-            <div key={v.id} style={{ display: "flex", gap: 10, padding: "6px 0", borderTop: "1px solid var(--border)" }}>
+            <div key={v.id} className="character-job-row" style={{ display: "flex", gap: 10, padding: "6px 0", borderTop: "1px solid var(--border)" }}>
               <span style={{ flex: 1 }}>{t("v")}{v.version_no} · {v.provider ?? "–"}</span>
               <span className="badge">{t(v.status)}</span>
               <span className="muted">{t("identity: {score}", { score: v.identity_score ?? "–" })}</span>
@@ -403,9 +405,9 @@ export default function CharacterDetailPage({ params }: { params: Promise<{ id: 
         <div className="card" style={{ marginTop: 16 }}>
           <h3 style={{ marginTop: 0 }}>{t("Feladatok")}</h3>
           {jobs.map((j) => (
-            <div key={j.id} style={{ display: "flex", gap: 10, padding: "6px 0", borderTop: "1px solid var(--border)" }}>
+            <div key={j.id} className="character-job-row" style={{ display: "flex", gap: 10, padding: "6px 0", borderTop: "1px solid var(--border)" }}>
               <span style={{ flex: 1 }}>{j.type}</span>
-              <span className="badge">{t(j.status)}</span>
+              <JobProgress job={j} compact ownerFallback={<span className="badge">{t(j.status)}</span>} />
               <span className="muted">{j.cost_estimate}{" "}{t("kr")}</span>
             </div>
           ))}

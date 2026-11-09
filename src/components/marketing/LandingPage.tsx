@@ -1,10 +1,13 @@
 import Link from "next/link";
+import Image from "next/image";
+import VideoShowcase from "./VideoShowcase";
+import { studioCopy } from "@/lib/studio-copy";
 import { siteOrigin } from "@/lib/seo";
 import { landingContent, type LandingLocale } from "./content";
 import { PUBLIC_LOCALES, publicLocalePath } from "@/lib/public-locale";
 import LanguagePicker from "./LanguagePicker";
 import FeatureCatalog from "./FeatureCatalog";
-import { Icon, Landscape, Portrait, Waveform } from "./Artwork";
+import { Icon, Waveform } from "./Artwork";
 import styles from "./LandingPage.module.css";
 
 function Brand({ locale }: { locale: LandingLocale }) {
@@ -13,6 +16,7 @@ function Brand({ locale }: { locale: LandingLocale }) {
 
 export default function LandingPage({ locale }: { locale: LandingLocale }) {
   const c = landingContent[locale];
+  const studio = studioCopy[locale];
   const schema = { "@context": "https://schema.org", "@type": "SoftwareApplication", name: "Start AI Creator", applicationCategory: "MultimediaApplication", operatingSystem: "Web", url: siteOrigin() + (publicLocalePath(locale)), inLanguage: PUBLIC_LOCALES, description: c.intro };
   return <div lang={locale} className={styles.page} id="top">
     <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(schema).replace(/</g, "\\u003c") }} />
@@ -34,18 +38,15 @@ export default function LandingPage({ locale }: { locale: LandingLocale }) {
           <div className={styles.heroActions}><a className={styles.primaryButton} href="#features">{c.discover}<Icon name="arrow" /></a><a className={styles.textLink} href="#availability">{c.availabilityLink}</a></div>
           <p className={styles.heroNote}><span aria-hidden="true" />{c.heroNote}</p>
         </div>
-        <figure className={styles.heroVisual} aria-label={c.heroIllustration}>
-          <div className={styles.visualGrid} aria-hidden="true" />
-          <div className={styles.visualTop}><span><Icon name="spark" />{c.workspaceLabel}</span><span className={styles.windowDots} aria-hidden="true"><i /><i /><i /></span></div>
-          <div className={styles.heroPortrait}><Portrait id="hero-character" /><span className={styles.portraitCaption}><i />{c.characterLabel}<span>01</span></span></div>
-          <div className={styles.references}><span>{c.referenceLabel}<Icon name="grid" /></span><div><div><Portrait id="reference-one" /></div><div><Portrait id="reference-two" /></div><div><Portrait id="reference-three" /></div></div></div>
-          <div className={styles.heroVideo}><Landscape id="hero-landscape" /><span className={styles.playIcon} aria-hidden="true">▷</span><span className={styles.sceneCaption}>{c.sceneLabel}<Icon name="arrow" /></span></div>
-          <div className={styles.heroAudio}><div><span className={styles.audioDot} />{c.voiceLabel}</div><Waveform /></div>
-          <div className={styles.visualBottom}><span>{c.creativeLabel}</span><Icon name="spark" /></div>
-          <figcaption>{c.illustration}</figcaption>
+        <figure className={styles.cinematicVisual} aria-label={c.heroIllustration}>
+          <div className={styles.cinematicMain}><Image src="/images/feature-photos/video-motion.png" alt="" fill priority sizes="(max-width: 820px) 90vw, 50vw" /><span className={styles.floatingLabel}><span />{studio.video}</span></div>
+          <div className={styles.cinematicPortrait}><Image src="/images/feature-photos/image-generation.png" alt="" fill sizes="(max-width: 820px) 40vw, 260px" /><span>{c.characterLabel}</span></div>
+          <div className={styles.cinematicAudio}><span>{c.voiceLabel}</span><Waveform /></div>
+          <figcaption>{studio.showcaseNote}</figcaption>
         </figure>
       </section>
       <div className={styles.pillars}>{c.pillars.map(([title, description], index) => <div key={title}><span className={styles.pillarIcon}><Icon name={index === 0 ? "spark" : index === 1 ? "grid" : "check"} /></span><div><strong>{title}</strong><span>{description}</span></div></div>)}</div>
+      <VideoShowcase locale={locale} />
       <FeatureCatalog locale={locale} />
       <section id="workflow" className={`${styles.section} ${styles.workflow}`} aria-labelledby="workflow-heading">
         <div className={styles.workflowHeading}><p className={styles.eyebrow}>{c.workflowEyebrow}</p><h2 id="workflow-heading">{c.workflowTitle}</h2><p>{c.workflowIntro}</p><a href="#features" className={styles.textLink}>{c.discover}<Icon name="arrow" /></a></div>
@@ -58,6 +59,7 @@ export default function LandingPage({ locale }: { locale: LandingLocale }) {
       </section>
       <section id="faq" className={`${styles.section} ${styles.faq}`} aria-labelledby="faq-heading"><div><p className={styles.eyebrow}>{c.faqEyebrow}</p><h2 id="faq-heading">{c.faqTitle}</h2></div><div>{c.questions.map(([question, answer]) => <details key={question}><summary>{question}<span aria-hidden="true">+</span></summary><p>{answer}</p></details>)}</div></section>
     </main>
+    <div className={styles.mobileCta}><span><strong>Start AI Creator</strong><small>{studio.prepared}</small></span><Link href="/login" prefetch={false} className={styles.primaryButton}>{c.login}<Icon name="arrow" /></Link></div>
     <footer className={styles.footer}><div className={styles.container}><div className={styles.footerTop}><div><Brand locale={locale} /><p>{c.footerText}</p></div><nav aria-label={c.legalInformation}><Link href="/terms">{c.terms}</Link><Link href="/privacy">{c.privacy}</Link><LanguagePicker locale={locale} label={c.chooseLanguage} /></nav></div><div className={styles.footerBottom}><span>© {new Date().getFullYear()} Start AI Creator. {c.footerNote}</span><a href="#top">{c.backTop} ↑</a></div></div></footer>
   </div>;
 }
