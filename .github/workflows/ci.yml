@@ -84,7 +84,7 @@ jobs:
           NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ env.NEXT_PUBLIC_SUPABASE_ANON_KEY }}
         run: |
           npx vitest run tests/integration tests/adminReconcile.test.ts --no-file-parallelism \
-            --reporter=json \
+            --reporter=default --reporter=json \
             --outputFile=/tmp/integration-report.json
       - name: Integrációs riport-ellenőrzés (4 fájl, 0 failed, 0 skipped)
         run: |
