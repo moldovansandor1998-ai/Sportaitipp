@@ -1,4 +1,7 @@
 "use client";
+import JobProgress from '@/components/jobs/JobProgress';
+import type { ProgressInput } from '@/lib/jobs/progress';
+import { creationPricingText } from "@/lib/billing/creationAvailability";
 import { useAppTranslation } from "@/components/i18n/AppLanguageProvider";
 // AI eszközök – minden eszköz VALÓDI folyamattal: assetválasztó/feltöltés, paraméterek,
 // árbecslés, indítás, progress, eredmény (player/letöltés/galéria), retry.
@@ -14,7 +17,7 @@ import VideoRedub from "@/components/VideoRedub";
 
 interface GalItem { galleryItemId: string; assetId: string; mediaType: string; url: string | null; characterId?: string | null; }
 interface CharacterRow { id: string; name: string; }
-interface JobRow { id: string; status: string; error: { message?: string } | null; }
+interface JobRow extends ProgressInput { id: string; status: string; error: { message?: string } | null; }
 interface Res { assetId: string; galleryItemId: string; mediaType: string; url: string | null; motionPart?: { index: number; total: number } | null; }
 interface Cfg { mode: string; faceSwapConfigured: boolean; i2vModels: Array<{ id: string; label: string }>; }
 interface NuretaVideo { assetId: string; jobId: string; characterId: string; createdAt: string; duration: number; }
@@ -241,9 +244,9 @@ export default function ToolsPage() {
       .eq("owner_id", user.id).eq("type", "character_motion_video").contains("payload", { motionMethod: "anchored" })
       .order("created_at", { ascending: false }).limit(1).maybeSingle();
     if (latestMotion) {
-      setJobs(current => ({ ...current, modelMotion: latestMotion as JobRow }));
+      setJobs(current => ({ ...current, modelMotion: { ...latestMotion, checked_at: Date.now() } as JobRow }));
       await loadJobResults(latestMotion.id, "modelMotion");
-      if (["queued", "submitted", "processing"].includes(latestMotion.status)) poll(latestMotion.id, "modelMotion");
+      if (["queued", "submitted", "processing", "retrying", "quality_check", "finalizing"].includes(latestMotion.status)) poll(latestMotion.id, "modelMotion");
     }
     const { data: chars } = charsResult;
     setCharacters((chars ?? []) as unknown as CharacterRow[]);
@@ -256,10 +259,10 @@ export default function ToolsPage() {
     const { data: latestEdits } = latestEditsResult;
     const latestEdit = latestEdits?.[0] as JobRow | undefined;
     if (latestEdit) {
-      setJobs((current) => ({ ...current, fullSwap: latestEdit }));
+      setJobs((current) => ({ ...current, fullSwap: { ...latestEdit, checked_at: Date.now() } }));
       // Only the current edit needs live status in this view. Older jobs are
       // finalized by the background worker; polling all 50 floods the API.
-      if (latestEdit.status === "processing") poll(latestEdit.id, "fullSwap");
+      if (["queued", "submitted", "processing", "retrying", "quality_check", "finalizing"].includes(latestEdit.status)) poll(latestEdit.id, "fullSwap");
       if (latestEdit.status === "completed") await loadJobResults(latestEdit.id, "fullSwap");
       let restored = 0;
       for (const edit of (latestEdits ?? []) as JobRow[]) {
@@ -336,18 +339,18 @@ export default function ToolsPage() {
         await fetch(`/api/jobs/${jobId}/refresh`, {
           method: "POST", headers: { authorization: `Bearer ${await token()}` },
         });
-        const { data } = await getSb().from("generation_jobs").select("status,error,result,provider_meta").eq("id", jobId).single();
+        const { data } = await getSb().from("generation_jobs").select("status,error,type,queued_at,started_at,created_at,provider_meta").eq("id", jobId).single();
         const sequence = data?.provider_meta as { motionSequence?: boolean; index?: number; segments?: unknown[]; parts?: unknown[] } | null;
         if (sequence?.motionSequence && data?.status === "processing") {
           setMsg(current => ({ ...current, [key]: t("{p0}/{p1}. videórész készül. {p2} rész már a galériában. A folytatás automatikus, az oldalt bezárhatod.", {p0: Math.min((sequence.index ?? 0) + 1, sequence.segments?.length ?? 1), p1: sequence.segments?.length ?? 1, p2: sequence.parts?.length ?? 0}) }));
           if (sequence.parts?.length) await loadJobResults(jobId, key);
         }
         const j = data as { status: string; error: { message?: string } | null; result: { meta?: { caption?: string } } | null } | null;
-        return { status: j?.status ?? "unknown", error: j?.error?.message ?? null };
+        return { status: j?.status ?? "unknown", error: j?.error?.message ?? null, progress: data ? { ...data, checked_at: Date.now() } : undefined };
       },
-      async (_id, status, error) => {
+      async (_id, status, error, progress) => {
         const errorMessage = typeof error === "string" && error.length > 0 ? error : null;
-        setJobs((m) => ({ ...m, [key]: { id: jobId, status, error: errorMessage ? { message: errorMessage } : null } }));
+        setJobs((m) => ({ ...m, [key]: { ...progress, id: jobId, status, error: errorMessage ? { message: errorMessage } : null } }));
         if (status === "failed" || status === "refunded" || status === "submission_uncertain") {
           setMsg(current => ({ ...current, [key]: status === "refunded"
             ? t("A generálás nem indult el vagy meghiúsult; a kreditet visszaadtuk. {p0}", {p0: errorMessage ?? ""})
@@ -543,21 +546,24 @@ export default function ToolsPage() {
         const est = await fetch("/api/jobs/estimate", { method: "POST", headers, body: JSON.stringify(bodyObj) });
         if (!est.ok) {
           const detail = await est.json().catch(() => ({})) as { error?: string };
-          throw new Error(detail.error === "MOTION_DURATION_LIMIT" ? t("3 másodperc és 5 perc közötti mozgásvideót válassz. A hosszabb videó automatikusan több részben készül el.")
+          throw new Error(detail.error === "CREATION_COST_UNAVAILABLE" ? creationPricingText[locale].costUnavailable
+            : detail.error === "MOTION_DURATION_LIMIT" ? t("3 másodperc és 5 perc közötti mozgásvideót válassz. A hosszabb videó automatikusan több részben készül el.")
             : detail.error === "VIDEO_FORMAT_UNSUPPORTED" ? t("A videó nem olvasható. Legfeljebb 48 MB-os MP4 fájlt válassz.")
             : t("Az indítás előtti ellenőrzés nem sikerült: {p0}. A generálás nem indult el.", {p0: detail.error ?? est.status}));
         }
         const estBody = await est.json().catch(() => { throw new Error(t("Árbecslés-válasz feldolgozása sikertelen.")); });
         if (typeof (estBody as { credits?: number }).credits !== "number") throw new Error(t("Árbecslés-válasz érvénytelen."));
         setPrices((p) => ({ ...p, [key]: (estBody as { credits: number }).credits }));
-        const result = await startJobWithTracker({ tracker: trackersRef.current[key], fetchImpl: fetch, token: await token(), body: bodyObj });
+        if (estBody.tariffVersion && !window.confirm(creationPricingText[locale].confirm.replace("{p0}", String(estBody.credits))))
+          throw new Error(creationPricingText[locale].cancelled);
+        const result = await startJobWithTracker({ tracker: trackersRef.current[key], fetchImpl: fetch, token: await token(), body: { ...bodyObj, maxCredits: estBody.credits } });
         if ("skipped" in result) throw new Error(t("A kérés már fut."));
         if (!result.ok) throw new Error(result.error ?? t("Hiba: {p0}", { p0: result.status }));
         return result;
       },
     }).then((r) => {
       if ("ok" in r && r.ok) {
-        setJobs((p) => ({ ...p, [key]: { id: r.value.jobId!, status: "queued", error: null } }));
+        setJobs((p) => ({ ...p, [key]: { id: r.value.jobId!, status: "queued", checked_at: Date.now(), error: null } }));
         setMsg((p) => ({ ...p, [key]: t("A kérés sorba állítva. A kész eredmény a Galériába kerül.") }));
         poll(r.value.jobId!, key);
       }
@@ -590,7 +596,7 @@ export default function ToolsPage() {
       )}
     </div>
   );
-  const Badge = ({ k }: { k: string }) => jobs[k] ? <span className="badge">{t(jobs[k].status)}{jobs[k].error?.message ? ` – ${jobs[k].error.message}` : ""}</span> : null;
+  const Badge = ({ k }: { k: string }) => jobs[k] ? <JobProgress job={jobs[k]} compact ownerFallback={<span className="badge">{t(jobs[k].status)}{jobs[k].error?.message ? ` – ${jobs[k].error.message}` : ""}</span>} /> : null;
   const Price = ({ k }: { k: string }) => <span className="badge">{t("ár:")}{" "}{prices[k] == null ? "–" : `${prices[k]} ${t("kredit")}`}</span>;
   const Results = ({ k, kind }: { k: string; kind: "image" | "video" | "text" }) => (
     <>
@@ -1187,8 +1193,9 @@ export default function ToolsPage() {
       </div>
 
       <div className="card" style={{ marginTop: 12 }}>
-        <h3 style={{ marginTop: 0 }}>{t("Image Editor · Pinterest Composition · Image-to-Video · TTS")}</h3>
+        <h3 id="image-editor" style={{ marginTop: 0 }}>{t("Image Editor · Pinterest Composition · Image-to-Video · TTS")}</h3>
         <Picker media="image" selected={edAsset} onSelect={setEdAsset} />
+        <button className="ghost" disabled={busyKey !== null} onClick={async () => { const id = await upload("image/jpeg,image/png,image/webp", undefined, 10 * 1024 * 1024); if (id) setEdAsset(id); }}>{t("Kép feltöltése")}</button>
         <input placeholder={t("asset ID")} value={edAsset} onChange={(e) => setEdAsset(e.target.value)} style={{ marginTop: 6 }} />
         <input placeholder={t("szerkesztési prompt")} value={edPrompt} onChange={(e) => setEdPrompt(e.target.value)} style={{ marginTop: 6 }} />
         <div style={{ display: "flex", gap: 8, marginTop: 8, alignItems: "center" }}>

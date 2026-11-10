@@ -15,7 +15,8 @@ afterAll(() => {
 afterEach(() => vi.unstubAllGlobals());
 
 const USER = "11111111-1111-1111-1111-111111111111";
-const CHAR = "22222222-2222-2222-2222-222222222222";
+// Use an RFC-valid UUID; Zod 4 validates version and variant bits.
+const CHAR = "22222222-2222-4222-8222-222222222222";
 const ACTIVE = { id: CHAR, owner_id: USER, status: "active", active_version_id: "33333333-3333-3333-3333-333333333333" };
 const FAL_VER = { id: "33333333-3333-3333-3333-333333333333", provider: "fal", provider_model_ref: "https://v3.fal.media/w/x.bin", status: "approved" };
 
@@ -24,7 +25,8 @@ function harness(): { rpc: string[] } {
   vi.stubGlobal("fetch", vi.fn(async (url: string | URL) => {
     const u = String(url);
     if (u.includes("/auth/v1/user")) return new Response(JSON.stringify({ id: USER }), { status: 200 });
-    if (u.includes("/rest/v1/profiles")) return new Response(JSON.stringify({ id: USER, age_verified_at: "2024-01-01T00:00:00Z" }), { status: 200 });
+    if (u.includes("/rest/v1/whop_card_memberships")) return Response.json([]);
+    if (u.includes("/rest/v1/profiles")) return new Response(JSON.stringify({ id: USER, banned_until: null, age_verified_at: "2024-01-01T00:00:00Z" }), { status: 200 });
     if (u.includes("/rest/v1/character_versions")) return new Response(JSON.stringify(FAL_VER), { status: 200 });
     if (u.includes("/rest/v1/characters")) return new Response(JSON.stringify(ACTIVE), { status: 200 });
     if (u.includes("/rest/v1/rpc/")) { calls.rpc.push(u.split("/rpc/")[1].split("?")[0]); return new Response("true", { status: 200 }); }
@@ -65,7 +67,8 @@ describe("/api/jobs/estimate", () => {
     vi.stubGlobal("fetch", vi.fn(async (url: string | URL) => {
       const u = String(url);
       if (u.includes("/auth/v1/user")) return new Response(JSON.stringify({ id: USER }), { status: 200 });
-      if (u.includes("/rest/v1/profiles")) return new Response(JSON.stringify({ id: USER, age_verified_at: "2024-01-01T00:00:00Z" }), { status: 200 });
+      if (u.includes("/rest/v1/whop_card_memberships")) return Response.json([]);
+    if (u.includes("/rest/v1/profiles")) return new Response(JSON.stringify({ id: USER, banned_until: null, age_verified_at: "2024-01-01T00:00:00Z" }), { status: 200 });
       if (u.includes("/rest/v1/characters")) return new Response(JSON.stringify({ ...ACTIVE, owner_id: "masik" }), { status: 200 });
       return new Response("null", { status: 200 });
     }));

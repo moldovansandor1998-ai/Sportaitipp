@@ -1,3 +1,4 @@
+import { assertLocalIntegrationTarget } from "../helpers/localIntegration";
 // A runClaimedJob TÉNYLEGES működése három szcenárióban (INTEGRATION=1):
 // 1) provider submit timeout 2) provider elfogadta, de a record-RPC hibázik 3) minden provider retryable hibával bukik.
 // Mindháromnál: submitted→submission_uncertain, hold megmarad, NINCS refund/charge/resubmit,
@@ -13,6 +14,7 @@ const ENABLED = Boolean(process.env.INTEGRATION && process.env.SUPABASE_URL && p
 describe.skipIf(!ENABLED)("runClaimedJob: submission_uncertain szcenáriók", () => {
   let sb: SupabaseClient;
   let userId: string;
+  let adminId: string;
 
   const fakeAdapter = (name: string, behavior: "timeout" | "ok" | "fail"): ProviderAdapter => ({
     name, supports: ["image_generation"],
@@ -34,6 +36,7 @@ describe.skipIf(!ENABLED)("runClaimedJob: submission_uncertain szcenáriók", ()
     new ProviderRouter([fakeAdapter("fal", behavior), fakeAdapter("rep", behavior)], () => "fal", { timeoutMs: 300 });
 
   beforeAll(async () => {
+    assertLocalIntegrationTarget();
     process.env.NEXT_PUBLIC_SUPABASE_URL = process.env.SUPABASE_URL;
     sb = createClient(process.env.SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!, {
       auth: { persistSession: false, autoRefreshToken: false },
@@ -42,6 +45,17 @@ describe.skipIf(!ENABLED)("runClaimedJob: submission_uncertain szcenáriók", ()
       email: `unc-${Date.now()}@castora.test`, password: "Unc-pass-123", email_confirm: true,
     });
     userId = u.user!.id;
+    // Explicit synthetic funding; normal signup remains at zero.
+    const funding = await sb.from("credit_accounts").update({ balance: 200 }).eq("user_id", userId);
+    if (funding.error) throw new Error(funding.error.message);
+    // Independent local fixture, never rely on another concurrent suite's admin.
+    const admin = await sb.auth.admin.createUser({
+      email: `unc-admin-${Date.now()}@castora.test`, password: "Unc-admin-pass-123", email_confirm: true,
+    });
+    if (admin.error) throw new Error(admin.error.message);
+    adminId = admin.data.user.id;
+    const profile = await sb.from("profiles").update({ role: "admin" }).eq("id", adminId);
+    if (profile.error) throw new Error(profile.error.message);
   }, 60_000);
 
   async function mkJob(): Promise<{ jobId: string; balanceBefore: number; held: number }> {
@@ -82,7 +96,7 @@ describe.skipIf(!ENABLED)("runClaimedJob: submission_uncertain szcenáriók", ()
     await runClaimedJob(job as never, mkRouter("timeout"));
     await assertCommon(jobId, balanceBefore);
     // admin restart: folytatható
-    const { data: adm } = await sb.from("profiles").select("id").eq("role", "admin").limit(1).single();
+    const { data: adm } = await sb.from("profiles").select("id").eq("id", adminId).eq("role", "admin").single();
     const ok = await sb.rpc("admin_restart", { p_job: jobId, p_admin: (adm as { id: string }).id, p_reason: "teszt" });
     expect(ok.data).toBe(true);
   }, 120_000);
@@ -114,7 +128,7 @@ describe.skipIf(!ENABLED)("runClaimedJob: submission_uncertain szcenáriók", ()
     const bal = (await sb.from("credit_accounts").select("balance").eq("user_id", userId).single()).data as { balance: number };
     expect(bal.balance).toBe(balanceBefore - 10);   // hold megmarad, nincs refund/charge
     // admin mark_submitted a MEGLÉVŐ (tényleges) ID-val: a webhook folytathatja
-    const { data: adm } = await sb.from("profiles").select("id").eq("role", "admin").limit(1).single();
+    const { data: adm } = await sb.from("profiles").select("id").eq("id", adminId).eq("role", "admin").single();
     expect((await sb.rpc("admin_mark_submitted", {
       p_job: jobId, p_provider: "fal", p_provider_job_id: "race_job_9",
       p_admin: (adm as { id: string }).id, p_reason: "dashboard-ellenőrzés",
@@ -128,7 +142,7 @@ describe.skipIf(!ENABLED)("runClaimedJob: submission_uncertain szcenáriók", ()
     await runClaimedJob(job as never, mkRouter("fail"));
     await assertCommon(jobId, balanceBefore);
     // admin mark_failed: refund pontosan egyszer
-    const { data: adm } = await sb.from("profiles").select("id").eq("role", "admin").limit(1).single();
+    const { data: adm } = await sb.from("profiles").select("id").eq("id", adminId).eq("role", "admin").single();
     expect((await sb.rpc("admin_mark_failed", {
       p_job: jobId, p_admin: (adm as { id: string }).id, p_reason: "bizonyítottan nem futott",
     })).data).toBe(true);
@@ -148,7 +162,7 @@ describe.skipIf(!ENABLED)("runClaimedJob: submission_uncertain szcenáriók", ()
     ]);
     const winners = [a, b].filter((r) => r.data !== null && !r.error).length;
     const errs = [a, b].filter((r) => r.error?.message?.includes("TRAINING_ALREADY_ACTIVE")).length;
-    expect(winners + 0).toBeGreaterThanOrEqual(1);
+    expect(winners).toBe(1);
     expect(errs + winners).toBe(2);   // vagy nyer, vagy aktív-attempt hiba – dupla nyerés lehetetlen
   }, 60_000);
 });

@@ -13,7 +13,7 @@ begin
     case when (new.raw_user_meta_data->>'privacy_accepted')::boolean then now() end,
     case when (new.raw_user_meta_data->>'age_verified')::boolean then now() end);
   insert into public.user_settings (user_id) values (new.id);
-  insert into public.credit_accounts (user_id, balance) values (new.id, 200); -- indító kredit
+  insert into public.credit_accounts (user_id, balance) values (new.id, 0); -- No signup credit, including initial bootstrap.
   return new;
 end $$;
 

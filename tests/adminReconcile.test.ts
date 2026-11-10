@@ -1,6 +1,15 @@
+import { assertLocalIntegrationTarget, LOCAL_OWNER_EMAIL } from "./helpers/localIntegration";
 // Reconcile: unit (parseReconcileInput) + integrációs (handler, INTEGRATION=1)
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, afterAll, vi } from "vitest";
 import { parseReconcileInput } from "@/lib/admin/reconcileInput";
+
+// Disposable local handler fixture only: do not publish or create the real owner
+// identity. Production owner mapping is unchanged and covered by its own tests.
+vi.mock("@/lib/security/internalAccess", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/lib/security/internalAccess")>();
+  return { ...actual, isInternalOwner: (email: string | null | undefined) =>
+    email?.trim().toLowerCase() === "owner-recovery@example.invalid" };
+});
 
 describe("parseReconcileInput (unit)", () => {
   it("lookup kötelező", () => {
@@ -30,8 +39,11 @@ describe("parseReconcileInput (unit)", () => {
 });
 
 const ENABLED = Boolean(process.env.INTEGRATION && process.env.SUPABASE_URL && process.env.SUPABASE_SERVICE_ROLE_KEY);
-describe.skipIf(!ENABLED)("reconcile handler (INTEGRATION=1)", () => {
+describe.skipIf(!ENABLED)("reconcile handler (local INTEGRATION=1)", () => {
+  let cleanup: (() => Promise<void>) | undefined;
+  afterAll(async () => { await cleanup?.(); });
   it("401 nem hitelesített; 403 nem admin; 404 ismeretlen; mark_failed pontosan egyszer", async () => {
+    assertLocalIntegrationTarget();
     const { NextRequest } = await import("next/server");
     const { createClient } = await import("@supabase/supabase-js");
     const sb = createClient(process.env.SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!, {
@@ -53,15 +65,36 @@ describe.skipIf(!ENABLED)("reconcile handler (INTEGRATION=1)", () => {
     const email = `rec-${Date.now()}@castora.test`;
     const { data: u } = await sb.auth.admin.createUser({ email, password: "Rec-pass-123", email_confirm: true });
     const uid = u.user!.id;
+    cleanup = async () => {
+      assertLocalIntegrationTarget();
+      // Audit actors intentionally do not cascade in production. Remove only
+      // this disposable local user's audit fixtures before deleting its account.
+      const audits = await sb.from("audit_logs").delete().eq("actor_id", uid);
+      if (audits.error) throw new Error(`LOCAL_AUDIT_CLEANUP_FAILED: ${audits.error.message}`);
+      const result = await sb.auth.admin.deleteUser(uid);
+      if (result.error) throw new Error(`LOCAL_FIXTURE_CLEANUP_FAILED: ${result.error.message}`);
+      const remaining = await sb.from("profiles").select("id").eq("id", uid);
+      expect(remaining.error).toBeNull();
+      expect(remaining.data).toEqual([]);
+    };
     const anon = createClient(process.env.SUPABASE_URL!, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!);
     const signIn = await anon.auth.signInWithPassword({ email, password: "Rec-pass-123" });
-    const token = signIn.data.session?.access_token ?? "";
+    let token = signIn.data.session?.access_token ?? "";
     expect(token.length).toBeGreaterThan(0);
 
     // 403: nem admin
     expect((await handler(mk({ lookupJobId: "x" }, token))).status).toBe(403);
 
     await sb.from("profiles").update({ role: "admin" }).eq("id", uid);
+    // A non-owner admin still cannot use the synthetic owner recovery route.
+    expect((await handler(mk({ lookupJobId: "x" }, token))).status).toBe(403);
+    const owner = await sb.auth.admin.updateUserById(uid, { email: LOCAL_OWNER_EMAIL, email_confirm: true });
+    if (owner.error) throw new Error(owner.error.message);
+    const ownerSession = await anon.auth.signInWithPassword({ email: LOCAL_OWNER_EMAIL, password: "Rec-pass-123" });
+    if (ownerSession.error) throw new Error(ownerSession.error.message);
+    token = ownerSession.data.session!.access_token;
+    const funding = await sb.from("credit_accounts").update({ balance: 200 }).eq("user_id", uid);
+    if (funding.error) throw new Error("LOCAL_FIXTURE_FUNDING_FAILED");
     // 400: nincs lookup
     expect((await handler(mk({}, token))).status).toBe(400);
     // 404: ismeretlen job
@@ -85,6 +118,11 @@ describe.skipIf(!ENABLED)("reconcile handler (INTEGRATION=1)", () => {
     const balAfter = (await sb.from("credit_accounts").select("balance").eq("user_id", uid).single()).data as { balance: number };
     expect(balAfter.balance).toBe(balBefore.balance + 10);   // pontosan egyszeri refund
 
-    await sb.auth.admin.deleteUser(uid);
+    const audit = await sb.from("audit_logs").select("id").eq("actor_id", uid)
+      .eq("action", "admin.job.mark_failed").eq("target_id", jobId);
+    expect(audit.error).toBeNull();
+    expect(audit.data).toHaveLength(1);
+    await cleanup();
+    cleanup = undefined;
   }, 180_000);
 });

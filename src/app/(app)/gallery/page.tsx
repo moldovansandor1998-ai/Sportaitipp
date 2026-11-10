@@ -1,4 +1,5 @@
 "use client";
+import { creationPricingText } from "@/lib/billing/creationAvailability";
 import { useAppTranslation } from "@/components/i18n/AppLanguageProvider";
 // Teljes galéria: keresés, médiatípus-szűrés, albumok, tömeges kiválasztás/törlés, letöltés.
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -17,7 +18,7 @@ interface Album { id: string; name: string; }
 interface Character { id: string; name: string; }
 
 export default function GalleryPage() {
-  const { t } = useAppTranslation();
+  const { t, locale } = useAppTranslation();
   const [items, setItems] = useState<Item[] | null>(null);
   const [recentVideos, setRecentVideos] = useState<Item[]>([]);
   const [videoCount, setVideoCount] = useState(0);
@@ -268,14 +269,16 @@ export default function GalleryPage() {
     if (!editingItem || !editPrompt.trim() || editBusy) return;
     setEditBusy(true); setEditStatus("");
     try {
-      const response = await fetch("/api/jobs", {
-        method: "POST",
-        headers: { authorization: `Bearer ${await token()}`, "content-type": "application/json" },
-        body: JSON.stringify({
-          type: "image_edit", characterId: editingItem.characterId ?? undefined,
-          payload: { galleryEdit: true, galleryItemId: editingItem.galleryItemId,
-            imageAssetIds: [editingItem.assetId], prompt: editPrompt.trim() },
-        }),
+      const body = { type: "image_edit", characterId: editingItem.characterId ?? undefined,
+        payload: { galleryEdit: true, galleryItemId: editingItem.galleryItemId,
+          imageAssetIds: [editingItem.assetId], prompt: editPrompt.trim() } };
+      const headers = { authorization: `Bearer ${await token()}`, "content-type": "application/json" };
+      const quote = await fetch("/api/jobs/estimate", { method: "POST", headers, body: JSON.stringify(body) });
+      const price = await quote.json().catch(() => ({}));
+      if (!quote.ok || !Number.isSafeInteger(price.credits)) throw new Error(t("A képszerkesztés indítása nem sikerült."));
+      if (price.tariffVersion && !window.confirm(creationPricingText[locale].confirm.replace("{p0}", String(price.credits)))) return;
+      const response = await fetch("/api/jobs", { method: "POST", headers,
+        body: JSON.stringify({ ...body, maxCredits: price.credits }),
       });
       if (!response.ok) {
         const body = await response.json().catch(() => ({}));

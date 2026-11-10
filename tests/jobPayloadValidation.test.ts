@@ -4,6 +4,15 @@ import { CreateJobSchema } from "@/lib/security/validation";
 const base = { characterId: "9b2b0c6e-7c1a-4f2e-9d3b-1a2b3c4d5e6f" };
 
 describe("jobtípusonkénti payload-validáció (400 a kreditlevonás előtt)", () => {
+  it("preserves string-keyed payloads and rejects malformed IDs under Zod 4", () => {
+    const payload = { prompt: "portrait", custom: { nested: true }, refs: ["a"] };
+    const valid = CreateJobSchema.safeParse({ ...base, type: "image_generation", payload });
+    expect(valid.success).toBe(true);
+    if (valid.success) expect(valid.data.payload).toEqual(payload);
+    expect(CreateJobSchema.safeParse({ characterId: "not-a-uuid", type: "image_generation", payload }).success).toBe(false);
+    expect(CreateJobSchema.safeParse({ ...base, type: "image_generation", payload: ["not", "a", "record"] }).success).toBe(false);
+    expect(CreateJobSchema.safeParse({ ...base, type: "image_generation", payload: null }).success).toBe(false);
+  });
   it("image_generation: karakter kötelező (route-szint, DB is kényszerít)", () => {
     // a séma karakterId opcionális marad (route kezeli), de image_edit/i2v/tts bemenetek:
   });

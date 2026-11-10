@@ -119,6 +119,6 @@ export default function PlansPage() {
         <button className="ghost" disabled={busy} onClick={() => select(order)}>{t("Megnyitás")}</button>
       </div>)}
     </section>
-    <p className="muted">{t("Eltérő összeg vagy elakadt fizetés esetén:")}{" "}<a href="mailto:moldovansandor1998@gmail.com">moldovansandor1998@gmail.com</a>{t(". Írd meg a TXID-t és a rendelésazonosítót")}{selected ? ` (${selected.id})` : ""}.</p>
+    <p className="muted">{t("Eltérő összeg vagy elakadt fizetés esetén:")}{" "}<a href="mailto:support@fanvasia.com">support@fanvasia.com</a>{t(". Írd meg a TXID-t és a rendelésazonosítót")}{selected ? ` (${selected.id})` : ""}.</p>
   </main>;
 }

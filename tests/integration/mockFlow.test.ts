@@ -1,5 +1,6 @@
-// TELJES mock E2E folyamat valós (helyi) Supabase ellen:
-// regisztráció → karakter → referencia → QC → tréning → tesztkép → identity → active → generálás → galéria → kredit
+import { assertLocalIntegrationTarget } from "../helpers/localIntegration";
+// Local mock lifecycle ends at the real-provider identity boundary.
+// Downstream generation uses a separate explicitly seeded active fixture.
 // CI-ban (INTEGRATION=1) kötelező a környezet – hiányában HIBA, nem skip!
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import { createClient, SupabaseClient } from "@supabase/supabase-js";
@@ -14,7 +15,7 @@ const COSTS: Record<string, number> = {
   reference_qc: 5, character_training: 300, test_image: 10, identity_check: 5, image_generation: 20,
 };
 
-describe.skipIf(!process.env.INTEGRATION)("E2E: teljes mock karakterfolyamat", () => {
+describe.skipIf(!process.env.INTEGRATION)("E2E: mock lifecycle and real-provider identity boundary", () => {
   let sb: SupabaseClient;
   let userId: string;
   let characterId: string;
@@ -24,9 +25,9 @@ describe.skipIf(!process.env.INTEGRATION)("E2E: teljes mock karakterfolyamat", (
   const balance = async (uid: string) =>
     ((await sb.from("credit_accounts").select("balance").eq("user_id", uid).single()).data as { balance: number }).balance;
 
-  async function makeCharacter(name: string): Promise<string> {
+  async function makeCharacter(name: string, status: "collecting_refs" | "active" = "collecting_refs"): Promise<string> {
     const { data: c } = await sb.from("characters").insert({
-      owner_id: userId, name, consent_type: "ai_persona", status: "collecting_refs",
+      owner_id: userId, name, consent_type: "ai_persona", status,
     }).select("id").single();
     return (c as { id: string }).id;
   }
@@ -59,9 +60,9 @@ describe.skipIf(!process.env.INTEGRATION)("E2E: teljes mock karakterfolyamat", (
     return createJobWithHoldRaw(uid, type, cid, payload, crypto.randomUUID(), COSTS[type] ?? 10);
   }
 
-  async function runStep(type: string, payload: Record<string, unknown> = {}): Promise<void> {
+  async function runStep(type: string, payload: Record<string, unknown> = {}, cid = characterId): Promise<void> {
     const { kickJob } = await import("@/server/jobs/runJob");
-    const jobId = await startJob(userId, type, characterId, payload);
+    const jobId = await startJob(userId, type, cid, payload);
     await kickJob(jobId);
     const { data: job } = await sb.from("generation_jobs").select("status,error").eq("id", jobId).single();
     const j = job as { status: string; error: { message?: string } | null };
@@ -69,6 +70,7 @@ describe.skipIf(!process.env.INTEGRATION)("E2E: teljes mock karakterfolyamat", (
   }
 
   beforeAll(async () => {
+    assertLocalIntegrationTarget();
     process.env.NEXT_PUBLIC_SUPABASE_URL = process.env.SUPABASE_URL;
     sb = createClient(process.env.SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!, {
       auth: { persistSession: false, autoRefreshToken: false },
@@ -80,7 +82,7 @@ describe.skipIf(!process.env.INTEGRATION)("E2E: teljes mock karakterfolyamat", (
     if (error) throw new Error(error.message);
     userId = user.user!.id;
 
-    // E2E keret: 200 induló + 500 tesztkredit (a teljes folyamat 340-be kerül)
+    // Disposable local fixture starts with 700 credits.
     const { error: balErr } = await sb.from("credit_accounts")
       .update({ balance: 700 }).eq("user_id", userId);
     if (balErr) throw new Error(balErr.message);
@@ -123,7 +125,7 @@ describe.skipIf(!process.env.INTEGRATION)("E2E: teljes mock karakterfolyamat", (
     await sb.from("credit_accounts").update({ balance: 700 }).eq("user_id", userId);
   }, 120_000);
 
-  it("a teljes folyamat pontos kreditelszámolással végigfut", async () => {
+  it("mock lifecycle cannot activate identity; seeded active fixture generates with exact credits", async () => {
     expect(await balance(userId)).toBe(700);
 
     await runStep("reference_qc", { refIds });
@@ -152,21 +154,40 @@ describe.skipIf(!process.env.INTEGRATION)("E2E: teljes mock karakterfolyamat", (
       { test_image_asset_id: string | null };
     expect(ver2.test_image_asset_id).not.toBeNull();
 
-    await runStep("identity_check");
-    expect(await balance(userId)).toBe(380); // -5
-    const chActive = (await sb.from("characters").select("status,active_version_id").eq("id", characterId).single()).data as unknown as
-      { status: string; active_version_id: string | null };
-    expect(chActive.status).toBe("active");
-    const ver3 = (await sb.from("character_versions").select("identity_score,status").eq("id", chActive.active_version_id!).single()).data as
-      { identity_score: number; status: string };
-    expect(ver3.identity_score).toBe(0.95);
+    const beforeCharacter = await sb.from("characters").select("status,active_version_id").eq("id", characterId).single();
+    const beforeVersion = await sb.from("character_versions").select("status,identity_score").eq("id", versionId).single();
+    const key = crypto.randomUUID();
+    await expect(createJobWithHoldRaw(userId, "identity_check", characterId, {}, key, 5))
+      .rejects.toThrow(/IDENTITY_REQUIRES_REAL_PROVIDER/);
+    expect(await balance(userId)).toBe(385);
+    const rejectedJobs = await sb.from("generation_jobs").select("id").eq("idempotency_key", key);
+    expect(rejectedJobs.error).toBeNull();
+    expect(rejectedJobs.data).toEqual([]);
+    const afterCharacter = await sb.from("characters").select("status,active_version_id").eq("id", characterId).single();
+    const afterVersion = await sb.from("character_versions").select("status,identity_score").eq("id", versionId).single();
+    for (const result of [beforeCharacter, beforeVersion, afterCharacter, afterVersion]) expect(result.error).toBeNull();
+    expect(afterCharacter.data).toEqual(beforeCharacter.data);
+    expect(afterCharacter.data?.status).toBe("test_pending");
+    expect(afterCharacter.data?.active_version_id).toBeNull();
+    expect(afterVersion.data).toEqual(beforeVersion.data);
+    expect(afterVersion.data?.status).toBe("test_pending");
+    expect(afterVersion.data?.identity_score).toBeNull();
 
-    await runStep("image_generation", { prompt: "e2e" });
-    expect(await balance(userId)).toBe(360); // -20, pontosan 340 összköltség
-    const { data: gallery } = await sb.from("gallery_items").select("id").eq("character_id", characterId).is("deleted_at", null);
-    expect((gallery ?? []).length).toBeGreaterThan(0);
-
-    // a generálás a mock-provideres verzióval is megy (mock dev-motor), de active karakter kell –
-    // a mock flow itt már nem aktivál: a fenti elvárások a valós ágat tükrözik
+    // Separate local fixture, NOT an identity verification result. Do not change
+    // the mock training character or pretend a real provider verified it.
+    assertLocalIntegrationTarget();
+    const activeId = await makeCharacter("Seeded local generation fixture", "active");
+    const seeded = await sb.from("character_versions").insert({
+      character_id: activeId, version_no: 1, status: "approved", provider: "mock",
+      provider_model_ref: "mock/local-generation-fixture",
+    }).select("id").single();
+    if (seeded.error) throw new Error(seeded.error.message);
+    const activated = await sb.from("characters").update({ active_version_id: seeded.data.id }).eq("id", activeId);
+    if (activated.error) throw new Error(activated.error.message);
+    await runStep("image_generation", { prompt: "e2e" }, activeId);
+    expect(await balance(userId)).toBe(365); // -20; rejected identity costs nothing.
+    const gallery = await sb.from("gallery_items").select("id").eq("character_id", activeId).is("deleted_at", null);
+    expect(gallery.error).toBeNull();
+    expect((gallery.data ?? []).length).toBeGreaterThan(0);
   }, 180_000);
 });

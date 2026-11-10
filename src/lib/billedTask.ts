@@ -1,4 +1,6 @@
 import "server-only";
+import { assertCreationAllowed, CreationAccessDenied } from "@/lib/security/creationAccess";
+import { customerTariffRequired } from "@/lib/providers/operatingTariff";
 import { serviceClient } from "@/lib/supabase/server";
 
 // Szinkron, számlázott feladat: hold → munka → charge / refund. Idempotens kulccsal.
@@ -6,6 +8,8 @@ export async function runBilledTask<T>(input: {
   userId: string; type: string; cost: number; idempotencyKey: string;
   fn: () => Promise<T>;
 }): Promise<{ ok: true; value: T } | { ok: false; error: string }> {
+  // No verified complete provider/auxiliary cost exists for these content workflows yet.
+  if (customerTariffRequired(input.userId)) return { ok: false, error: "CREATION_COST_UNAVAILABLE" };
   const sb = serviceClient();
   const key = input.idempotencyKey;
   const { data: existing, error: existingError } = await sb.from("credit_transactions")
@@ -13,6 +17,8 @@ export async function runBilledTask<T>(input: {
   if (existingError) return { ok: false, error: "CREDIT_LOOKUP_FAILED" };
   if (existing) return { ok: false, error: "TASK_ALREADY_PROCESSED" };
 
+  try { await assertCreationAllowed(input.userId); }
+  catch (error) { return { ok: false, error: (error as CreationAccessDenied).code }; }
   const { data: jobId, error: holdError } = await sb.rpc("create_job_with_hold", {
     p_owner: input.userId, p_type: "carousel_page", p_character: null, p_project: null,
     p_payload: { task: input.type }, p_key: `task:${key}`, p_estimated: input.cost,
@@ -20,6 +26,9 @@ export async function runBilledTask<T>(input: {
   if (holdError || typeof jobId !== "string" || !jobId) {
     return { ok: false, error: holdError?.message ?? "CREDIT_HOLD_FAILED" };
   }
+  // Keep an existing hold intact if access changed after reservation; no automatic refund.
+  try { await assertCreationAllowed(input.userId); }
+  catch (error) { return { ok: false, error: (error as CreationAccessDenied).code }; }
   try {
     const value = await input.fn();
     const { error: chargeError } = await sb.rpc("credit_charge_hold", { p_job: jobId, p_key: `charge:${jobId}` });

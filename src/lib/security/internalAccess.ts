@@ -1,3 +1,5 @@
+import "server-only";
+
 /** Internal operations are preserved for administrators, never exposed by hiding UI alone. */
 export function isInternalPath(path: string): boolean {
   return ["/admin", "/model-studio", "/x-comments", "/api/admin", "/api/model-studio", "/api/x", "/api/trends/import"].some(prefix => path === prefix || path.startsWith(`${prefix}/`));

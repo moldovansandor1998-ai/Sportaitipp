@@ -1,3 +1,4 @@
+import { hasOperatingTariff } from "./operatingTariff";
 import { withVideoContinuity } from "@/lib/videoContinuity";
 import { ProviderAdapter, ProviderError, type Estimate, type JobType, type NormalizedOutput, type SubmitParams, type SubmitResult } from "./types";
 import sharp from "sharp";
@@ -145,7 +146,7 @@ export class WaveSpeedAdapter implements ProviderAdapter {
       return { providerJobId: data.id, providerMeta: { endpoint, stage: "nureta_source_preview" } };
     }
     if (p.jobType === "image_edit") {
-      if (p.payload.galleryEdit !== true || !Array.isArray(p.payload.imageUrls) || p.payload.imageUrls.length !== 1
+      if ((p.payload.galleryEdit !== true && !hasOperatingTariff(p.payload)) || !Array.isArray(p.payload.imageUrls) || p.payload.imageUrls.length !== 1
           || typeof p.payload.imageUrls[0] !== "string" || typeof p.payload.prompt !== "string")
         throw new ProviderError("A galériakép és a módosítás leírása kötelező.", false);
       const dimensions = closestRatio(await sourceRatio(p.payload.imageUrls[0]));

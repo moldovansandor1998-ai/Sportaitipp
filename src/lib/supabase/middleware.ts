@@ -7,6 +7,13 @@ const PROTECTED_PREFIXES = ["/generate", "/model-studio", "/x-comments", "/dashb
 export async function updateSession(request: NextRequest) {
   let response = NextResponse.next({ request });
 
+  // Redirects and error responses must retain refreshed or cleared auth cookies.
+  // Otherwise the browser keeps a stale session and retries it on the next request.
+  const withSessionCookies = (result: NextResponse) => {
+    response.cookies.getAll().forEach((cookie) => result.cookies.set(cookie));
+    return result;
+  };
+
   const supabase = createServerClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
@@ -33,17 +40,17 @@ export async function updateSession(request: NextRequest) {
     const { data: profile } = await supabase.from("profiles").select("banned_until,role").eq("id", userId).single();
     if (!path.startsWith("/api/") && isInternalPath(path) && !isInternalOwner(typeof data?.claims?.email === "string" ? data.claims.email : null)) {
       const url = request.nextUrl.clone(); url.pathname = "/dashboard"; url.search = "";
-      return NextResponse.redirect(url);
+      return withSessionCookies(NextResponse.redirect(url));
     }
     const bannedUntil = (profile as { banned_until: string | null } | null)?.banned_until;
     if (bannedUntil && new Date(bannedUntil).getTime() > Date.now()) {
       if (path.startsWith("/api/")) {
-        return NextResponse.json({ error: "ACCOUNT_BANNED" }, { status: 403 });
+        return withSessionCookies(NextResponse.json({ error: "ACCOUNT_BANNED" }, { status: 403 }));
       }
       const url = request.nextUrl.clone();
       url.pathname = "/login";
       url.searchParams.set("error", "account_banned");
-      return NextResponse.redirect(url);
+      return withSessionCookies(NextResponse.redirect(url));
     }
   }
 
@@ -51,12 +58,12 @@ export async function updateSession(request: NextRequest) {
     const url = request.nextUrl.clone();
     url.pathname = "/login";
     url.searchParams.set("next", path);
-    return NextResponse.redirect(url);
+    return withSessionCookies(NextResponse.redirect(url));
   }
   if ((path === "/login" || path === "/register") && userId) {
     const url = request.nextUrl.clone();
     url.pathname = "/dashboard";
-    return NextResponse.redirect(url);
+    return withSessionCookies(NextResponse.redirect(url));
   }
   return response;
 }

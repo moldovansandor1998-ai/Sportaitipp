@@ -79,7 +79,8 @@ function harness(opts: { asset?: unknown }): { calls: { rpc: string[] } } {
   vi.stubGlobal("fetch", vi.fn(async (url: string | URL) => {
     const u = String(url);
     if (u.includes("/auth/v1/user")) return new Response(JSON.stringify({ user: { id: USER } }), { status: 200 });
-    if (u.includes("/rest/v1/profiles")) return new Response(JSON.stringify({ id: USER, age_verified_at: "2024-01-01T00:00:00Z" }), { status: 200 });
+    if (u.includes("/rest/v1/profiles")) return new Response(JSON.stringify({ id: USER, banned_until: null, age_verified_at: "2024-01-01T00:00:00Z" }), { status: 200 });
+    if (u.includes("/rest/v1/whop_card_memberships")) return Response.json([]);
     if (u.includes("/rest/v1/assets")) return new Response(JSON.stringify(opts.asset ?? null), { status: 200 });
     if (u.includes("/storage/v1")) return new Response(JSON.stringify({ signedURL: "/object/sign/assets/x?token=t" }), { status: 200 });
     if (u.includes("/rest/v1/rpc/")) {
@@ -122,7 +123,8 @@ describe("/api/jobs – M6 bemenet-feloldás és hibautak", () => {
     delete process.env.FAL_KEY; delete process.env.REPLICATE_API_TOKEN;
     Object.assign(process.env, { NODE_ENV: "production" });
     harness({ asset: { id: "a1", bucket: "assets", object_path: "u/a.png" } });
-    const res = await postJobs({ type: "upscale", payload: { sourceAssetId: "33333333-3333-3333-3333-333333333333" } });
+    // Use a costed customer workflow; legacy upscale now stops at the cost-scope gate.
+    const res = await postJobs({ type: "image_edit", payload: { imageAssetIds: ["33333333-3333-3333-3333-333333333333"], prompt: "portrait" } });
     expect(res.status).toBe(503);
     expect((await res.json() as { error: string }).error).toBe("NO_PROVIDER_CONFIGURED");
   });

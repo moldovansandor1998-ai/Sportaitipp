@@ -15,7 +15,7 @@ export async function startJobWithTracker(params: {
   tracker: { begin: () => string | null; resend: () => string | null; finish: () => void };
   fetchImpl: typeof fetch;
   token: string;
-  body: { type: string; characterId?: string; projectId?: string; payload: Record<string, unknown> };
+  body: { maxCredits?: number; type: string; characterId?: string; projectId?: string; payload: Record<string, unknown> };
   maxNetworkRetries?: number;
 }): Promise<StartJobResult | { skipped: true }> {
   const key = params.tracker.begin();
