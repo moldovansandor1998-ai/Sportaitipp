@@ -65,7 +65,18 @@ describe.skipIf(!ENABLED)("reconcile handler (local INTEGRATION=1)", () => {
     const email = `rec-${Date.now()}@castora.test`;
     const { data: u } = await sb.auth.admin.createUser({ email, password: "Rec-pass-123", email_confirm: true });
     const uid = u.user!.id;
-    cleanup = async () => { const result = await sb.auth.admin.deleteUser(uid); if (result.error) throw new Error("LOCAL_FIXTURE_CLEANUP_FAILED"); };
+    cleanup = async () => {
+      assertLocalIntegrationTarget();
+      // Audit actors intentionally do not cascade in production. Remove only
+      // this disposable local user's audit fixtures before deleting its account.
+      const audits = await sb.from("audit_logs").delete().eq("actor_id", uid);
+      if (audits.error) throw new Error(`LOCAL_AUDIT_CLEANUP_FAILED: ${audits.error.message}`);
+      const result = await sb.auth.admin.deleteUser(uid);
+      if (result.error) throw new Error(`LOCAL_FIXTURE_CLEANUP_FAILED: ${result.error.message}`);
+      const remaining = await sb.from("profiles").select("id").eq("id", uid);
+      expect(remaining.error).toBeNull();
+      expect(remaining.data).toEqual([]);
+    };
     const anon = createClient(process.env.SUPABASE_URL!, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!);
     const signIn = await anon.auth.signInWithPassword({ email, password: "Rec-pass-123" });
     let token = signIn.data.session?.access_token ?? "";
@@ -107,6 +118,10 @@ describe.skipIf(!ENABLED)("reconcile handler (local INTEGRATION=1)", () => {
     const balAfter = (await sb.from("credit_accounts").select("balance").eq("user_id", uid).single()).data as { balance: number };
     expect(balAfter.balance).toBe(balBefore.balance + 10);   // pontosan egyszeri refund
 
+    const audit = await sb.from("audit_logs").select("id").eq("actor_id", uid)
+      .eq("action", "admin.job.mark_failed").eq("target_id", jobId);
+    expect(audit.error).toBeNull();
+    expect(audit.data).toHaveLength(1);
     await cleanup();
     cleanup = undefined;
   }, 180_000);
