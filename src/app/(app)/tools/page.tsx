@@ -14,6 +14,7 @@ import { createSubmitGuard, type SubmitGuard } from "@/lib/jobs/submitGuard";
 import { guardedRun } from "@/lib/jobs/guardedRun";
 import { startJobWithTracker } from "@/lib/jobs/startJob";
 import VideoRedub from "@/components/VideoRedub";
+import { pickFile } from "@/lib/pickFile";
 
 interface GalItem { galleryItemId: string; assetId: string; mediaType: string; url: string | null; characterId?: string | null; }
 interface CharacterRow { id: string; name: string; }
@@ -365,9 +366,7 @@ export default function ToolsPage() {
   }
 
   async function upload(accept: string, onFile?: (file: File) => void, maxBytes?: number): Promise<string | null> {
-    const input = document.createElement("input");
-    input.type = "file"; input.accept = accept;
-    const file = await new Promise<File | null>((r) => { input.onchange = () => r(input.files?.[0] ?? null); input.oncancel = () => r(null); input.click(); });
+    const file = await pickFile(accept);
     if (!file) return null;
     if (maxBytes && file.size > maxBytes) {
       setMsg(current => ({ ...current, upload: t("Ehhez a feltöltéshez legfeljebb {p0} MB méretű képet válassz.", {p0: Math.floor(maxBytes / 1024 / 1024)}) }));
@@ -381,9 +380,7 @@ export default function ToolsPage() {
   }
 
   async function uploadVideo(onUploaded?: (id: string, file: File) => void) {
-    const picker = document.createElement("input");
-    picker.type = "file"; picker.accept = "video/mp4,.mp4";
-    const file = await new Promise<File | null>((resolve) => { picker.onchange = () => resolve(picker.files?.[0] ?? null); picker.click(); });
+    const file = await pickFile("video/mp4,.mp4");
     if (!file) return;
     setBusyKey("videoUpload");
     setMsg((m) => ({ ...m, videoUpload: t("Videó feltöltése…") }));
