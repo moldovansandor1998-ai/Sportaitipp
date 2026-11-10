@@ -37,7 +37,17 @@ describe('minimum existing-customer receipt settlement', () => {
     for (const change of [{ account_id: 'biz_other' }, { product_id: 'prod_other' }, { variant_id: 'plan_other' }, { user: { id: 'user_other' } }, { status: 'pending' }, { currency: 'eur' }, { subtotal: money('28') }, { refunded_amount: money('1') }, { paid_at: '2026-12-01T12:00:00Z' }]) {
       expect(() => verifyWhopPayment({ ...payment, ...change }, membership, plan, now)).toThrow();
     }
-    for (const change of [{ renewal_price: 1 }, { billing_period: 365 }, { initial_price: 10 }, { trial_period_days: 7 }, { collect_tax: false }, { adaptive_pricing_enabled: true }, { offer_cancel_discount: true }, { offer_cancel_discount: null }]) expect(() => verifyWhopVariant({ ...variant, ...change }, plan)).toThrow();
+    for (const change of [{ renewal_price: 1 }, { billing_period: 365 }, { initial_price: 10 }, { trial_period_days: 7 }, { collect_tax: false }, { adaptive_pricing_enabled: 'true' }, { offer_cancel_discount: true }, { offer_cancel_discount: null }]) expect(() => verifyWhopVariant({ ...variant, ...change }, plan)).toThrow();
+  });
+  it.each([false, true])('accepts raw adaptive preference %s only with the approved recurring USD plan', adaptive => {
+    const recurring = { ...variant, adaptive_pricing_enabled: adaptive };
+    expect(verifyWhopVariant(recurring, plan).id).toBe(plan.planId);
+    for (const change of [{ billing_type: 'one_time' }, { currency: 'eur' }, { renewal_price: 28 }]) {
+      expect(() => verifyWhopVariant({ ...recurring, ...change }, plan)).toThrow();
+    }
+  });
+  it.each([undefined, null, 'true', 1])('rejects missing or nonboolean adaptive preference (%j)', adaptive => {
+    expect(() => verifyWhopVariant({ ...variant, adaptive_pricing_enabled: adaptive }, plan)).toThrow();
   });
   it('fulfills a paid receipt after cancellation or a later renewal without reactivation', () => {
     const canceled = { ...membership, status: 'canceled', current_period_end: null };
