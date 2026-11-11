@@ -14,9 +14,19 @@ export async function cardRpc(name: string, args: Record<string, unknown>) {
 export async function receiveCardEvent(e: WhopEvent) {
   return cardRpc('whop_card_receive', { p_event: e.id, p_type: e.type, p_account: e.account_id, p_resource: e.data.id, p_at: e.timestamp });
 }
+/** Terminal acknowledgement only; never writes memberships, payments or credits. */
+export async function completeUnrelatedMembershipEvent(e: WhopEvent) {
+  const { data, error } = await serviceClient().from('whop_card_events')
+    .update({ status: 'processed', completed_at: new Date().toISOString() })
+    .eq('event_id', e.id).eq('event_type', e.type).eq('account_id', e.account_id)
+    .eq('resource_id', e.data.id).eq('event_timestamp', e.timestamp)
+    .in('status', ['pending', 'processed']).select('event_id').maybeSingle();
+  if (error || !data) throw new Error('Unrelated event acknowledgement unavailable');
+  return 'ignored';
+}
 /** Verified evidence is settled in a single SQL transaction, including the event acknowledgement. */
 export async function processCardEvent(e: WhopEvent, plans: WhopPlan[], provider: Pick<WhopProvider, 'verifyPayment' | 'verifyReversal' | 'readMembership'>,
-  rpc: typeof cardRpc = cardRpc) {
+  rpc: typeof cardRpc = cardRpc, completeUnrelated = completeUnrelatedMembershipEvent) {
   const scoped = plans.filter(p => p.accountId === e.account_id);
   if (!scoped.length) throw new Error('Unapproved account');
   if (e.type === 'payment.succeeded') {
@@ -43,9 +53,18 @@ export async function processCardEvent(e: WhopEvent, plans: WhopPlan[], provider
   }
   if (e.type === 'membership.updated' || e.type === 'membership.activated') {
     const m = z.object({ id: z.string(), account: z.object({ id: z.string() }), product_id: z.string(),
-      variant_id: z.string(), user_id: z.string(), status: z.string(), updated_at: z.string().datetime() })
+      variant_id: z.string(), user_id: z.string(), status: z.string(), updated_at: z.string().datetime(),
+      metadata: z.unknown().optional() })
       .parse(await provider.readMembership(e.data.id));
-    if (m.id !== e.data.id || m.account.id !== e.account_id || !scoped.some(p => p.planId === m.variant_id && p.productId === m.product_id)) throw new Error('Membership mismatch');
+    if (m.id !== e.data.id || m.account.id !== e.account_id) throw new Error('Membership mismatch');
+    // Company webhooks also deliver the owner's other product. Require exact,
+    // independently fetched identity, not metadata alone or merely an unknown plan.
+    const unrelated = m.account.id === 'biz_6U5tOF8TtHSthq' &&
+      m.product_id === 'prod_kJNCcExSOz0T5' && m.variant_id === 'plan_f572ZToSkG2Ft' &&
+      z.object({ project_key: z.literal('vagyokrad') }).safeParse(m.metadata).success &&
+      !scoped.some(p => p.planId === m.variant_id || p.productId === m.product_id);
+    if (unrelated) return completeUnrelated(e);
+    if (!scoped.some(p => p.planId === m.variant_id && p.productId === m.product_id)) throw new Error('Membership mismatch');
     return rpc('whop_card_membership_event', { p_event: e.id, p_membership: m.id, p_whop_user: m.user_id,
       p_plan: m.variant_id, p_active: m.status === 'active', p_observed: m.updated_at });
   }
