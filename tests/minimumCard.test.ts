@@ -6,7 +6,7 @@ import { whopSalesEnabled } from '@/server/billing/whop-sales';
 import { verifyWhopWebhook } from '@/server/billing/whop-webhook';
 import { WHOP_API_VERSION_DATE, type WhopPlan } from '@/lib/billing/whop';
 const mocks = vi.hoisted(() => ({ receive: vi.fn(), process: vi.fn() }));
-vi.mock('@/server/billing/whop-card', () => ({ CARD_EVENTS: new Set(['payment.succeeded']), receiveCardEvent: mocks.receive, processCardEvent: mocks.process }));
+vi.mock('@/server/billing/whop-card', () => ({ CARD_EVENTS: new Set(['payment.succeeded']), receiveCardEvent: mocks.receive, processCardEvent: mocks.process, recoverUnrelatedMembershipRetry: async () => { throw new Error('not unrelated'); } }));
 vi.mock('@/server/billing/whop-config', () => ({ whopConfig: () => ({ token: 'test', secret: 'fixture_secret', sandbox: true, plans: [{ accountId: 'biz_test' }] }) }));
 import { POST } from '@/app/api/webhooks/whop/route';
 

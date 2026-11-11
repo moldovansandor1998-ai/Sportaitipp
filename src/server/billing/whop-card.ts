@@ -19,10 +19,29 @@ export async function completeUnrelatedMembershipEvent(e: WhopEvent) {
   const { data, error } = await serviceClient().from('whop_card_events')
     .update({ status: 'processed', completed_at: new Date().toISOString() })
     .eq('event_id', e.id).eq('event_type', e.type).eq('account_id', e.account_id)
-    .eq('resource_id', e.data.id).eq('event_timestamp', e.timestamp)
+    .eq('resource_id', e.data.id)
     .in('status', ['pending', 'processed']).select('event_id').maybeSingle();
   if (error || !data) throw new Error('Unrelated event acknowledgement unavailable');
   return 'ignored';
+}
+const membershipSchema = z.object({ id: z.string(), account: z.object({ id: z.string() }), product_id: z.string(),
+  variant_id: z.string(), user_id: z.string(), status: z.string(), updated_at: z.string().datetime(),
+  metadata: z.unknown().optional() });
+function isUnrelatedMembership(e: WhopEvent, plans: WhopPlan[], m: z.infer<typeof membershipSchema>) {
+  return (e.type === 'membership.updated' || e.type === 'membership.activated') &&
+    m.id === e.data.id && m.account.id === e.account_id && m.account.id === 'biz_6U5tOF8TtHSthq' &&
+    plans.some(p => p.accountId === e.account_id) &&
+    m.product_id === 'prod_kJNCcExSOz0T5' && m.variant_id === 'plan_f572ZToSkG2Ft' &&
+    z.object({ project_key: z.literal('vagyokrad') }).safeParse(m.metadata).success &&
+    !plans.some(p => p.planId === m.variant_id || p.productId === m.product_id);
+}
+/** Whop refreshes retry timestamps. Recover ONLY a positively identified other
+ * product's existing receipt; keep StartAI's receipt checks unchanged. */
+export async function recoverUnrelatedMembershipRetry(e: WhopEvent, plans: WhopPlan[], provider: Pick<WhopProvider, 'readMembership'>) {
+  if (e.type !== 'membership.updated' && e.type !== 'membership.activated') throw new Error('Not an unrelated membership retry');
+  const m = membershipSchema.parse(await provider.readMembership(e.data.id));
+  if (!isUnrelatedMembership(e, plans, m)) throw new Error('Unrelated membership not verified');
+  return completeUnrelatedMembershipEvent(e);
 }
 /** Verified evidence is settled in a single SQL transaction, including the event acknowledgement. */
 export async function processCardEvent(e: WhopEvent, plans: WhopPlan[], provider: Pick<WhopProvider, 'verifyPayment' | 'verifyReversal' | 'readMembership'>,
@@ -52,17 +71,11 @@ export async function processCardEvent(e: WhopEvent, plans: WhopPlan[], provider
       p_whop_user: proof.whopUserId, p_plan: proof.planId, p_reason: proof.reason });
   }
   if (e.type === 'membership.updated' || e.type === 'membership.activated') {
-    const m = z.object({ id: z.string(), account: z.object({ id: z.string() }), product_id: z.string(),
-      variant_id: z.string(), user_id: z.string(), status: z.string(), updated_at: z.string().datetime(),
-      metadata: z.unknown().optional() })
-      .parse(await provider.readMembership(e.data.id));
+    const m = membershipSchema.parse(await provider.readMembership(e.data.id));
     if (m.id !== e.data.id || m.account.id !== e.account_id) throw new Error('Membership mismatch');
     // Company webhooks also deliver the owner's other product. Require exact,
     // independently fetched identity, not metadata alone or merely an unknown plan.
-    const unrelated = m.account.id === 'biz_6U5tOF8TtHSthq' &&
-      m.product_id === 'prod_kJNCcExSOz0T5' && m.variant_id === 'plan_f572ZToSkG2Ft' &&
-      z.object({ project_key: z.literal('vagyokrad') }).safeParse(m.metadata).success &&
-      !scoped.some(p => p.planId === m.variant_id || p.productId === m.product_id);
+    const unrelated = isUnrelatedMembership(e, plans, m);
     if (unrelated) return completeUnrelated(e);
     if (!scoped.some(p => p.planId === m.variant_id && p.productId === m.product_id)) throw new Error('Membership mismatch');
     return rpc('whop_card_membership_event', { p_event: e.id, p_membership: m.id, p_whop_user: m.user_id,

@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { whopConfig } from '@/server/billing/whop-config';
 import { WhopProvider } from '@/server/billing/whop';
 import { verifyWhopWebhook, readBoundedWhopBody } from '@/server/billing/whop-webhook';
-import { CARD_EVENTS, receiveCardEvent, processCardEvent } from '@/server/billing/whop-card';
+import { CARD_EVENTS, receiveCardEvent, processCardEvent, recoverUnrelatedMembershipRetry } from '@/server/billing/whop-card';
 export const runtime = 'nodejs';
 export const maxDuration = 30;
 const reply = (status: number, code: string) => NextResponse.json({ code }, { status, headers: { 'Cache-Control': 'no-store' } });
@@ -17,9 +17,12 @@ export async function POST(req: NextRequest) {
   if (!c.plans.some(p => p.accountId === e.account_id)) return reply(403, 'UNAPPROVED_ACCOUNT');
   if (!CARD_EVENTS.has(e.type)) return reply(200, 'ignored');
   try {
-    const status = await receiveCardEvent(e);
+    const provider = new WhopProvider(c.token, c.sandbox);
+    let status;
+    try { status = await receiveCardEvent(e); }
+    catch { return reply(200, await recoverUnrelatedMembershipRetry(e, c.plans, provider)); }
     if (status !== 'pending') return reply(200, 'duplicate');
-    const outcome = await processCardEvent(e, c.plans, new WhopProvider(c.token, c.sandbox));
+    const outcome = await processCardEvent(e, c.plans, provider);
     return reply(200, String(outcome));
   } catch {
     // Normalized receipt remains pending. Provider retry and authenticated drain

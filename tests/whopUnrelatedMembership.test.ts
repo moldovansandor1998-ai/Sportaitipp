@@ -65,16 +65,38 @@ describe('isolated VagyokRad membership acknowledgement', () => {
     expect(response.status).toBe(200); expect(await response.json()).toEqual({ code: 'ignored' });
     expect(mocks.rpc).toHaveBeenCalledOnce(); expect(mocks.rpc.mock.calls[0][0]).toBe('whop_card_receive');
     expect(mocks.from).toHaveBeenCalledWith('whop_card_events'); expect(q.update).toHaveBeenCalledWith({ status: 'processed', completed_at: expect.any(String) });
-    for (const [key, value] of Object.entries({ event_id: event.id, event_type: event.type, account_id: event.account_id, resource_id: event.data.id, event_timestamp: event.timestamp })) expect(q.eq).toHaveBeenCalledWith(key, value);
+    for (const [key, value] of Object.entries({ event_id: event.id, event_type: event.type, account_id: event.account_id, resource_id: event.data.id })) expect(q.eq).toHaveBeenCalledWith(key, value);
     expect(q.in).toHaveBeenCalledWith('status', ['pending', 'processed']);
   });
   it('does not acknowledge persistence or provider failure', async () => {
     persistence({ message: 'offline' }); expect((await POST(request())).status).toBe(503);
     persistence(); mocks.read.mockRejectedValueOnce(new Error('unavailable')); expect((await POST(request())).status).toBe(503);
-    mocks.rpc.mockResolvedValueOnce({ error: { message: 'offline' } }); expect((await POST(request())).status).toBe(503);
+    mocks.rpc.mockResolvedValueOnce({ error: { message: 'offline' } }); persistence({ message: 'offline' }); expect((await POST(request())).status).toBe(503);
   });
   it('does not acknowledge a missing/mismatched/review receipt', async () => {
     persistence(null, null); await expect(completeUnrelatedMembershipEvent(event)).rejects.toThrow();
+  });
+  it('recovers a known unrelated retry with a refreshed timestamp after receipt mismatch', async () => {
+    mocks.rpc.mockResolvedValueOnce({ error: { message: 'EVENT_MISMATCH' } });
+    const response = await POST(request(false, { timestamp: '2026-11-11T18:24:09.632Z' }));
+    expect(response.status).toBe(200); expect(await response.json()).toEqual({ code: 'ignored' });
+    expect(mocks.read).toHaveBeenCalledOnce(); expect(mocks.from).toHaveBeenCalledWith('whop_card_events');
+  });
+  it('keeps retry recovery failures retryable without fabricating receipts', async () => {
+    mocks.rpc.mockResolvedValue({ error: { message: 'EVENT_MISMATCH' } });
+    persistence(null, null); expect((await POST(request())).status).toBe(503);
+    persistence(); mocks.read.mockRejectedValueOnce(new Error('provider unavailable'));
+    expect((await POST(request())).status).toBe(503);
+    persistence({ message: 'database unavailable' }); expect((await POST(request())).status).toBe(503);
+  });
+  it('keeps StartAI timestamp mismatches retryable without updating any receipt', async () => {
+    mocks.rpc.mockResolvedValueOnce({ error: { message: 'EVENT_MISMATCH' } });
+    mocks.read.mockResolvedValue({ ...membership, product_id: plan.productId, variant_id: plan.planId });
+    expect((await POST(request())).status).toBe(503); expect(mocks.from).not.toHaveBeenCalled();
+  });
+  it('keeps payment receipt failure retryable without membership lookups', async () => {
+    mocks.rpc.mockResolvedValueOnce({ error: { message: 'EVENT_MISMATCH' } });
+    expect((await POST(request(false, { type: 'payment.succeeded' }))).status).toBe(503); expect(mocks.read).not.toHaveBeenCalled();
   });
   it('skips reprocessing an already completed receipt', async () => {
     mocks.rpc.mockResolvedValueOnce({ data: 'processed', error: null });
